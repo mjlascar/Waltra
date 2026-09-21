@@ -24,24 +24,24 @@ export function MetricsExplainer({
     {
       titulo: "Capital aportado",
       valor: money(p.netContributedUsd, "USD"),
-      cuerpo: `Todo lo que entró menos todo lo que sacaste: ${money(p.depositedUsd, "USD")} de ingresos y ${money(p.withdrawnUsd, "USD")} de retiros. Pasar plata de Cocos a Binance no suma acá: no es capital nuevo, solo cambió de lugar. Comprar tampoco: convertís efectivo en un activo, pero seguís teniendo lo mismo.`,
+      cuerpo: `Todo lo que ingresaste menos todo lo que retiraste: ${money(p.depositedUsd, "USD")} de ingresos y ${money(p.withdrawnUsd, "USD")} de retiros. Transferir de Cocos a Binance no suma acá: no es capital nuevo, solo cambia de lugar. Comprar tampoco: convertís efectivo en un activo, pero el patrimonio es el mismo.`,
     },
     {
       titulo: "Ganancia",
       valor: money(p.totalPnlUsd, "USD", { sign: true }),
-      cuerpo: `Lo que vale hoy tu cartera (${money(p.totalValueUsd, "USD")}) menos lo que pusiste (${money(p.netContributedUsd, "USD")}). Incluye lo que subieron tus posiciones${p.realizedUsd !== 0 ? `, lo que ya realizaste al vender (${money(p.realizedUsd, "USD", { sign: true })})` : ""}${p.incomeUsd > 0 ? ` y lo que cobraste en dividendos e intereses (${money(p.incomeUsd, "USD")})` : ""}${p.feesUsd > 0 ? `, descontando ${money(p.feesUsd, "USD")} de comisiones` : ""}.`,
+      cuerpo: `Lo que vale hoy la cartera (${money(p.totalValueUsd, "USD")}) menos el capital aportado (${money(p.netContributedUsd, "USD")}). Incluye lo que subieron tus posiciones${p.realizedUsd !== 0 ? `, lo que ya realizaste al vender (${money(p.realizedUsd, "USD", { sign: true })})` : ""}${p.incomeUsd > 0 ? ` y lo que cobraste en dividendos e intereses (${money(p.incomeUsd, "USD")})` : ""}${p.feesUsd > 0 ? `, descontando ${money(p.feesUsd, "USD")} de comisiones` : ""}.`,
     },
     {
       titulo: "Rendimiento real (TWR)",
       valor: percent(p.metrics.twrCumulative, { decimals: 1 }),
       cuerpo:
-        "Qué tan bien elegiste, sin que el momento en que pusiste la plata ensucie el número. Se encadenan los retornos de cada día neutralizando los aportes: si metés 1.000 dólares nuevos, el valor sube pero el rendimiento no se mueve. Es la métrica que los gráficos de los brokers mezclan, y por la que un depósito parece una ganancia.",
+        "Qué tan bien elegiste, sin que el momento de los aportes distorsione el número. Se encadenan los retornos de cada día neutralizando las entradas y salidas: si aportás 1.000 dólares nuevos, el valor sube pero el rendimiento no se mueve. Es la métrica que los gráficos de los brokers mezclan, y por la que un depósito parece una ganancia.",
     },
     {
       titulo: "TIR anual (XIRR)",
       valor: percent(p.metrics.xirr, { decimals: 1 }),
       cuerpo:
-        "Lo mismo pero desde tu bolsillo y anualizado: qué tasa anual habría dado el mismo resultado, teniendo en cuenta cuándo pusiste cada peso. Si aportaste fuerte justo antes de una subida, esta te va a dar más alta que el rendimiento real. Las dos son correctas; contestan preguntas distintas.",
+        "La misma idea, anualizada y desde el punto de vista del aportante: qué tasa anual habría dado el mismo resultado, teniendo en cuenta cuándo entró cada aporte. Si aportaste fuerte justo antes de una subida, va a dar más alta que el rendimiento real. Las dos son correctas; contestan preguntas distintas.",
     },
   ];
 
@@ -50,13 +50,13 @@ export function MetricsExplainer({
       titulo: "Volatilidad anual",
       valor: percent(p.metrics.volatility, { decimals: 0, sign: false }),
       cuerpo:
-        "Cuánto se mueve tu cartera en un año típico, para arriba y para abajo. No es una predicción: es una medida de cuán movido fue el camino.",
+        "Cuánto se mueve la cartera en un año típico, para arriba y para abajo. No es una predicción: mide qué tan accidentado fue el recorrido.",
     },
     {
       titulo: "Peor caída",
       valor: percent(p.metrics.maxDrawdown.value, { decimals: 1 }),
       cuerpo: p.metrics.maxDrawdown.from
-        ? `La caída más grande desde un pico hasta el fondo, entre ${p.metrics.maxDrawdown.from} y ${p.metrics.maxDrawdown.to}. Sirve para saber cuánto aguantaste de verdad, no cuánto creés que aguantarías.`
+        ? `La caída más grande desde un pico hasta el fondo, entre ${p.metrics.maxDrawdown.from} y ${p.metrics.maxDrawdown.to}. Sirve para dimensionar cuánta caída soportó la cartera en la práctica.`
         : "La caída más grande desde un pico hasta el fondo.",
     },
   ];
@@ -64,8 +64,8 @@ export function MetricsExplainer({
   return (
     <Sheet open={open} onClose={onClose} title="Cómo se calcula">
       <p className="label mb-4 leading-relaxed">
-        Todo en dólares. Los datos salen solo de los movimientos que cargaste y de
-        los precios de mercado: no hay nada estimado.
+        Todo en dólares. Los números salen únicamente de los movimientos cargados y
+        de los precios de mercado: no hay nada estimado.
       </p>
 
       <div className="space-y-3">
@@ -105,9 +105,9 @@ export function MetricsExplainer({
       <ul className="card divide-hairline">
         {[
           ["Costo de las posiciones", "Promedio ponderado, con la comisión adentro. No es FIFO: para impuestos puede no coincidir."],
-          ["Pesos", "Se convierten al dólar MEP de cada fecha, o al que hayas cargado en la operación, que manda."],
-          ["Sin precio", "Si falta la cotización de un activo, se valúa al costo y la app te avisa. Preferimos quedarnos cortos antes que inventar."],
-          ["Antigüedad", `Tu cartera tiene ${p.metrics.ageDays} días. Con menos de dos o tres meses, la volatilidad y la TIR son ruido más que señal.`],
+          ["Pesos", "Se convierten al dólar MEP de cada fecha, o al que hayas cargado en la operación, que tiene prioridad."],
+          ["Sin precio", "Si falta la cotización de un activo, se valúa al costo y la app lo indica. Preferimos subestimar antes que estimar."],
+          ["Antigüedad", `La cartera tiene ${p.metrics.ageDays} días de historia. Con menos de dos o tres meses, la volatilidad y la TIR son ruido más que señal.`],
         ].map(([titulo, cuerpo]) => (
           <li key={titulo} className="p-3">
             <div className="text-[12px] font-medium">{titulo}</div>

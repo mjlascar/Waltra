@@ -107,7 +107,7 @@ export function relativeTime(iso: string, now = new Date()): string {
   const diff = now.getTime() - Date.parse(iso);
   if (!Number.isFinite(diff)) return "—";
   const minutes = Math.round(diff / 60_000);
-  if (minutes < 1) return "recién";
+  if (minutes < 1) return "hace un momento";
   if (minutes < 60) return `hace ${minutes} min`;
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `hace ${hours} h`;

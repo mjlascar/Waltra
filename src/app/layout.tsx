@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import "./globals.css";
+import { NATIVE } from "@/lib/platform";
 import { StoreProvider } from "@/lib/store";
 import { Nav } from "@/components/Nav";
 import { ServiceWorker } from "@/components/ServiceWorker";
@@ -32,7 +33,15 @@ export const viewport: Viewport = {
   // La app tiene tipografia fija pensada para un telefono; el zoom por pellizco
   // se deja habilitado igual porque bloquearlo es un problema de accesibilidad.
   maximumScale: 5,
-  viewportFit: "cover",
+  /**
+   * En la web, `cover` deja que la app pinte hasta el borde y el muesca se
+   * resuelve con env(safe-area-inset-*). En el APK eso mismo hacia que la
+   * barra de estado tapara los rotulos de arriba y la barra de navegacion de
+   * Android se comiera los botones de abajo: el WebView de Android informa
+   * esos margenes de forma inconsistente, asi que en vez de pelearle, la
+   * ventana se queda adentro de las barras y las respeta el sistema.
+   */
+  viewportFit: NATIVE ? "auto" : "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

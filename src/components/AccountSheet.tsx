@@ -90,7 +90,7 @@ export function AccountSheet({
               {percent(account.pnlPct, { decimals: 1 })}
             </span>
           )}
-          <span className="label">sobre lo que pusiste acá</span>
+          <span className="label">sobre el capital aportado acá</span>
         </div>
       </div>
 
@@ -98,7 +98,7 @@ export function AccountSheet({
         {[
           ["Invertido", money(account.investedUsd, "USD")],
           ["Efectivo", money(account.cashUsd, "USD")],
-          ["Capital puesto", money(account.netContributedUsd, "USD")],
+          ["Capital aportado", money(account.netContributedUsd, "USD")],
           ["Peso en la cartera", percent(account.weight, { decimals: 0, sign: false })],
         ].map(([label, value]) => (
           <div key={label} style={{ background: "var(--color-surface)" }} className="p-3">
@@ -132,9 +132,9 @@ export function AccountSheet({
       <div className="eyebrow mb-2">Ajustar el efectivo</div>
       <div className="card p-3">
         <p className="label mb-3 leading-relaxed">
-          Si el efectivo que muestra {config?.name ?? "el broker"} no coincide con el de
-          acá, poné el número real y se carga la diferencia como un ajuste. Queda
-          anotado: no se disimula.
+          Si el efectivo que muestra {config?.name ?? "el broker"} no coincide con el
+          de la app, ingresá el saldo real y la diferencia se registra como un
+          ajuste explícito. Queda asentado como tal.
         </p>
 
         <div className="mb-3">
@@ -178,7 +178,7 @@ export function AccountSheet({
             {puedeAjustar && (
               <span className="label">
                 {" "}
-                — se va a cargar como {diferencia > 0 ? "interés" : "comisión"}, que
+                — se registra como {diferencia > 0 ? "interés" : "comisión"}, que
                 cuenta como resultado y no como capital nuevo.
               </span>
             )}
@@ -190,11 +190,11 @@ export function AccountSheet({
           disabled={!puedeAjustar || saving}
           onClick={ajustar}
         >
-          {saving ? "Guardando…" : "Cargar el ajuste"}
+          {saving ? "Registrando…" : "Registrar el ajuste"}
         </button>
 
         {saved && (
-          <p className="label mt-2 pos">Ajuste cargado. El saldo ya coincide.</p>
+          <p className="label mt-2 pos">Ajuste registrado. El saldo ya coincide.</p>
         )}
       </div>
     </Sheet>

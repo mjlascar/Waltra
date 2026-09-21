@@ -32,6 +32,10 @@ export function NativeShell() {
       // `Dark` en el plugin significa texto claro sobre fondo oscuro.
       await StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
       await StatusBar.setBackgroundColor({ color: "#0a0a0b" }).catch(() => {});
+      // Que el sistema reserve el alto de la barra de estado en vez de
+      // dibujarla encima del contenido. Sin esto, el titulo de cada pantalla
+      // queda debajo del reloj y de los iconos de notificacion.
+      await StatusBar.setOverlaysWebView({ overlay: false }).catch(() => {});
       await SplashScreen.hide().catch(() => {});
     })();
 

@@ -313,8 +313,8 @@ export default function Movimientos() {
           )}
           {detail.type === "transfer" && (
             <p className="label mt-3 leading-snug">
-              Una transferencia entre tus cuentas no suma capital nuevo: solo cambia dónde
-              está la plata.
+              Una transferencia entre cuentas propias no suma capital nuevo: el saldo
+              solo cambia de lugar.
             </p>
           )}
           {detail.type === "buy" && assetOf(detail) && (

@@ -268,7 +268,7 @@ export default function Overview() {
             label="TIR anual"
             value={percent(p.metrics.xirr, { decimals: 1 })}
             tone={p.metrics.xirr === null ? "plain" : p.metrics.xirr >= 0 ? "pos" : "neg"}
-            hint="tu plata, anualizada"
+            hint="anualizada, según cuándo aportaste"
           />
         </div>
       </button>
@@ -279,7 +279,7 @@ export default function Overview() {
       </p>
 
       <section className="mb-5">
-        <SectionTitle>Dónde está la plata</SectionTitle>
+        <SectionTitle>Distribución por cuenta</SectionTitle>
         <div className="card divide-hairline">
           {p.accountViews
             .filter((a) => a.valueUsd > 0.01 || a.netContributedUsd !== 0)
@@ -324,8 +324,8 @@ export default function Overview() {
           <Allocation slices={slices} total={p.investedUsd} />
           {p.cashUsd > 0.01 && (
             <p className="hairline mt-2 pt-2 text-[11px]" style={{ color: "var(--color-ink-3)" }}>
-              Además tenés {money(p.cashUsd, "USD")} sin invertir
-              {p.totalValueUsd > 0 && ` (${percent(p.cashUsd / p.totalValueUsd, { decimals: 0, sign: false })} del total)`}.
+              {money(p.cashUsd, "USD")} sin invertir
+              {p.totalValueUsd > 0 && `, un ${percent(p.cashUsd / p.totalValueUsd, { decimals: 0, sign: false })} del total`}.
             </p>
           )}
         </div>

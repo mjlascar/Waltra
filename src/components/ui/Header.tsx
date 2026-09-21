@@ -5,18 +5,31 @@ import { IconRefresh, IconSettings } from "@/components/icons";
 import { useStore } from "@/lib/store";
 import { relativeTime } from "@/lib/format";
 
+/**
+ * Cuan vigente es la cotizacion que se esta mostrando.
+ *
+ * Cuando acaba de refrescarse no hace falta el detalle temporal: lo que el
+ * usuario necesita saber es que el numero de la pantalla es el de ahora.
+ */
+function precioStatus(lastSync: string): string {
+  const minutos = (Date.now() - Date.parse(lastSync)) / 60_000;
+  if (!Number.isFinite(minutos)) return "Sin cotizaciones";
+  if (minutos < 5) return "Cotizaciones al día";
+  return `Cotizaciones de ${relativeTime(lastSync)}`;
+}
+
 /** Cabecera comun: nombre de la vista, estado de datos y acceso a ajustes. */
 export function Header({ title }: { title: string }) {
   const { sync, refresh, settings } = useStore();
 
   const status =
     sync.status === "syncing"
-      ? "actualizando…"
+      ? "Actualizando precios…"
       : sync.status === "error"
-        ? "sin conexión"
+        ? "Sin conexión"
         : settings.lastQuoteSync
-          ? `precios ${relativeTime(settings.lastQuoteSync)}`
-          : "sin precios aún";
+          ? precioStatus(settings.lastQuoteSync)
+          : "Sin cotizaciones";
 
   return (
     <header className="mb-4 flex items-center justify-between gap-3">

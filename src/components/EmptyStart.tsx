@@ -37,10 +37,10 @@ export function EmptyStart() {
 
       <ul className="card divide-hairline mb-6">
         {[
-          ["Cargás como si escribieras una nota", "«pasé 100 dólares a cocos», «compré 50 de QQQ a 480»"],
-          ["El capital no se mezcla con el rendimiento", "Una línea es lo que pusiste. La otra, lo que vale."],
+          ["Se carga escribiendo, como una nota", "«pasé 100 dólares a cocos», «compré 50 de QQQ a 480»"],
+          ["El capital no se mezcla con el rendimiento", "Una línea es el capital aportado. La otra, el valor de la cartera."],
           ["Precios al día", "Acciones, ETFs, CEDEARs, cripto y dólar MEP."],
-          ["Todo vive en tu teléfono", "Sin cuenta, sin nube, sin nadie mirando tus números."],
+          ["Todo vive en tu teléfono", "Sin cuenta, sin nube y sin que tus números salgan de acá."],
         ].map(([title, detail]) => (
           <li key={title} className="p-3">
             <div className="text-[13px] font-medium">{title}</div>

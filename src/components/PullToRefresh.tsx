@@ -95,7 +95,7 @@ export function PullToRefresh() {
         />
       </div>
       <span className="eyebrow mt-2">
-        {syncing ? "actualizando…" : progress >= 1 ? "soltá para actualizar" : "tirá para actualizar"}
+        {syncing ? "actualizando…" : progress >= 1 ? "soltar para actualizar" : "deslizá para actualizar"}
       </span>
     </div>
   );

@@ -187,15 +187,15 @@ export function BulkImport({ open, onClose }: { open: boolean; onClose: () => vo
             Se cargaron {done} {done === 1 ? "movimiento" : "movimientos"}.
           </p>
           <p className="label mt-2 leading-relaxed">
-            Los precios históricos se están trayendo ahora. Revisá el resumen en un
-            momento.
+            Se están descargando los precios históricos. El resumen va a reflejarlos
+            en un momento.
           </p>
         </div>
       ) : (
         <>
           <p className="label mb-3 leading-relaxed">
             Pegá tus anotaciones, una por línea. Las líneas vacías y las que empiezan
-            con <code>#</code> se ignoran.
+            con <code>#</code> se omiten.
           </p>
 
           <Field label="Tus notas">
@@ -243,7 +243,7 @@ export function BulkImport({ open, onClose }: { open: boolean; onClose: () => vo
                 <div className="mt-3">
                   <Field
                     label={`Fecha para las ${stats.sinFecha} líneas sin fecha`}
-                    hint="Si tus notas no traen fecha, todas esas van a esta."
+                    hint="Las líneas sin fecha propia se registran en esta."
                   >
                     <input
                       type="date"
@@ -320,14 +320,14 @@ export function BulkImport({ open, onClose }: { open: boolean; onClose: () => vo
               </ul>
 
               <p className="label mt-2 leading-snug">
-                Tocá una línea para sacarla o volver a incluirla. Las que tienen
-                problemas no se guardan: arreglalas en el texto y volvé a pegar.
+                Tocá una línea para excluirla o volver a incluirla. Las que tienen
+                problemas no se importan: corregilas en el texto y volvé a pegar.
               </p>
 
               {transactions.length > 0 && (
                 <p className="label mt-2 leading-snug">
-                  Ya tenés {transactions.length} movimientos cargados. Esto se suma a
-                  lo que hay; no reemplaza nada.
+                  Ya hay {transactions.length} movimientos cargados. Esta importación
+                  se suma a los existentes; no reemplaza nada.
                 </p>
               )}
             </>

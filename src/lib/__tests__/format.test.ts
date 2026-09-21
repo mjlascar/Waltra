@@ -77,7 +77,7 @@ describe("fechas", () => {
 
   it("hora relativa corta", () => {
     const now = new Date("2026-06-15T12:00:00.000Z");
-    expect(relativeTime("2026-06-15T11:59:50.000Z", now)).toBe("recién");
+    expect(relativeTime("2026-06-15T11:59:50.000Z", now)).toBe("hace un momento");
     expect(relativeTime("2026-06-15T11:30:00.000Z", now)).toBe("hace 30 min");
     expect(relativeTime("2026-06-15T08:00:00.000Z", now)).toBe("hace 4 h");
     expect(relativeTime("2026-06-12T12:00:00.000Z", now)).toBe("hace 3 d");

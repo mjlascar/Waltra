@@ -61,6 +61,7 @@ body {
 body {
   /* La barra de navegacion vive fija abajo; dejamos su alto libre. */
   padding-bottom: calc(60px + env(safe-area-inset-bottom));
+  padding-top: env(safe-area-inset-top);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -70,9 +71,12 @@ body {
 }
 
 /* Foco visible para quien navega con teclado. Solo :focus-visible, asi el
-   toque en el telefono no deja rectangulos colgados. */
+   toque en el telefono no deja rectangulos colgados.
+   Va en el gris claro de la tipografia y no en el azul de las series: ese
+   azul significa "primera serie de datos" en toda la app, y usarlo tambien
+   para el foco lo convierte en ruido. */
 :focus-visible {
-  outline: 2px solid var(--color-s1);
+  outline: 2px solid var(--color-ink-2);
   outline-offset: 1px;
 }
 

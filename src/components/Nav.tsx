@@ -19,6 +19,18 @@ const ITEMS = [
   { href: "/insights", label: "Insights", Icon: IconInsights },
 ];
 
+/**
+ * La ruta sin la barra final.
+ *
+ * El build del APK exporta cada pantalla como carpeta, asi que el navegador
+ * reporta "/cartera/" y no "/cartera". Sin normalizar, ninguna pestana se
+ * marcaba como activa salvo el inicio, que es "/" en los dos casos.
+ */
+function samePath(pathname: string, href: string): boolean {
+  const limpio = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  return limpio === href;
+}
+
 export function Nav() {
   const pathname = usePathname();
   const [adding, setAdding] = useState(false);
@@ -35,7 +47,7 @@ export function Nav() {
       >
         <div className="mx-auto flex max-w-[560px] items-stretch">
           {ITEMS.slice(0, 2).map((item) => (
-            <NavItem key={item.href} {...item} active={pathname === item.href} />
+            <NavItem key={item.href} {...item} active={samePath(pathname, item.href)} />
           ))}
 
           {/* Cargar un movimiento es lo que mas se hace: va al centro, al
@@ -55,7 +67,7 @@ export function Nav() {
           </button>
 
           {ITEMS.slice(2).map((item) => (
-            <NavItem key={item.href} {...item} active={pathname === item.href} />
+            <NavItem key={item.href} {...item} active={samePath(pathname, item.href)} />
           ))}
         </div>
       </nav>
