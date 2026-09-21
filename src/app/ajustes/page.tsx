@@ -6,6 +6,7 @@ import { SectionTitle } from "@/components/ui/Stat";
 import { Field, Segmented } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
 import { BulkImport } from "@/components/BulkImport";
+import { InstallPrompt } from "@/components/InstallPrompt";
 import { IconChevron, IconTrash } from "@/components/icons";
 import { newId, useStore } from "@/lib/store";
 import { exportBackup, importBackup, parseBackup, wipeAll } from "@/lib/db";
@@ -358,6 +359,14 @@ export default function Ajustes() {
             {" · "}dólar MEP{" "}
             {portfolio.fxLatest > 0 ? money(portfolio.fxLatest, "ARS", { decimals: 0 }) : "sin dato"}
           </p>
+        </div>
+      </section>
+
+      {/* --- Instalacion --------------------------------------------------- */}
+      <section className="mb-5">
+        <SectionTitle>En tu teléfono</SectionTitle>
+        <div className="card p-3">
+          <InstallPrompt />
         </div>
       </section>
 

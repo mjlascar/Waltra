@@ -70,15 +70,39 @@ npm run dev            # ya escucha en 0.0.0.0
 Entrá desde el teléfono a `http://<ip-de-tu-compu>:3000`. En Chrome de Android:
 menú → *Agregar a la pantalla principal*.
 
-### En producción
+### Para usarla en serio, desde el celular
+
+La app vive en tu teléfono, pero necesita estar servida desde algún lado. Dos
+caminos, según cuánto te importe tenerla siempre a mano.
+
+**a) Solo en tu red, sin desplegar nada.** Levantás el server en tu compu y
+entrás desde el celular:
 
 ```bash
-npm run build
-npm start
+npm run build && npm start     # escucha en 0.0.0.0:3000
 ```
 
-Anda tal cual en Vercel, Railway, Fly o un VPS con Node. Es una app Next.js
-común: las rutas `/api` son server-side y el resto es estático.
+Entrá desde el teléfono a `http://<ip-de-tu-compu>:3000` y agregala a la
+pantalla de inicio. Anda offline una vez instalada, pero para refrescar
+precios la compu tiene que estar prendida.
+
+**b) Desplegada, para tenerla siempre.** Es una app Next.js común, así que
+anda tal cual en Vercel, Railway, Fly o un VPS con Node:
+
+1. Subí el repo a GitHub (ya está) e importalo en Vercel.
+2. En *Settings → Environment Variables* cargá `ANTHROPIC_API_KEY` si querés
+   los insights, y `WALTRA_ACCESS_KEY` con una frase cualquiera para que las
+   rutas `/api` no queden abiertas a internet.
+3. Entrá desde el celular, andá a *Ajustes → Acceso a la API* y pegá esa misma
+   frase. Queda guardada en el teléfono.
+4. *Agregar a la pantalla principal* y listo.
+
+Tus movimientos **no** viajan al servidor en ninguno de los dos casos: viven
+en el navegador del teléfono. El servidor solo busca precios y, si se lo
+pedís, genera los insights.
+
+> Si desplegás, hacé backup desde Ajustes igual: los datos siguen atados a
+> este navegador, no al deploy.
 
 ## Configuración
 

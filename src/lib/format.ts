@@ -134,7 +134,7 @@ export const TX_SHORT: Record<string, string> = {
   dividend: "Dividendo",
   interest: "Interés",
   fee: "Comisión",
-  transfer: "Transfer.",
+  transfer: "Traspaso",
 };
 
 export const KIND_LABEL: Record<string, string> = {

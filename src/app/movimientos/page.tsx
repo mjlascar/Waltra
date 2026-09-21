@@ -7,7 +7,16 @@ import { Sheet } from "@/components/ui/Sheet";
 import { EmptyStart } from "@/components/EmptyStart";
 import { IconEdit, IconTrash } from "@/components/icons";
 import { useStore } from "@/lib/store";
-import { longDate, money, percent, quantity as fmtQty, shortDate, TX_LABEL, TX_SHORT } from "@/lib/format";
+import {
+  longDate,
+  money,
+  percent,
+  plainNumber,
+  quantity as fmtQty,
+  shortDate,
+  TX_LABEL,
+  TX_SHORT,
+} from "@/lib/format";
 import type { Transaction, TxType } from "@/lib/types";
 
 const FILTERS: { value: TxType | "todos" | "capital"; label: string }[] = [
@@ -81,6 +90,8 @@ export default function Movimientos() {
 
   const assetOf = (tx: Transaction) => assets.find((a) => a.id === tx.assetId);
   const accountOf = (id?: string) => accounts.find((a) => a.id === id)?.name ?? "—";
+  /** "Cocos Capital" -> "Cocos": en una fila apretada alcanza y sobra. */
+  const shortAccount = (id?: string) => accountOf(id).split(/\s+/)[0];
 
   return (
     <div className="pb-6">
@@ -150,13 +161,19 @@ export default function Movimientos() {
                 const outflow = tx.type === "withdraw" || tx.type === "buy" || tx.type === "fee";
                 // El detalle va debajo junto a la fecha: en 360px, una columna
                 // de fecha aparte le come el ancho al dato que importa.
+                // La fecha va primero y sin año: el encabezado del mes ya lo
+                // dice, y asi lo que se corta al final es el detalle de precio,
+                // que ademas se deduce del monto de la derecha.
                 const detailParts = [
+                  shortDate(tx.date, false),
+                  asset ? shortAccount(tx.accountId) : null,
+                  // El simbolo de moneda del precio unitario se omite: es el
+                  // mismo del monto que esta a la derecha, y aca cada caracter
+                  // se paga en texto cortado.
                   tx.quantity
-                    ? `${fmtQty(tx.quantity, 6)} @ ${money(tx.price ?? 0, tx.currency)}`
+                    ? `${fmtQty(tx.quantity, 6)} @ ${plainNumber(tx.price ?? 0, (tx.price ?? 0) >= 1000 ? 0 : 2)}`
                     : null,
-                  asset ? accountOf(tx.accountId) : null,
                   tx.note && tx.note !== "ejemplo" ? tx.note : null,
-                  shortDate(tx.date, true),
                 ].filter(Boolean);
                 return (
                   <button
@@ -167,8 +184,9 @@ export default function Movimientos() {
                     <span className="chip shrink-0">{TX_SHORT[tx.type]}</span>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[13px]">
-                        {asset?.symbol ?? accountOf(tx.accountId)}
-                        {tx.type === "transfer" && ` → ${accountOf(tx.counterAccountId)}`}
+                        {tx.type === "transfer"
+                          ? `${shortAccount(tx.accountId)} → ${shortAccount(tx.counterAccountId)}`
+                          : (asset?.symbol ?? accountOf(tx.accountId))}
                       </div>
                       <div className="label mt-0.5 truncate">{detailParts.join(" · ")}</div>
                     </div>
