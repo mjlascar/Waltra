@@ -110,17 +110,51 @@ jobs:
       - name: Preparar los assets
         run: npm run build:native
 
+      # Android identifica una app por su paquete Y su firma. Con la clave de
+      # depuracion, que cada corrida genera distinta, el APK nuevo no se puede
+      # instalar encima del viejo: habria que desinstalar, y eso borra los
+      # movimientos. Con el secreto cargado se firma siempre igual y las
+      # actualizaciones conservan los datos.
+      #
+      # Sin el secreto el build igual sale, con la clave de depuracion, para
+      # poder probarlo. El README explica como generar la propia.
+      - name: Preparar la firma
+        id: firma
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -n "${KEYSTORE_BASE64:-}" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/waltra.keystore"
+            echo "modo=release" >> "$GITHUB_OUTPUT"
+            echo "Firma propia: las actualizaciones se instalan encima."
+          else
+            echo "modo=debug" >> "$GITHUB_OUTPUT"
+            echo "::warning::Sin ANDROID_KEYSTORE_BASE64: el APK va firmado con la clave de depuración y no se puede instalar encima de una versión anterior sin desinstalar (lo que borra los datos). Está explicado en el README."
+          fi
+
       - name: Compilar
         working-directory: android
-        run: ./gradlew --no-daemon assembleDebug
+        env:
+          WALTRA_VERSION_CODE: ${{ github.run_number }}
+          WALTRA_VERSION_NAME: 1.0.${{ github.run_number }}
+          WALTRA_KEYSTORE_FILE: ${{ steps.firma.outputs.modo == 'release' && format('{0}/waltra.keystore', runner.temp) || '' }}
+          WALTRA_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          WALTRA_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          WALTRA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ "${{ steps.firma.outputs.modo }}" = "release" ]; then
+            ./gradlew --no-daemon assembleRelease
+          else
+            ./gradlew --no-daemon assembleDebug
+          fi
 
-      # Firmado con la clave de depuracion, que es la que viene con el SDK.
-      # Alcanza para instalarlo a mano; no sirve para publicar en Play, que no
-      # es el plan. En el README esta como pasar a una clave propia.
       - name: Guardar el APK
         uses: actions/upload-artifact@v4
         with:
           name: waltra-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 90

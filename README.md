@@ -102,11 +102,36 @@ Para compilarlo en tu propia máquina hace falta el SDK de Android y JDK 21:
 npm run apk    # deja android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Va firmado con la clave de depuración, que es la que trae el SDK. Alcanza para
-instalarlo a mano entre conocidos. Para una clave propia (necesaria si algún
-día lo publicás), generás un keystore con `keytool`, lo cargás como secreto del
-repositorio y cambiás `assembleDebug` por `assembleRelease` con su
-`signingConfig`.
+#### Antes de repartirlo: firmá con tu propia clave
+
+Android identifica una app por su paquete **y su firma**. Si dos APK del mismo
+paquete vienen firmados distinto, el segundo no se instala encima del primero:
+hay que desinstalar, y desinstalar **borra todos los movimientos**.
+
+Con la clave de depuración eso pasa siempre, porque cada corrida de CI genera
+la suya. O sea: el APK que baja de Actions sirve para probar, pero no para
+actualizar algo que ya estabas usando.
+
+Se arregla una sola vez. Generás una clave:
+
+```bash
+keytool -genkeypair -v -keystore waltra.keystore -alias waltra \
+  -keyalg RSA -keysize 2048 -validity 10000
+base64 -w0 waltra.keystore        # en macOS: base64 -i waltra.keystore
+```
+
+Y en *Settings → Secrets and variables → Actions* del repo cargás cuatro
+secretos: `ANDROID_KEYSTORE_BASE64` (lo que imprimió el comando anterior),
+`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` (`waltra`) y
+`ANDROID_KEY_PASSWORD`. A partir de ahí CI firma con esa clave y las
+actualizaciones se instalan encima, conservando los datos.
+
+**Guardá el `waltra.keystore` fuera del repo y no lo pierdas.** Si se pierde,
+la única salida es desinstalar y volver a empezar. Y no lo commitees: este
+repositorio es público.
+
+El `versionCode` sale del número de corrida de CI, así que cada build es más
+nuevo que el anterior y Android lo acepta como actualización.
 
 **b) Solo en tu red, sin desplegar nada.** Levantás el server en tu compu y
 entrás desde el celular:

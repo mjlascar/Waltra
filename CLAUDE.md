@@ -164,3 +164,14 @@ Son proxies que convierten cualquier acceso a una propiedad en una llamada al
 puente nativo, `.then` incluido. Devolver uno desde una función `async` hace
 que el motor lo tome por una promesa y explote con
 `"Preferences.then() is not implemented"`. Va envuelto en un objeto común.
+
+## Al tocar el APK
+
+Android identifica la app por su paquete **y su firma**. Un APK firmado con
+otra clave no se instala encima del anterior: hay que desinstalar, y eso borra
+la base local. La clave de depuración cambia en cada corrida de CI, así que el
+APK de Actions sirve para probar y no para actualizar. La firma estable se
+configura con cuatro secretos del repositorio (ver README); sin ellos el build
+igual sale, con un aviso en el log.
+
+El `versionCode` viene del número de corrida y tiene que crecer siempre.
