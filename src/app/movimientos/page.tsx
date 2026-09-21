@@ -27,6 +27,9 @@ const FILTERS: { value: TxType | "todos" | "capital"; label: string }[] = [
   { value: "dividend", label: "Rentas" },
 ];
 
+/** Cuantos movimientos se agregan por vez al tocar "mostrar mas". */
+const PAGINA = 60;
+
 const MONTHS = [
   "enero", "febrero", "marzo", "abril", "mayo", "junio",
   "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
@@ -38,8 +41,19 @@ export default function Movimientos() {
   const [account, setAccount] = useState<string>("todas");
   const [query, setQuery] = useState("");
   const [detail, setDetail] = useState<Transaction | null>(null);
+  // Cuantos movimientos se dibujan. Una historia larga en un telefono de 2019
+  // se nota: es mejor mostrar los ultimos y pedir mas si hacen falta.
+  const [limite, setLimite] = useState(PAGINA);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  /** Tocar un filtro vuelve a arrancar la lista desde el principio. */
+  function aplicar<T>(set: (value: T) => void) {
+    return (value: T) => {
+      set(value);
+      setLimite(PAGINA);
+    };
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -73,17 +87,20 @@ export default function Movimientos() {
       .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.createdAt.localeCompare(a.createdAt)));
   }, [transactions, filter, account, query, assets, accounts]);
 
+  const visibles = useMemo(() => filtered.slice(0, limite), [filtered, limite]);
+  const faltan = filtered.length - visibles.length;
+
   /** Agrupado por mes: da ritmo a la lista y hace visible la cadencia de aportes. */
   const months = useMemo(() => {
     const groups = new Map<string, Transaction[]>();
-    for (const tx of filtered) {
+    for (const tx of visibles) {
       const key = tx.date.slice(0, 7);
       const bucket = groups.get(key);
       if (bucket) bucket.push(tx);
       else groups.set(key, [tx]);
     }
     return [...groups.entries()];
-  }, [filtered]);
+  }, [visibles]);
 
   if (!ready) return <div className="py-20 text-center"><span className="label">Abriendo…</span></div>;
   if (transactions.length === 0) return <EmptyStart />;
@@ -100,7 +117,7 @@ export default function Movimientos() {
       <input
         className="input mb-3"
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        onChange={(e) => aplicar(setQuery)(e.target.value)}
         placeholder="Buscar por activo, nota o cuenta…"
       />
 
@@ -114,7 +131,7 @@ export default function Movimientos() {
               color: filter === f.value ? "var(--color-ink)" : undefined,
               height: 28,
             }}
-            onClick={() => setFilter(f.value)}
+            onClick={() => aplicar(setFilter)(f.value)}
           >
             {f.label}
           </button>
@@ -134,7 +151,7 @@ export default function Movimientos() {
                 textTransform: "none",
                 letterSpacing: 0,
               }}
-              onClick={() => setAccount(a.id)}
+              onClick={() => aplicar(setAccount)(a.id)}
             >
               {a.name}
             </button>
@@ -201,6 +218,13 @@ export default function Movimientos() {
           </section>
         );
       })}
+
+      {faltan > 0 && (
+        <button className="btn w-full" onClick={() => setLimite((n) => n + PAGINA)}>
+          Mostrar {Math.min(PAGINA, faltan)} más
+          <span className="label">de {faltan} restantes</span>
+        </button>
+      )}
 
       {filtered.length === 0 && (
         <p className="label py-10 text-center">Ningún movimiento coincide con el filtro.</p>

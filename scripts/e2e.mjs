@@ -204,6 +204,8 @@ await page.waitForTimeout(500);
 const capitalCount = Number(normalize(await text()).match(/(\d+) movimientos/)?.[1] ?? 0);
 check("el filtro de capital reduce la lista", capitalCount > 0 && capitalCount < totalCount,
   `${capitalCount} de ${totalCount}`);
+// Con pocos movimientos no tiene que aparecer el boton de paginado.
+check("sin paginado cuando la lista es corta", !(await has("Mostrar")), `${totalCount} movimientos`);
 await page.locator('input[placeholder*="Buscar"]').fill("btc");
 await page.waitForTimeout(500);
 check("la búsqueda filtra", (await has("0 movimientos")) || !(await has("ingreso")));
