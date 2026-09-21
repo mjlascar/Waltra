@@ -14,6 +14,7 @@ import { IconChevron, IconTrash } from "@/components/icons";
 import { newId, useStore } from "@/lib/store";
 import { exportBackup, importBackup, parseBackup, wipeAll } from "@/lib/db";
 import { describeBackendError, diagnostics, ON_DEVICE } from "@/lib/backend";
+import { saveBackupFile } from "@/lib/backup-file";
 import { clearDemoData, hasDemoData, loadDemoData } from "@/lib/demo";
 import { KIND_LABEL, money, relativeTime } from "@/lib/format";
 import { BENCHMARK_CHOICES } from "@/lib/benchmark";
@@ -61,15 +62,16 @@ export default function Ajustes() {
 
   async function doExport() {
     if (!db) return;
-    const backup = await exportBackup(db);
-    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `waltra-${new Date().toISOString().slice(0, 10)}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-    setMessage("Backup descargado. Guardalo fuera del teléfono.");
+    try {
+      const backup = await exportBackup(db);
+      const { message: resultado } = await saveBackupFile(
+        `waltra-${new Date().toISOString().slice(0, 10)}.json`,
+        JSON.stringify(backup, null, 2),
+      );
+      setMessage(resultado);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err));
+    }
   }
 
   async function doImport(file: File, mode: "replace" | "merge") {
@@ -367,12 +369,15 @@ export default function Ajustes() {
       </section>
 
       {/* --- Instalacion --------------------------------------------------- */}
-      <section className="mb-5">
-        <SectionTitle>En tu teléfono</SectionTitle>
-        <div className="card p-3">
-          <InstallPrompt />
-        </div>
-      </section>
+      {/* Adentro del APK no hay nada que instalar: ya está instalada. */}
+      {!ON_DEVICE && (
+        <section className="mb-5">
+          <SectionTitle>En tu teléfono</SectionTitle>
+          <div className="card p-3">
+            <InstallPrompt />
+          </div>
+        </section>
+      )}
 
       {/* --- Insights ------------------------------------------------------ */}
       <section className="mb-5">

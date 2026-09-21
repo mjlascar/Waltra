@@ -414,6 +414,8 @@ describe("la corrida completa", () => {
     // aplica: lo que importa es que sea una fecha y que sea futura.
     expect(typeof aviso.scheduleAt.getTime).toBe("function");
     expect(aviso.scheduleAt.getTime()).toBeGreaterThan(Date.now());
+    // Sin icono propio, Android dibuja el de la app y sale un cuadrado blanco.
+    expect((aviso as unknown as { smallIcon: string }).smallIcon).toBe("ic_stat_waltra");
     // El estado quedo guardado para que la proxima corrida no repita.
     expect(env.almacen["waltra.alertas.estado"]).toContain("BTC");
   });

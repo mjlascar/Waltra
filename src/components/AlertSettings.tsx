@@ -42,14 +42,11 @@ export function AlertSettings() {
   }
 
   async function encender() {
-    const ok = await requestNotificationPermission();
-    setPermiso(ok);
+    // Si el permiso no sale, no se avisa aca: del cartel se encarga el bloque
+    // de abajo, que ademas sigue estando si uno entra otro dia sin haberlo
+    // concedido. Decirlo en los dos lados era decirlo dos veces.
+    setPermiso(await requestNotificationPermission());
     set({ enabled: true });
-    if (!ok) {
-      setAviso(
-        "Android no dio permiso para notificar. Se habilita desde los ajustes del sistema, en Waltra → Notificaciones.",
-      );
-    }
   }
 
   // Solo los activos que el vigia puede cotizar: uno de precio manual no se
@@ -119,10 +116,11 @@ export function AlertSettings() {
               return (
                 <li key={pos.assetId} className="flex items-center gap-2 p-2.5">
                   <span className="min-w-0 flex-1 truncate text-[13px]">{pos.symbol}</span>
-                  {propio === undefined && <span className="label shrink-0">general</span>}
                   <select
                     className="input shrink-0"
-                    style={{ width: 96 }}
+                    // El desplegable trae su propia flecha: con menos ancho,
+                    // el "%" le queda debajo.
+                    style={{ width: 124 }}
                     value={propio === undefined ? "" : String(propio)}
                     onChange={(e) => {
                       const next = { ...rules.perAsset };

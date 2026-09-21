@@ -411,6 +411,10 @@ function correr() {
         scheduleAt: new Date(ahora + 1000 + i * 200),
         group: aviso.group,
         autoCancel: true,
+        // El `smallIcon` de capacitor.config es del plugin de notificaciones
+        // locales; este camino es otro y no lo lee. Sin esto, Android dibuja
+        // el icono de la app y sale un cuadrado blanco.
+        smallIcon: "ic_stat_waltra",
       };
     });
     CapacitorNotifications.schedule(programadas);
