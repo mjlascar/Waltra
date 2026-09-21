@@ -29,7 +29,7 @@ export async function POST(request: Request) {
 
   const parsed = BodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return NextResponse.json({ error: "Pedido invalido." }, { status: 400 });
+    return NextResponse.json({ error: "Pedido inválido." }, { status: 400 });
   }
   const { refs, history, from, includeFx } = parsed.data;
   const since = from ?? new Date(Date.now() - 365 * 86_400_000).toISOString().slice(0, 10);

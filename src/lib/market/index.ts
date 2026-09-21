@@ -52,7 +52,7 @@ export async function fetchQuotes(refs: MarketRef[]): Promise<QuoteResult[]> {
         currency: ref.currency,
         at,
         source: ref.source,
-        error: "el proveedor no respondio",
+        error: "el proveedor no respondió",
       });
     }
   }

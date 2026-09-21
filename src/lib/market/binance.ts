@@ -28,7 +28,7 @@ export async function binanceQuotes(refs: MarketRef[]): Promise<QuoteResult[]> {
         changePct: row ? Number(row.priceChangePercent) / 100 : undefined,
         at,
         source: "binance" as const,
-        error: row ? undefined : "simbolo no encontrado en Binance",
+        error: row ? undefined : "símbolo no encontrado en Binance",
       };
     });
   } catch (err) {

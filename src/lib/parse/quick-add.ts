@@ -253,7 +253,7 @@ export function parseQuickEntry(raw: string, ctx: ParseContext): ParsedEntry | n
     work = cut(work, symbolHit.match);
     if (needsAsset) confidence += 0.15;
   } else if (needsAsset) {
-    warnings.push("No reconoci el activo.");
+    warnings.push("No reconocí el activo.");
     confidence -= 0.1;
   }
 
@@ -274,11 +274,11 @@ export function parseQuickEntry(raw: string, ctx: ParseContext): ParsedEntry | n
     if (price === undefined) {
       main = numbers[0].value;
       price = numbers[1].value;
-      warnings.push("Interprete el segundo numero como precio unitario.");
+      warnings.push("Interpreté el segundo número como precio unitario.");
     }
   }
   if (main === undefined) {
-    warnings.push("No encontre ningun monto.");
+    warnings.push("No encontré ningún monto.");
     confidence -= 0.2;
   } else {
     confidence += 0.15;
@@ -322,7 +322,7 @@ export function parseQuickEntry(raw: string, ctx: ParseContext): ParsedEntry | n
   }
 
   const note = undefined;
-  if (!verbFound) warnings.push("No reconoci la accion, asumi un deposito.");
+  if (!verbFound) warnings.push("No reconocí la acción: asumí un ingreso de capital.");
 
   return {
     type,

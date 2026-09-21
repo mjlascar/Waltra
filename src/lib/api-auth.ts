@@ -13,7 +13,7 @@ export function checkAccess(request: Request): NextResponse | null {
   if (!expected) return null;
   const provided = request.headers.get("x-waltra-key");
   if (provided && timingSafeEqual(provided, expected)) return null;
-  return NextResponse.json({ error: "Clave de acceso invalida." }, { status: 401 });
+  return NextResponse.json({ error: "Clave de acceso inválida." }, { status: 401 });
 }
 
 /** Comparacion de tiempo constante para no filtrar la clave caracter a caracter. */

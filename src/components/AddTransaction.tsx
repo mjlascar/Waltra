@@ -73,7 +73,7 @@ export function AddTransaction({
   onClose: () => void;
   editing?: Transaction | null;
 }) {
-  const { accounts, assets, transactions, saveTransaction, saveAsset, refresh, settings } =
+  const { accounts, assets, transactions, saveTransaction, saveAsset, refresh, settings, apiHeaders } =
     useStore();
 
   // La cuenta predeterminada es la ultima que usaste: en la practica uno carga
@@ -95,6 +95,9 @@ export function AddTransaction({
   const [catalogHit, setCatalogHit] = useState<CatalogEntry | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [confidence, setConfidence] = useState(1);
+  const [asking, setAsking] = useState(false);
+  const [aiNote, setAiNote] = useState<string | null>(null);
 
   // Al abrir: o cargamos el movimiento que se esta editando, o empezamos limpio.
   useEffect(() => {
@@ -126,6 +129,8 @@ export function AddTransaction({
       setText("");
       setDraft(emptyDraft(defaultAccount, defaultCurrency));
       setCatalogHit(null);
+      setConfidence(1);
+      setAiNote(null);
     }
   }, [open, editing, assets, defaultAccount, defaultCurrency]);
 
@@ -145,6 +150,8 @@ export function AddTransaction({
     if (!parsed) return;
     setWarnings(parsed.warnings);
     setCatalogHit(parsed.catalog ?? null);
+    setConfidence(parsed.confidence);
+    setAiNote(null);
     setDraft((prev) => ({
       ...prev,
       type: parsed.type,
@@ -253,6 +260,69 @@ export function AddTransaction({
     return asset.id;
   }
 
+  /**
+   * Segunda lectura con el modelo, solo a pedido.
+   *
+   * El parser local resuelve la enorme mayoria de las frases sin salir del
+   * telefono y sin costo. Esto entra unicamente cuando el usuario ve que la
+   * lectura quedo floja y toca el boton: no se dispara solo.
+   */
+  async function askAi() {
+    if (asking || !text.trim()) return;
+    setAsking(true);
+    setError(null);
+    setAiNote(null);
+    try {
+      const res = await fetch("/api/parse", {
+        method: "POST",
+        headers: apiHeaders(),
+        body: JSON.stringify({
+          text: text.trim(),
+          accounts: accounts.map((a) => ({ id: a.id, name: a.name })),
+          symbols: assets.map((a) => a.symbol),
+          today: today(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          data.code === "no_api_key"
+            ? "Para esto hace falta configurar una clave de Anthropic en el servidor."
+            : (data.error ?? `HTTP ${res.status}`),
+        );
+      }
+      const symbol: string = data.symbol ?? "";
+      const match = assets.find((a) => a.symbol.toUpperCase() === symbol.toUpperCase());
+      setCatalogHit(lookupCatalog(symbol) ?? null);
+      setDraft((prev) => ({
+        ...prev,
+        type: data.type ?? prev.type,
+        date: data.date ?? prev.date,
+        accountId: data.accountId ?? prev.accountId,
+        counterAccountId: data.counterAccountId ?? "",
+        symbol,
+        assetId: match?.id ?? "",
+        quantityText: data.quantity !== null ? fmtQty(data.quantity, 8) : "",
+        priceText: data.price !== null ? String(data.price) : "",
+        amountText: data.amount !== null ? String(data.amount) : "",
+        currency: data.currency ?? prev.currency,
+        feeText: data.fee !== null ? String(data.fee) : "",
+        note: data.note ?? prev.note,
+        basis: data.quantity !== null && data.amount === null ? "quantity" : prev.basis,
+      }));
+      setWarnings([]);
+      setConfidence(1);
+      setAiNote(data.reasoning ?? null);
+      // A partir de acá el usuario retoca sobre el formulario: si seguimos en
+      // modo texto, la próxima tecla pisaría lo que el modelo interpretó.
+      setMode("form");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAsking(false);
+    }
+  }
+
   async function handleSave() {
     if (!canSave || saving) return;
     setSaving(true);
@@ -333,6 +403,15 @@ export function AddTransaction({
               if (e.key === "Enter" && canSave) void handleSave();
             }}
           />
+          {confidence < 0.65 && text.trim().length > 3 && (
+            <button
+              className="btn btn-sm mt-2 w-full"
+              onClick={askAi}
+              disabled={asking}
+            >
+              {asking ? "Interpretando…" : "No quedó claro — que lo lea la IA"}
+            </button>
+          )}
           <div className="mt-2 flex flex-wrap gap-1.5">
             {[
               "pasé 100 dólares a cocos",
@@ -359,6 +438,11 @@ export function AddTransaction({
         <div className="card mb-4 p-3">
           <div className="eyebrow mb-1.5">Se va a guardar</div>
           <p className="text-[13px] leading-snug">{summary}</p>
+          {aiNote && (
+            <p className="mt-2 text-[11px] leading-snug" style={{ color: "var(--color-s1)" }}>
+              {aiNote}
+            </p>
+          )}
           {warnings.length > 0 && (
             <ul className="mt-2 space-y-1">
               {warnings.map((w) => (

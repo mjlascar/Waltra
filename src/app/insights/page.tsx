@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Header } from "@/components/ui/Header";
 import { SectionTitle } from "@/components/ui/Stat";
@@ -25,6 +25,20 @@ export default function Insights() {
   const [error, setError] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
   const [index, setIndex] = useState(0);
+  const [config, setConfig] = useState<{ aiConfigured: boolean; model: string } | null>(null);
+
+  // Preguntamos una sola vez si hay clave cargada, para no ofrecer un boton
+  // que solo puede terminar en error.
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/health?light=1", { headers: apiHeaders() })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => alive && data && setConfig({ aiConfigured: data.aiConfigured, model: data.model }))
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [apiHeaders]);
 
   const report = insights[index] ?? null;
 
@@ -147,9 +161,20 @@ export default function Insights() {
               placeholder="¿Algo puntual que quieras preguntar? (opcional)"
               maxLength={300}
             />
-            <button className="btn btn-primary w-full" onClick={generate} disabled={loading}>
+            <button
+              className="btn btn-primary w-full"
+              onClick={generate}
+              disabled={loading || config?.aiConfigured === false}
+            >
               {loading ? "Analizando… puede tardar un minuto" : "Generar análisis"}
             </button>
+            {config && (
+              <p className="label mt-2 leading-snug">
+                {config.aiConfigured
+                  ? `Usa ${config.model}. Cada análisis consume créditos de tu cuenta de Anthropic.`
+                  : "Falta configurar ANTHROPIC_API_KEY en el servidor. El resto de la app funciona igual; está explicado en el README."}
+              </p>
+            )}
           </div>
 
           {error && (

@@ -45,7 +45,7 @@ async function loadBoard(): Promise<Map<string, LiveRow>> {
       if (symbol) board.set(symbol, row);
     }
   }
-  if (board.size === 0) throw new Error("data912 no devolvio ningun panel");
+  if (board.size === 0) throw new Error("data912 no devolvió ningún panel");
   return board;
 }
 

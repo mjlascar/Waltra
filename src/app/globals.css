@@ -69,6 +69,13 @@ body {
   color: #fff;
 }
 
+/* Foco visible para quien navega con teclado. Solo :focus-visible, asi el
+   toque en el telefono no deja rectangulos colgados. */
+:focus-visible {
+  outline: 2px solid var(--color-s1);
+  outline-offset: 1px;
+}
+
 /* Scrollbar discreta en desktop; en el telefono no se ve. */
 ::-webkit-scrollbar {
   width: 6px;

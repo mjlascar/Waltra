@@ -3,6 +3,7 @@
  * Uso: node scripts/shoot.mjs [etiqueta]
  */
 import { chromium } from "playwright";
+import { MOBILE, chromiumPath } from "./browser.mjs";
 import { mkdirSync } from "node:fs";
 
 const label = process.argv[2] ?? "app";
@@ -11,17 +12,10 @@ const OUT = "screenshots";
 mkdirSync(OUT, { recursive: true });
 
 const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH || undefined,
+  executablePath: chromiumPath(),
   args: ["--no-sandbox"],
 });
-const context = await browser.newContext({
-  viewport: { width: 360, height: 760 },
-  deviceScaleFactor: 2,
-  isMobile: true,
-  hasTouch: true,
-  locale: "es-AR",
-  timezoneId: "America/Argentina/Buenos_Aires",
-});
+const context = await browser.newContext(MOBILE);
 const page = await context.newPage();
 
 const logs = [];

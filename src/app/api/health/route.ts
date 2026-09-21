@@ -19,6 +19,19 @@ export async function GET(request: Request) {
   const denied = checkAccess(request);
   if (denied) return denied;
 
+  // ?light=1 responde solo la configuracion, sin golpear a los proveedores.
+  // La usa la pantalla de Insights al abrir, que solo necesita saber si hay
+  // clave cargada: probar las cuatro fuentes ahi seria gasto al pedo.
+  if (new URL(request.url).searchParams.get("light") === "1") {
+    return NextResponse.json({
+      mock: MOCK_ENABLED,
+      aiConfigured: Boolean(process.env.ANTHROPIC_API_KEY),
+      model: process.env.WALTRA_MODEL ?? "claude-opus-5",
+      providers: [],
+      at: new Date().toISOString(),
+    });
+  }
+
   const started = Date.now();
   const probe = async (name: string, run: () => Promise<boolean>) => {
     const t0 = Date.now();

@@ -8,9 +8,9 @@
  * Uso: node scripts/e2e.mjs
  */
 import { chromium } from "playwright";
+import { MOBILE, chromiumPath } from "./browser.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://127.0.0.1:3000";
-const EXEC = process.env.CHROMIUM_PATH || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
 
 let passed = 0;
 const failures = [];
@@ -26,15 +26,8 @@ function check(name, condition, detail = "") {
   }
 }
 
-const browser = await chromium.launch({ executablePath: EXEC, args: ["--no-sandbox"] });
-const context = await browser.newContext({
-  viewport: { width: 360, height: 760 },
-  deviceScaleFactor: 2,
-  isMobile: true,
-  hasTouch: true,
-  locale: "es-AR",
-  timezoneId: "America/Argentina/Buenos_Aires",
-});
+const browser = await chromium.launch({ executablePath: chromiumPath(), args: ["--no-sandbox"] });
+const context = await browser.newContext(MOBILE);
 const page = await context.newPage();
 page.on("console", (m) => {
   const text = m.text();

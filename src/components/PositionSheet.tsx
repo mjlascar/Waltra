@@ -83,7 +83,7 @@ export function PositionSheet({
 
       {history.length > 2 && (
         <div className="card mb-4 p-3">
-          <div className="eyebrow mb-2">Precio desde que la app tiene datos</div>
+          <div className="eyebrow mb-2">Variación del precio</div>
           <ReturnChart data={history} height={120} />
         </div>
       )}
@@ -100,10 +100,14 @@ export function PositionSheet({
         {moves.map((tx) => (
           <div key={tx.id} className="flex items-center gap-2.5 p-3">
             <span className="chip shrink-0">{TX_SHORT[tx.type]}</span>
-            <span className="label shrink-0">{shortDate(tx.date, true)}</span>
-            <span className="min-w-0 flex-1 truncate text-right text-[12px]" style={{ color: "var(--color-ink-2)" }}>
-              {tx.quantity ? `${fmtQty(tx.quantity, 6)} @ ${money(tx.price ?? 0, tx.currency)}` : ""}
-            </span>
+            <div className="min-w-0 flex-1">
+              <div className="num truncate text-[12px]">
+                {tx.quantity
+                  ? `${fmtQty(tx.quantity, 6)} @ ${money(tx.price ?? 0, tx.currency)}`
+                  : "—"}
+              </div>
+              <div className="label mt-0.5">{shortDate(tx.date, true)}</div>
+            </div>
             <span className="num shrink-0 text-[13px]">{money(tx.amount, tx.currency)}</span>
           </div>
         ))}

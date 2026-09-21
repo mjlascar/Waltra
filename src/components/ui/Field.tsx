@@ -41,6 +41,9 @@ export function Segmented<T extends string>({
         <button
           key={option.value}
           type="button"
+          // aria-pressed es lo que hace que un lector de pantalla anuncie cual
+          // opcion esta elegida: el fondo mas claro no le dice nada.
+          aria-pressed={option.value === value}
           data-active={option.value === value}
           onClick={() => onChange(option.value)}
         >

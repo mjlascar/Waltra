@@ -149,12 +149,12 @@ export async function POST(request: Request) {
 
   const parsed = RequestSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return NextResponse.json({ error: "Pedido invalido." }, { status: 400 });
+    return NextResponse.json({ error: "Pedido inválido." }, { status: 400 });
   }
   const body = parsed.data;
   if (body.holdings.length === 0) {
     return NextResponse.json(
-      { error: "Todavia no hay posiciones que analizar.", code: "empty_portfolio" },
+      { error: "Todavía no hay posiciones que analizar.", code: "empty_portfolio" },
       { status: 400 },
     );
   }
@@ -202,7 +202,7 @@ Citá las fuentes con su URL.`,
 
     if (!brief.trim()) {
       return NextResponse.json(
-        { error: "El analisis volvio vacio. Probá de nuevo en un momento.", code: "empty_research" },
+        { error: "El análisis volvió vacío. Probá de nuevo en un momento.", code: "empty_research" },
         { status: 502 },
       );
     }
@@ -225,7 +225,7 @@ Citá las fuentes con su URL.`,
     const report = structured.parsed_output;
     if (!report) {
       return NextResponse.json(
-        { error: "No se pudo estructurar el analisis.", code: "parse_failed" },
+        { error: "No se pudo estructurar el análisis.", code: "parse_failed" },
         { status: 502 },
       );
     }

@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Falta ANTHROPIC_API_KEY.", code: "no_api_key" }, { status: 503 });
   }
   const parsed = BodySchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Pedido invalido." }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: "Pedido inválido." }, { status: 400 });
 
   const { text, accounts, symbols, today } = parsed.data;
   const client = new Anthropic({ apiKey });
