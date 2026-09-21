@@ -57,15 +57,67 @@ function encodePng(width, height, rgba) {
   ]);
 }
 
-/** Distancia de un punto al segmento AB. */
-function distToSegment(px, py, ax, ay, bx, by) {
+/**
+ * Distancia de un punto al segmento AB.
+ *
+ * Las puntas libres van a escuadra y no redondeadas: la app entera tiene
+ * border-radius cero, y un logo con puntas de fideo desentona. Un extremo "a
+ * escuadra" es simplemente no contar nada mas alla del final del segmento,
+ * asi que devuelve infinito. Las uniones internas si se redondean, que es lo
+ * que evita el hueco en la V.
+ */
+function distToSegment(px, py, ax, ay, bx, by, escuadraA = false, escuadraB = false) {
   const dx = bx - ax;
   const dy = by - ay;
   const lenSq = dx * dx + dy * dy;
-  const t = lenSq === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+  if (lenSq === 0) return Math.hypot(px - ax, py - ay);
+  let t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
+  if (t < 0) {
+    if (escuadraA) return Infinity;
+    t = 0;
+  }
+  if (t > 1) {
+    if (escuadraB) return Infinity;
+    t = 1;
+  }
   const cx = ax + t * dx;
   const cy = ay + t * dy;
   return Math.hypot(px - cx, py - cy);
+}
+
+/**
+ * La marca: una W que tambien se lee como una cotizacion.
+ *
+ * Baja, rebota, vuelve a caer y rompe hacia arriba, y el ultimo tramo termina
+ * en una punta de flecha. El ultimo tramo es mas largo y mas empinado que los
+ * otros tres a proposito: es el que cuenta la historia.
+ *
+ * Devuelve polilineas en coordenadas absolutas. La usan tanto el rasterizador
+ * como el SVG, para que no puedan separarse.
+ */
+function marca(x0, y0, span) {
+  const at = (fx, fy) => [x0 + span * fx, y0 + span * fy];
+  const desde = at(0.7, 0.88);
+  const tip = at(0.93, 0.02);
+
+  // Las barbas se calculan a partir del tramo que llega, en vez de fijarse a
+  // mano: asi siguen bien puestas si se cambia la inclinacion.
+  const dx = tip[0] - desde[0];
+  const dy = tip[1] - desde[1];
+  const largo = Math.hypot(dx, dy);
+  const ux = -dx / largo;
+  const uy = -dy / largo;
+  const barba = span * 0.4;
+  const abrir = (34 * Math.PI) / 180;
+  const rotar = (a) => [
+    tip[0] + barba * (ux * Math.cos(a) - uy * Math.sin(a)),
+    tip[1] + barba * (ux * Math.sin(a) + uy * Math.cos(a)),
+  ];
+
+  return [
+    [at(0, 0.2), at(0.23, 1), at(0.47, 0.44), desde, tip],
+    [rotar(abrir), tip, rotar(-abrir)],
+  ];
 }
 
 function render(size, { padding = 0.22, stroke = 0.1, transparent = false, height = size } = {}) {
@@ -80,22 +132,26 @@ function render(size, { padding = 0.22, stroke = 0.1, transparent = false, heigh
   const dx0 = (width - box) / 2;
   const dy0 = (height - box) / 2;
 
-  // W angular: cuatro segmentos, brazo derecho mas alto (gesto ascendente).
-  const pts = [
-    [inset, inset + span * 0.05],
-    [inset + span * 0.26, inset + span],
-    [inset + span * 0.5, inset + span * 0.42],
-    [inset + span * 0.74, inset + span],
-    [inset + span, inset],
-  ].map(([x, y]) => [x + dx0, y + dy0]);
+  const trazos = marca(inset + dx0, inset + dy0, span);
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const px = x + 0.5;
       const py = y + 0.5;
       let dist = Infinity;
-      for (let i = 0; i < pts.length - 1; i++) {
-        dist = Math.min(dist, distToSegment(px, py, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]));
+      for (const pts of trazos) {
+        for (let i = 0; i < pts.length - 1; i++) {
+          dist = Math.min(
+            dist,
+            distToSegment(
+              px, py,
+              pts[i][0], pts[i][1],
+              pts[i + 1][0], pts[i + 1][1],
+              i === 0,
+              i === pts.length - 2,
+            ),
+          );
+        }
       }
       // Un pixel de transicion: suficiente para que no se vea dentado.
       const coverage = Math.max(0, Math.min(1, half - dist + 0.5));
@@ -123,10 +179,21 @@ writeFileSync("public/icon-512.png", render(512));
 writeFileSync("public/icon-maskable-512.png", render(512, { padding: 0.3, stroke: 0.085 }));
 writeFileSync("public/apple-touch-icon.png", render(180, { padding: 0.24 }));
 
+// El SVG sale de la misma geometria que los PNG, con el mismo padding que
+// render(): no puede quedar desalineado con los iconos.
+const INSET = 64 * 0.22;
+const SPAN = 64 - INSET * 2;
+const paths = marca(INSET, INSET, SPAN)
+  .map((pts) => pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" "))
+  .map((d) => `    <path d="${d}"/>`)
+  .join("\n");
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <rect width="64" height="64" fill="#0a0a0b"/>
-  <path d="M14 15 L20.6 49 L32 31.9 L43.4 49 L50 14" fill="none" stroke="#f3f3f5" stroke-width="6.4" stroke-linejoin="miter" stroke-linecap="butt"/>
-</svg>`;
+  <g fill="none" stroke="#f3f3f5" stroke-width="6.4" stroke-linejoin="miter" stroke-linecap="butt">
+${paths}
+  </g>
+</svg>
+`;
 writeFileSync("public/icon.svg", svg);
 
 /* --- Android ---------------------------------------------------------------
@@ -189,6 +256,20 @@ if (existsSync(ANDROID)) {
   // silueta: Android lo pinta del color que quiere, asi que un PNG con fondo
   // sale como un cuadrado blanco. Un vector con solo el trazo se ve bien.
   mkdirSync(`${ANDROID}/drawable`, { recursive: true });
+  // El trazo sale de la misma geometria; el viewport de 64 coincide con el
+  // del SVG, asi que las coordenadas son las mismas.
+  const trazoNotif = marca(64 * 0.22, 64 * 0.22, 64 - 64 * 0.22 * 2)
+    .map((pts) => pts.map(([x, y], k) => `${k ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" "))
+    .map(
+      (d) => `    <path
+        android:pathData="${d}"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="6.4"
+        android:strokeLineJoin="miter"
+        android:strokeLineCap="butt" />`,
+    )
+    .join("\n");
   writeFileSync(
     `${ANDROID}/drawable/ic_stat_waltra.xml`,
     `<?xml version="1.0" encoding="utf-8"?>
@@ -197,13 +278,7 @@ if (existsSync(ANDROID)) {
     android:height="24dp"
     android:viewportWidth="64"
     android:viewportHeight="64">
-    <path
-        android:pathData="M14,15 L20.6,49 L32,31.9 L43.4,49 L50,14"
-        android:fillColor="#00000000"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="6.4"
-        android:strokeLineJoin="miter"
-        android:strokeLineCap="butt" />
+${trazoNotif}
 </vector>
 `,
   );
