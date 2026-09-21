@@ -71,16 +71,7 @@ npm run dev
 Abrí `http://localhost:3000`. La primera vez podés cargar datos de ejemplo para
 ver cómo se comporta con historia real antes de meter los tuyos.
 
-### Desde el celular, en tu red
-
-```bash
-npm run dev            # ya escucha en 0.0.0.0
-```
-
-Entrá desde el teléfono a `http://<ip-de-tu-compu>:3000`. En Chrome de Android:
-menú → *Agregar a la pantalla principal*.
-
-### Para usarla en serio, desde el celular
+### Desde el celular
 
 La app vive en tu teléfono, pero necesita estar servida desde algún lado. Dos
 caminos, según cuánto te importe tenerla siempre a mano.
@@ -201,14 +192,30 @@ superficie oscura. El orden de los colores es parte de la garantía, así que no
 se cicla ni se reordena. Ninguna información depende del color solo: siempre hay
 signo, etiqueta o ícono al lado.
 
-## Comandos
+## Cómo se prueba
 
 ```bash
-npm run dev        # desarrollo
-npm run build      # build de producción
-npm test           # tests del motor y del parser
-npm run typecheck  # TypeScript
-npm run check      # typecheck + tests
+npm run check   # tipos + lint + tests + escaneo de credenciales
+```
+
+- **140 tests** del motor de cálculo, el parser, la base local, los
+  proveedores de precios (con `fetch` simulado, porque son APIs públicas que
+  no se pueden alcanzar desde CI) y el formato.
+- **`npm run e2e`**: 60 comprobaciones sobre un navegador real, en un viewport
+  de 360×760 (Galaxy S10e), con la app levantada. Carga movimientos
+  escribiendo, edita, borra, filtra, arrastra la cruceta del gráfico, importa
+  un bloc de notas, reconcilia un saldo y exporta un backup. Falla si aparece
+  cualquier error en la consola del navegador.
+- **`npm run pwa`**: contra un build de producción, verifica manifest, íconos,
+  service worker y que la app abra y acepte movimientos **con la red cortada**.
+
+Todo corre en CI en cada push.
+
+```bash
+npm run dev              # desarrollo
+npm run build            # build de producción
+npm run shoot            # capturas de todas las vistas
+npm run docs:shots       # regenera las imágenes del README
 node scripts/icons.mjs   # regenera los íconos de la PWA
 ```
 
