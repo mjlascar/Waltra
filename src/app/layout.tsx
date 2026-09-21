@@ -5,6 +5,7 @@ import "./globals.css";
 import { StoreProvider } from "@/lib/store";
 import { Nav } from "@/components/Nav";
 import { ServiceWorker } from "@/components/ServiceWorker";
+import { PullToRefresh } from "@/components/PullToRefresh";
 
 export const metadata: Metadata = {
   title: "Waltra",
@@ -37,6 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="es-AR" className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <body>
         <StoreProvider>
+          <PullToRefresh />
           <main className="shell pt-3">{children}</main>
           <Nav />
           <ServiceWorker />

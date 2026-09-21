@@ -87,6 +87,19 @@ check("no reclama un monto que puede deducir", !(await has("No encontré ningún
 await page.getByRole("button", { name: /Cancelar/ }).click();
 await page.waitForTimeout(500);
 
+console.log("\n2c. Avisos de datos");
+await goto("/");
+await page.getByRole("button", { name: /agregar movimiento/i }).click();
+await page.waitForTimeout(500);
+await page.locator('input[placeholder*="QQQ"]').first().fill("vendí 999 QQQ a 500");
+await page.waitForTimeout(900);
+check("avisa si vendés más de lo que tenés", await has("estás vendiendo"), (await text()).slice(0, 250));
+await page.locator('input[placeholder*="QQQ"]').first().fill("compré 100 de XYZNOEXISTE a 10");
+await page.waitForTimeout(700);
+check("no avisa de más en una compra normal", !(await has("estás vendiendo")));
+await page.getByRole("button", { name: /Cancelar/ }).click();
+await page.waitForTimeout(400);
+
 console.log("\n3. La posición nueva llega a la cartera");
 await goto("/cartera");
 check("la posición figura en la cartera", await has("SOL"));
@@ -189,6 +202,32 @@ const download = page.waitForEvent("download", { timeout: 8000 }).catch(() => nu
 await page.getByRole("button", { name: /^Exportar$/ }).click();
 const file = await download;
 check("exporta un backup", Boolean(file), file ? await file.suggestedFilename() : "sin descarga");
+
+console.log("\n10b. Tirar para actualizar");
+await goto("/");
+await page.evaluate(() => window.scrollTo(0, 0));
+await page.touchscreen.tap(180, 300);
+// Gesto de arrastre hacia abajo desde arriba de todo.
+await page.mouse.move(180, 120);
+await page.dispatchEvent("body", "touchstart", {
+  touches: [{ clientX: 180, clientY: 120, identifier: 0 }],
+  changedTouches: [{ clientX: 180, clientY: 120, identifier: 0 }],
+  targetTouches: [{ clientX: 180, clientY: 120, identifier: 0 }],
+});
+await page.dispatchEvent("body", "touchmove", {
+  touches: [{ clientX: 180, clientY: 340, identifier: 0 }],
+  changedTouches: [{ clientX: 180, clientY: 340, identifier: 0 }],
+  targetTouches: [{ clientX: 180, clientY: 340, identifier: 0 }],
+});
+await page.waitForTimeout(300);
+check("aparece el indicador al tirar", await has("actualizar"), (await text()).slice(0, 120));
+await page.dispatchEvent("body", "touchend", {
+  touches: [],
+  changedTouches: [{ clientX: 180, clientY: 340, identifier: 0 }],
+  targetTouches: [],
+});
+await page.waitForTimeout(2500);
+check("la app sigue entera después del gesto", await has("Valor total"));
 
 console.log("\n11. Persistencia entre sesiones");
 await goto("/");

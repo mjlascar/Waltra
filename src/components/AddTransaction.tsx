@@ -212,6 +212,48 @@ export function AddTransaction({
 
   const accountName = accounts.find((a) => a.id === draft.accountId)?.name ?? "—";
 
+  /**
+   * Avisos que la app puede dar mirando el resto de los datos, no la frase.
+   * Un movimiento mal cargado no se nota: simplemente todas las metricas
+   * quedan un poco mal para siempre.
+   */
+  const checks = useMemo(() => {
+    const out: string[] = [];
+
+    // Vender mas de lo que tenes deja la posicion en negativo y rompe el
+    // costo promedio sin que nada se vea roto en pantalla.
+    if (draft.type === "sell" && draft.assetId && computed.quantity !== undefined) {
+      const held = portfolio.positions.find((pos) => pos.assetId === draft.assetId);
+      const available = held?.quantity ?? 0;
+      if (computed.quantity > available + 1e-9) {
+        out.push(
+          available > 0
+            ? `Tenés ${fmtQty(available, 6)} ${draft.symbol} y estás vendiendo ${fmtQty(computed.quantity, 6)}.`
+            : `No figura ninguna tenencia de ${draft.symbol} para vender.`,
+        );
+      }
+    }
+
+    // Duplicado exacto: pasa al cargar dos veces lo mismo sin darse cuenta.
+    if (!editing && computed.amount !== undefined) {
+      const dup = transactions.find(
+        (t) =>
+          t.date.slice(0, 10) === draft.date &&
+          t.type === draft.type &&
+          t.accountId === draft.accountId &&
+          (t.assetId ?? "") === (draft.assetId || "") &&
+          Math.abs(t.amount - computed.amount!) < 0.01,
+      );
+      if (dup) out.push("Ya hay un movimiento igual ese mismo día. ¿Lo estás cargando dos veces?");
+    }
+
+    if (draft.type === "transfer" && draft.accountId === draft.counterAccountId) {
+      out.push("El origen y el destino son la misma cuenta.");
+    }
+
+    return out;
+  }, [draft, computed, portfolio.positions, transactions, editing]);
+
   /** Resumen en una linea de lo que se va a guardar. */
   const summary = useMemo(() => {
     const parts: string[] = [TX_LABEL[draft.type]];
@@ -461,9 +503,9 @@ export function AddTransaction({
               {aiNote}
             </p>
           )}
-          {warnings.length > 0 && (
+          {[...warnings, ...checks].length > 0 && (
             <ul className="mt-2 space-y-1">
-              {warnings.map((w) => (
+              {[...warnings, ...checks].map((w) => (
                 <li key={w} className="flex items-start gap-1.5 text-[11px]" style={{ color: "var(--color-warn)" }}>
                   <IconWarning size={13} className="mt-px shrink-0" />
                   <span>{w}</span>
