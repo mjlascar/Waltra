@@ -11,7 +11,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run typecheck && npm run test"
+    "check": "npm run typecheck && npm run test && ./scripts/check-secrets.sh",
+    "e2e": "node scripts/e2e.mjs",
+    "shoot": "node scripts/shoot.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",
@@ -30,6 +32,7 @@
     "@types/react-dom": "^19.3.0",
     "eslint": "^9.0.0",
     "eslint-config-next": "^16.3.5",
+    "fake-indexeddb": "^6.2.5",
     "playwright": "^1.63.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.0",

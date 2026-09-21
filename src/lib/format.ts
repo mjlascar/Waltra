@@ -13,11 +13,19 @@ export function money(
   const abs = Math.abs(value);
   const sign = value < 0 ? "-" : options.sign ? "+" : "";
 
+  // El modo compacto tambien respeta la coma decimal: mezclar "15.4k" con
+  // "1.234,56" en la misma pantalla se lee como dos monedas distintas.
+  const compact = (value: number, decimals: number, suffix: string) =>
+    `${sign}${symbol}${NBSP}${value.toLocaleString("es-AR", {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    })}${suffix}`;
+
   if (options.compact && abs >= 1_000_000) {
-    return `${sign}${symbol}${NBSP}${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
+    return compact(abs / 1_000_000, abs >= 10_000_000 ? 0 : 1, "M");
   }
   if (options.compact && abs >= 10_000) {
-    return `${sign}${symbol}${NBSP}${(abs / 1_000).toFixed(abs >= 100_000 ? 0 : 1)}k`;
+    return compact(abs / 1_000, abs >= 100_000 ? 0 : 1, "k");
   }
   const decimals =
     options.decimals ?? (abs >= 1000 ? 0 : abs >= 1 ? 2 : abs > 0 ? 4 : 2);

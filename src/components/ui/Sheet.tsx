@@ -40,8 +40,10 @@ export function Sheet({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
-      <button
-        aria-label="Cerrar"
+      {/* El fondo cierra al tocarlo, pero no es un control anunciable: para
+          teclado y lectores de pantalla estan la X del encabezado y Escape. */}
+      <div
+        aria-hidden
         className="absolute inset-0 bg-black/70"
         onClick={onClose}
       />
