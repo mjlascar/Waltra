@@ -8,6 +8,7 @@ import { Field, Segmented } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
 import { BulkImport } from "@/components/BulkImport";
 import { InstallPrompt } from "@/components/InstallPrompt";
+import { AssetEditor } from "@/components/AssetEditor";
 import { IconChevron, IconTrash } from "@/components/icons";
 import { newId, useStore } from "@/lib/store";
 import { exportBackup, importBackup, parseBackup, wipeAll } from "@/lib/db";
@@ -15,7 +16,7 @@ import { clearDemoData, hasDemoData, loadDemoData } from "@/lib/demo";
 import { KIND_LABEL, money, relativeTime } from "@/lib/format";
 import { BENCHMARK_CHOICES } from "@/lib/benchmark";
 import { DEFAULT_MODEL, MODELS } from "@/lib/insights/models";
-import type { Account, Asset, Broker, Currency, QuoteSource } from "@/lib/types";
+import type { Account, Asset, Broker, Currency } from "@/lib/types";
 
 interface Health {
   mock: boolean;
@@ -538,110 +539,6 @@ function AccountEditor({
         {!canDelete && (
           <p className="label leading-snug">
             No se puede borrar: tiene movimientos cargados o es la única cuenta.
-          </p>
-        )}
-      </div>
-    </Sheet>
-  );
-}
-
-function AssetEditor({
-  asset, canDelete, onClose, onSave, onDelete,
-}: {
-  asset: Asset;
-  canDelete: boolean;
-  onClose: () => void;
-  onSave: (a: Asset) => Promise<void>;
-  onDelete: () => Promise<void>;
-}) {
-  const [draft, setDraft] = useState(asset);
-  return (
-    <Sheet
-      open
-      onClose={onClose}
-      title={asset.symbol}
-      footer={
-        <div className="flex gap-2">
-          {canDelete && (
-            <button
-              className="btn"
-              style={{ borderColor: "var(--color-neg)", color: "var(--color-neg)" }}
-              onClick={onDelete}
-            >
-              <IconTrash size={16} />
-            </button>
-          )}
-          <button className="btn btn-primary flex-1" onClick={() => void onSave(draft)}>
-            Guardar
-          </button>
-        </div>
-      }
-    >
-      <div className="space-y-3">
-        <Field label="Nombre">
-          <input
-            className="input"
-            value={draft.name}
-            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-          />
-        </Field>
-        <Field
-          label="Fuente del precio"
-          hint="Binance para cripto, Yahoo para acciones y ETFs, BYMA para el mercado local."
-        >
-          <select
-            className="input"
-            value={draft.source}
-            onChange={(e) => setDraft({ ...draft, source: e.target.value as QuoteSource })}
-          >
-            <option value="yahoo">Yahoo Finance</option>
-            <option value="binance">Binance</option>
-            <option value="byma">BYMA / data912</option>
-            <option value="manual">Precio a mano</option>
-          </select>
-        </Field>
-        <Field
-          label="Símbolo en la fuente"
-          hint={
-            draft.source === "binance"
-              ? "Con el par: BTCUSDT."
-              : draft.source === "byma"
-                ? "El ticker local: GGAL, AL30."
-                : "El ticker de Yahoo: QQQ, AAPL, GGAL.BA."
-          }
-        >
-          <input
-            className="input num"
-            value={draft.sourceSymbol}
-            autoCapitalize="characters"
-            onChange={(e) => setDraft({ ...draft, sourceSymbol: e.target.value.toUpperCase() })}
-          />
-        </Field>
-        {draft.source === "manual" && (
-          <Field label="Precio actual" hint="Lo actualizás vos cuando quieras.">
-            <input
-              className="input num"
-              inputMode="decimal"
-              value={draft.manualPrice ?? ""}
-              onChange={(e) =>
-                setDraft({ ...draft, manualPrice: Number(e.target.value) || undefined })
-              }
-            />
-          </Field>
-        )}
-        <Field label="Moneda de cotización">
-          <Segmented
-            value={draft.currency}
-            onChange={(v) => setDraft({ ...draft, currency: v as Currency })}
-            options={[
-              { value: "USD", label: "USD" },
-              { value: "ARS", label: "ARS" },
-            ]}
-          />
-        </Field>
-        {!canDelete && (
-          <p className="label leading-snug">
-            No se puede borrar: tiene movimientos asociados. Borrá primero esos movimientos.
           </p>
         )}
       </div>

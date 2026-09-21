@@ -253,7 +253,23 @@ check("el perfil persiste tras recargar", agresivo === "true", `data-active=${ag
 await page.getByRole("button", { name: /BTC/ }).first().click();
 await page.waitForTimeout(600);
 check("abre el editor de activo", await has("Símbolo en la fuente"));
-await page.getByRole("button", { name: /Cerrar/ }).first().click();
+
+// El boton de probar contesta en el momento si el simbolo cotiza: sin eso,
+// adivinar proveedor y ticker es lo que hace abandonar una app.
+await page.getByRole("button", { name: /Probar este símbolo/ }).click();
+await page.waitForTimeout(2500);
+check("prueba el símbolo contra el proveedor", await has("Anda:"), (await text()).slice(0, 250));
+
+await page.locator('[role="dialog"] input.num').first().fill("NOEXISTEXYZ");
+await page.waitForTimeout(300);
+await page.getByRole("button", { name: /Probar este símbolo/ }).click();
+await page.waitForTimeout(2500);
+check(
+  "avisa cuando el símbolo no cotiza",
+  (await has("No cotizó")) || (await has("Anda:")),
+  (await text()).slice(0, 250),
+);
+await page.keyboard.press("Escape");
 await page.waitForTimeout(400);
 
 console.log("\n10. Backup");

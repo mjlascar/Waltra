@@ -7,9 +7,11 @@ import { Segmented } from "@/components/ui/Field";
 import { PnlBars } from "@/components/charts/PnlBars";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { PositionSheet } from "@/components/PositionSheet";
+import { AssetEditor } from "@/components/AssetEditor";
 import { EmptyStart } from "@/components/EmptyStart";
 import { IconChevron } from "@/components/icons";
 import { useStore } from "@/lib/store";
+import type { Asset } from "@/lib/types";
 import { money, percent, quantity as fmtQty, KIND_LABEL } from "@/lib/format";
 import { getDb } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -18,9 +20,10 @@ import type { PositionView } from "@/lib/engine/portfolio";
 type Group = "activo" | "cuenta" | "tipo";
 
 export default function Cartera() {
-  const { portfolio: p, accounts, ready } = useStore();
+  const { portfolio: p, accounts, assets, ready, saveAsset, refresh } = useStore();
   const [group, setGroup] = useState<Group>("activo");
   const [selected, setSelected] = useState<PositionView | null>(null);
+  const [fixing, setFixing] = useState<Asset | null>(null);
   const db = getDb();
 
   // Los ultimos 30 cierres de cada activo alimentan las mini lineas.
@@ -70,6 +73,28 @@ export default function Cartera() {
   return (
     <div className="pb-6">
       <Header title="Cartera" />
+
+      {p.missingPrices.length > 0 && (
+        <div
+          className="mb-4 p-3"
+          style={{ border: "1px solid var(--color-line-strong)", background: "var(--color-surface)" }}
+        >
+          <p className="text-[12px] leading-snug" style={{ color: "var(--color-warn)" }}>
+            Sin cotización para {p.missingPrices.join(", ")}. Están valuados al costo.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {p.missingPrices.map((symbol) => {
+              const asset = assets.find((a) => a.symbol === symbol);
+              if (!asset) return null;
+              return (
+                <button key={symbol} className="chip" onClick={() => setFixing(asset)}>
+                  Arreglar {symbol}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <section className="mb-4">
         <div className="eyebrow mb-2">Invertido</div>
@@ -229,6 +254,20 @@ export default function Cartera() {
       {accounts.length === 0 && <p className="label">No hay cuentas configuradas.</p>}
 
       <PositionSheet position={selected} onClose={() => setSelected(null)} />
+
+      {fixing && (
+        <AssetEditor
+          asset={fixing}
+          canDelete={false}
+          onClose={() => setFixing(null)}
+          onSave={async (next) => {
+            await saveAsset(next);
+            setFixing(null);
+            void refresh({ force: true });
+          }}
+          onDelete={async () => setFixing(null)}
+        />
+      )}
     </div>
   );
 }

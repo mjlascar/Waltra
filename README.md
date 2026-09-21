@@ -29,7 +29,9 @@ distancia entre ellas es —literalmente— lo que ganaste.
 - **Una sola cartera.** Cocos y Binance en la misma vista, con el detalle por
   cuenta cuando lo querés.
 - **Precios al día.** Acciones y ETFs (Yahoo Finance), cripto (Binance), mercado
-  local y CEDEARs (data912 / BYMA) y dólar MEP.
+  local y CEDEARs (data912 / BYMA) y dólar MEP. Si algo no cotiza, la app te lo
+  dice, te lleva al activo y podés probar el símbolo contra el proveedor antes
+  de guardar.
 - **Métricas que no mienten:**
   - *Capital aportado*: ingresos menos retiros. Las transferencias entre tus
     cuentas no cuentan como capital nuevo.
