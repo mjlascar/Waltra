@@ -24,7 +24,8 @@ export function ValueChart({ data, height = 210 }: { data: ValuePoint[]; height?
   const area = plotArea(box);
 
   const model = useMemo(() => {
-    if (data.length === 0 || width === 0) return null;
+    // Con menos de dos puntos no hay curva que dibujar.
+    if (data.length < 2 || width === 0) return null;
     let min = Infinity;
     let max = -Infinity;
     for (const p of data) {
@@ -177,24 +178,42 @@ export function ValueChart({ data, height = 210 }: { data: ValuePoint[]; height?
             </g>
           )}
 
-          {/* Eje temporal: tres marcas alcanzan en un telefono. */}
-          {[0, Math.floor((data.length - 1) / 2), data.length - 1].map((i, idx) => (
-            <text
-              key={i}
-              x={model.x(i)}
-              y={height - 6}
-              textAnchor={idx === 0 ? "start" : idx === 2 ? "end" : "middle"}
-              className="num"
-              fontSize={9}
-              fill="var(--color-ink-3)"
-            >
-              {shortDate(data[i].day, data.length > 300)}
-            </text>
-          ))}
+          {/* Eje temporal: tres marcas alcanzan en un telefono. Se quitan las
+              repetidas, que con series cortas caen todas en el mismo dia y se
+              pisan unas con otras. */}
+          {[...new Set([0, Math.floor((data.length - 1) / 2), data.length - 1])].map(
+            (i, idx, all) => (
+              <text
+                key={i}
+                x={model.x(i)}
+                y={height - 6}
+                textAnchor={
+                  all.length === 1 ? "middle" : idx === 0 ? "start" : idx === all.length - 1 ? "end" : "middle"
+                }
+                className="num"
+                fontSize={9}
+                fill="var(--color-ink-3)"
+              >
+                {shortDate(data[i].day, data.length > 300)}
+              </text>
+            ),
+          )}
         </svg>
       ) : (
-        <div style={{ height }} className="flex items-center justify-center">
-          <span className="label">Sin datos todavía</span>
+        <div
+          style={{ height }}
+          className="flex flex-col items-center justify-center gap-1 px-6 text-center"
+        >
+          <span className="label">
+            {data.length === 1
+              ? "Con un solo día cargado todavía no hay curva."
+              : "Sin datos en este período."}
+          </span>
+          {data.length === 1 && (
+            <span className="label" style={{ color: "var(--color-ink-3)" }}>
+              Mañana ya vas a ver la línea.
+            </span>
+          )}
         </div>
       )}
 

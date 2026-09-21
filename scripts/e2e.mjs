@@ -297,6 +297,43 @@ check("el valor sobrevive a la recarga", Boolean(before) && before === after, `$
 console.log("\n12. Consola limpia");
 check("sin errores de consola", consoleErrors.length === 0, consoleErrors.slice(0, 3).join(" | "));
 
+/*
+ * El primer dia es el caso mas facil de romper y el que nadie prueba: un solo
+ * movimiento, sin historia, con los graficos sin nada que dibujar. Va en un
+ * contexto nuevo para arrancar con la base vacia.
+ */
+console.log("\n13. El primer día, con la base vacía");
+const fresh = await browser.newContext(MOBILE);
+const virgen = await fresh.newPage();
+const erroresPrimerDia = [];
+virgen.on("console", (m) => {
+  const t = m.text();
+  if (m.type() !== "error") return;
+  if (/hmr|WebSocket|favicon|icon-192|Download the React/i.test(t)) return;
+  erroresPrimerDia.push(t);
+});
+virgen.on("pageerror", (e) => erroresPrimerDia.push(`pageerror: ${e.message}`));
+
+await virgen.goto(BASE, { waitUntil: "networkidle" });
+await virgen.waitForTimeout(1500);
+await virgen.getByRole("button", { name: /Cargar mi primer movimiento/ }).click();
+await virgen.waitForTimeout(500);
+await virgen.locator('input[placeholder*="QQQ"]').first().fill("pasé 300 dólares a cocos");
+await virgen.waitForTimeout(800);
+await virgen.getByRole("button", { name: /^Agregar$/ }).click();
+await virgen.waitForTimeout(3500);
+
+const primerDia = (await virgen.evaluate(() => document.body.innerText)).replace(/\u00a0/g, " ");
+check("muestra el valor con un solo movimiento", /US\$ 300/.test(primerDia), primerDia.slice(0, 150));
+check("explica que todavía no hay curva", /todavía no hay curva/i.test(primerDia), primerDia.slice(0, 400));
+check("no dice «2 cuentas» con una sola usada", !/2 cuentas/i.test(primerDia));
+check(
+  "sin errores de consola en el primer día",
+  erroresPrimerDia.length === 0,
+  erroresPrimerDia.slice(0, 2).join(" | "),
+);
+await fresh.close();
+
 await browser.close();
 
 console.log(`\n${passed} ok, ${failures.length} fallas`);

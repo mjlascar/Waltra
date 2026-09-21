@@ -140,6 +140,11 @@ export default function Overview() {
   if (!p.hasData) return <EmptyStart />;
 
   const pnlTone = p.totalPnlUsd >= 0 ? "pos" : "neg";
+  // Solo cuentan las cuentas que tienen algo: decir "2 cuentas" cuando una
+  // esta vacia es ruido.
+  const activas = p.accountViews.filter(
+    (a) => a.valueUsd > 0.01 || a.netContributedUsd !== 0,
+  ).length;
 
   return (
     <div className="pb-6">
@@ -172,7 +177,9 @@ export default function Overview() {
 
       {/* El numero protagonista de la app: cuanto tenes en total. */}
       <section className="mb-5">
-        <div className="eyebrow mb-2">Valor total · {accounts.length} cuentas</div>
+        <div className="eyebrow mb-2">
+          Valor total{activas > 1 ? ` · ${activas} cuentas` : ""}
+        </div>
         <div className="hero-num">{money(p.totalValueUsd, "USD")}</div>
         <div className="mt-2 flex items-baseline gap-2">
           <span className={`num text-[15px] ${pnlTone}`}>

@@ -310,3 +310,151 @@ describe("sin cotización del dólar", () => {
     expect(p.totalValueUsd).toBeCloseTo(500);
   });
 });
+
+describe("casos límite", () => {
+  it("después de vender todo queda solo efectivo y el resultado realizado", () => {
+    const p = computePortfolio({
+      transactions: [
+        tx("deposit", "2024-01-01", { amount: 1000 }),
+        tx("buy", "2024-01-02", { amount: 1000, assetId: "qqq", quantity: 2, price: 500 }),
+        tx("sell", "2024-02-01", { amount: 1200, assetId: "qqq", quantity: 2, price: 600 }),
+      ],
+      assets,
+      accounts: [cocos],
+      priceSeries: [series("qqq", "2024-01-01", 60, (i) => (i < 31 ? 500 : 600))],
+      quotes: [],
+      fxRates: [],
+      asOf: "2024-02-20",
+    });
+    expect(p.positions).toEqual([]);
+    expect(p.cashUsd).toBeCloseTo(1200);
+    expect(p.realizedUsd).toBeCloseTo(200);
+    expect(p.totalPnlUsd).toBeCloseTo(200);
+    // El rendimiento tiene que seguir reflejando la suba del 20%.
+    expect(p.metrics.twrCumulative).toBeGreaterThan(0.15);
+  });
+
+  it("retirar todo deja la cartera en cero sin romper las métricas", () => {
+    const p = computePortfolio({
+      transactions: [
+        tx("deposit", "2024-01-01", { amount: 500 }),
+        tx("withdraw", "2024-03-01", { amount: 500 }),
+      ],
+      assets,
+      accounts: [cocos],
+      priceSeries: [],
+      quotes: [],
+      fxRates: [],
+      asOf: "2024-03-10",
+    });
+    expect(p.totalValueUsd).toBeCloseTo(0);
+    expect(p.netContributedUsd).toBeCloseTo(0);
+    expect(p.totalPnlUsd).toBeCloseTo(0);
+    expect(Number.isFinite(p.metrics.twrCumulative ?? 0)).toBe(true);
+    expect(p.simpleReturn).toBeNull();
+  });
+
+  it("volver a entrar después de haber retirado todo no dispara el índice", () => {
+    const p = computePortfolio({
+      transactions: [
+        tx("deposit", "2024-01-01", { amount: 500 }),
+        tx("withdraw", "2024-02-01", { amount: 500 }),
+        tx("deposit", "2024-04-01", { amount: 800 }),
+      ],
+      assets,
+      accounts: [cocos],
+      priceSeries: [],
+      quotes: [],
+      fxRates: [],
+      asOf: "2024-05-01",
+    });
+    expect(p.totalValueUsd).toBeCloseTo(800);
+    expect(p.metrics.twrCumulative).toBeCloseTo(0, 4);
+  });
+
+  it("una cartera que perdió plata lo dice con signo negativo", () => {
+    const p = computePortfolio({
+      transactions: [
+        tx("deposit", "2024-01-01", { amount: 1000 }),
+        tx("buy", "2024-01-02", { amount: 1000, assetId: "qqq", quantity: 2, price: 500 }),
+      ],
+      assets,
+      accounts: [cocos],
+      priceSeries: [series("qqq", "2024-01-01", 60, 500)],
+      quotes: [{ assetId: "qqq", price: 300, currency: "USD", at: "", source: "yahoo" }],
+      fxRates: [],
+      asOf: "2024-02-20",
+    });
+    expect(p.totalValueUsd).toBeCloseTo(600);
+    expect(p.totalPnlUsd).toBeCloseTo(-400);
+    expect(p.simpleReturn).toBeCloseTo(-0.4);
+    expect(p.positions[0].unrealizedPct).toBeCloseTo(-0.4);
+  });
+
+  it("un solo movimiento no rompe nada", () => {
+    const p = computePortfolio({
+      transactions: [tx("deposit", "2024-01-01", { amount: 100 })],
+      assets,
+      accounts: [cocos],
+      priceSeries: [],
+      quotes: [],
+      fxRates: [],
+      asOf: "2024-01-01",
+    });
+    expect(p.daily).toHaveLength(1);
+    expect(p.twr).toHaveLength(1);
+    expect(p.metrics.twrCumulative).toBeCloseTo(0);
+    expect(p.metrics.volatility).toBeNull();
+  });
+
+  it("una cartera en pesos se valúa al MEP de cada fecha", () => {
+    const ggal = asset("ggal", { currency: "ARS", source: "byma", symbol: "GGAL" });
+    const p = computePortfolio({
+      transactions: [
+        // 1.000.000 de pesos cuando el dólar valía 1.000: US$ 1.000.
+        tx("deposit", "2024-01-01", { amount: 1_000_000, currency: "ARS", fxRate: 1000 }),
+        tx("buy", "2024-01-02", {
+          amount: 1_000_000,
+          currency: "ARS",
+          fxRate: 1000,
+          assetId: "ggal",
+          quantity: 100,
+          price: 10_000,
+        }),
+      ],
+      assets: [ggal],
+      accounts: [cocos],
+      priceSeries: [series("ggal", "2024-01-01", 200, 10_000, "ARS")],
+      quotes: [{ assetId: "ggal", price: 15_000, currency: "ARS", at: "", source: "byma" }],
+      fxRates: [
+        { date: "2024-01-01", arsPerUsd: 1000 },
+        { date: "2024-06-01", arsPerUsd: 2000 },
+      ],
+      asOf: "2024-06-15",
+    });
+    expect(p.netContributedUsd).toBeCloseTo(1000);
+    // La acción subió 50% en pesos pero el dólar se duplicó: en dólares perdió.
+    expect(p.totalValueUsd).toBeCloseTo(750);
+    expect(p.totalPnlUsd).toBeCloseTo(-250);
+    expect(p.fxMissing).toBe(false);
+  });
+
+  it("un activo comprado y vendido el mismo día no deja restos", () => {
+    const p = computePortfolio({
+      transactions: [
+        tx("deposit", "2024-01-01", { amount: 1000 }),
+        tx("buy", "2024-01-02", { amount: 500, assetId: "qqq", quantity: 1, price: 500 }),
+        tx("sell", "2024-01-02", { amount: 510, assetId: "qqq", quantity: 1, price: 510 }),
+      ],
+      assets,
+      accounts: [cocos],
+      priceSeries: [series("qqq", "2024-01-01", 10, 510)],
+      quotes: [],
+      fxRates: [],
+      asOf: "2024-01-05",
+    });
+    expect(p.positions).toEqual([]);
+    expect(p.cashUsd).toBeCloseTo(1010);
+    expect(p.realizedUsd).toBeCloseTo(10);
+  });
+});

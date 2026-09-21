@@ -47,7 +47,8 @@ export function ReturnChart({
   const mainColor = tone ?? (last >= 0 ? "var(--color-pos)" : "var(--color-neg)");
 
   const model = useMemo(() => {
-    if (data.length === 0 || width === 0) return null;
+    // Con menos de dos puntos no hay curva que dibujar.
+    if (data.length < 2 || width === 0) return null;
     const values = data.map((p) => p.value);
     if (compare) values.push(...compare.points.map((p) => p.value));
     const [lo, hi] = padDomain(Math.min(0, ...values), Math.max(0, ...values), 0.12);
@@ -185,12 +186,12 @@ export function ReturnChart({
             </g>
           )}
 
-          {[0, data.length - 1].map((i, idx) => (
+          {[...new Set([0, data.length - 1])].map((i, idx, all) => (
             <text
               key={i}
               x={model.x(i)}
               y={height - 5}
-              textAnchor={idx === 0 ? "start" : "end"}
+              textAnchor={all.length === 1 ? "middle" : idx === 0 ? "start" : "end"}
               className="num"
               fontSize={9}
               fill="var(--color-ink-3)"
@@ -200,8 +201,12 @@ export function ReturnChart({
           ))}
         </svg>
       ) : (
-        <div style={{ height }} className="flex items-center justify-center">
-          <span className="label">Sin datos todavía</span>
+        <div style={{ height }} className="flex items-center justify-center px-6 text-center">
+          <span className="label">
+            {data.length === 1
+              ? "Con un solo día cargado todavía no hay rendimiento que medir."
+              : "Sin datos en este período."}
+          </span>
         </div>
       )}
 
