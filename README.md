@@ -198,9 +198,10 @@ signo, etiqueta o ícono al lado.
 npm run check   # tipos + lint + tests + escaneo de credenciales
 ```
 
-- **140 tests** del motor de cálculo, el parser, la base local, los
-  proveedores de precios (con `fetch` simulado, porque son APIs públicas que
-  no se pueden alcanzar desde CI) y el formato.
+- **151 tests** del motor de cálculo, el parser, la base local, el formato, los
+  proveedores de precios y la ruta de insights. Los dos últimos corren con el
+  `fetch` y el SDK simulados: son servicios externos que no se pueden alcanzar
+  desde CI, y son justamente los que más conviene tener fijados.
 - **`npm run e2e`**: 60 comprobaciones sobre un navegador real, en un viewport
   de 360×760 (Galaxy S10e), con la app levantada. Carga movimientos
   escribiendo, edita, borra, filtra, arrastra la cruceta del gráfico, importa
