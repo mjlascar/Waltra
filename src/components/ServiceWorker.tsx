@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { NATIVE } from "@/lib/platform";
 
 /**
  * Registra el service worker para que la app se instale en el telefono y
@@ -9,6 +10,9 @@ import { useEffect } from "react";
  */
 export function ServiceWorker() {
   useEffect(() => {
+    // En el APK los archivos ya viven en el telefono: un cache por encima
+    // solo agrega una capa mas que puede quedar vieja.
+    if (NATIVE) return;
     if (!("serviceWorker" in navigator)) return;
     if (process.env.NODE_ENV !== "production") return;
     const register = () => navigator.serviceWorker.register("/sw.js").catch(() => {});

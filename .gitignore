@@ -9,3 +9,15 @@ next-env.d.ts
 .DS_Store
 /screenshots/
 /playwright-report/
+
+# Exportacion estatica para el APK
+/out
+
+# Android: generado y compilado
+/android/.gradle
+/android/app/build
+/android/build
+/android/local.properties
+/android/.idea
+/android/app/release
+/android/capacitor-cordova-android-plugins

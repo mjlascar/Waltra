@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Ni backup en la nube ni transferencia directa entre equipos. Los datos de
+  Waltra salen del telefono unicamente por el backup manual de Ajustes, que es
+  un archivo que el usuario decide donde guardar.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+    </device-transfer>
+</data-extraction-rules>

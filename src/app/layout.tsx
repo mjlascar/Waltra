@@ -6,6 +6,7 @@ import { StoreProvider } from "@/lib/store";
 import { Nav } from "@/components/Nav";
 import { ServiceWorker } from "@/components/ServiceWorker";
 import { PullToRefresh } from "@/components/PullToRefresh";
+import { NativeShell } from "@/components/NativeShell";
 
 export const metadata: Metadata = {
   title: "Waltra",
@@ -42,6 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main className="shell pt-3">{children}</main>
           <Nav />
           <ServiceWorker />
+          <NativeShell />
         </StoreProvider>
       </body>
     </html>

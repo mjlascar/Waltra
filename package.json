@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
     "build": "next build",
+    "build:native": "WALTRA_NATIVE=1 next build && cap sync android",
+    "apk": "npm run build:native && cd android && ./gradlew assembleDebug",
     "start": "next start -H 0.0.0.0",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -25,6 +27,7 @@
     "@capacitor/core": "^8.5.2",
     "@capacitor/local-notifications": "^8.3.1",
     "@capacitor/preferences": "^8.0.1",
+    "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.3",
     "dexie": "^4.4.6",
     "dexie-react-hooks": "^4.2.0",
