@@ -89,8 +89,9 @@ versión con alertas de precio.
 Lo compila GitHub Actions en cada push, porque hace falta el SDK de Android:
 
 1. Andá a la pestaña **Actions** del repo, entrá al último workflow verde y
-   bajá el artefacto **waltra-apk**.
-2. Descomprimilo y pasá el `app-debug.apk` al teléfono.
+   bajá el artefacto **waltra-apk** (o `waltra-apk-firma-descartable`; la
+   diferencia está más abajo).
+2. Descomprimilo y pasá el `app-release.apk` al teléfono.
 3. Instalalo. Android va a pedirte permitir instalar desde esa app (el
    navegador o el explorador de archivos); es el paso normal para algo que no
    viene de Play.
@@ -108,9 +109,10 @@ Android identifica una app por su paquete **y su firma**. Si dos APK del mismo
 paquete vienen firmados distinto, el segundo no se instala encima del primero:
 hay que desinstalar, y desinstalar **borra todos los movimientos**.
 
-Con la clave de depuración eso pasa siempre, porque cada corrida de CI genera
-la suya. O sea: el APK que baja de Actions sirve para probar, pero no para
-actualizar algo que ya estabas usando.
+Sin una clave propia configurada, CI genera una descartable en cada corrida.
+O sea: el APK que baja de Actions sirve para probar, pero no para actualizar
+algo que ya venías usando. El artefacto se llama `waltra-apk-firma-descartable`
+justamente para que se note, y el log deja una advertencia.
 
 Se arregla una sola vez. Generás una clave:
 
@@ -123,8 +125,9 @@ base64 -w0 waltra.keystore        # en macOS: base64 -i waltra.keystore
 Y en *Settings → Secrets and variables → Actions* del repo cargás cuatro
 secretos: `ANDROID_KEYSTORE_BASE64` (lo que imprimió el comando anterior),
 `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` (`waltra`) y
-`ANDROID_KEY_PASSWORD`. A partir de ahí CI firma con esa clave y las
-actualizaciones se instalan encima, conservando los datos.
+`ANDROID_KEY_PASSWORD`. A partir de ahí CI firma con esa clave, el artefacto
+pasa a llamarse `waltra-apk` a secas y las actualizaciones se instalan encima,
+conservando los datos.
 
 **Guardá el `waltra.keystore` fuera del repo y no lo pierdas.** Si se pierde,
 la única salida es desinstalar y volver a empezar. Y no lo commitees: este
