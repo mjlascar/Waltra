@@ -10,20 +10,46 @@ export interface ReturnPoint {
   value: number;
 }
 
+export interface ReturnSeries {
+  label: string;
+  color: string;
+  points: ReturnPoint[];
+  /** La serie principal lleva relleno; la de referencia va solo con linea. */
+  fill?: boolean;
+}
+
 /**
- * Rendimiento acumulado (TWR). Una sola serie, asi que no lleva leyenda: el
- * titulo de la tarjeta ya dice que se esta graficando.
+ * Rendimiento acumulado, en tanto por uno.
+ *
+ * Con una sola serie no lleva leyenda: el titulo de la tarjeta ya dice que se
+ * esta graficando. Con dos (cartera contra indice de referencia) la leyenda es
+ * obligatoria, porque la identidad nunca puede depender solo del color.
  */
-export function ReturnChart({ data, height = 150 }: { data: ReturnPoint[]; height?: number }) {
+export function ReturnChart({
+  data,
+  compare,
+  height = 150,
+  tone,
+}: {
+  data: ReturnPoint[];
+  compare?: ReturnSeries;
+  height?: number;
+  tone?: string;
+}) {
   const { ref, width } = useMeasure<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
 
   const box = { width, height, top: 10, right: 8, bottom: 20, left: 8 };
   const area = plotArea(box);
 
+  const last = data[data.length - 1]?.value ?? 0;
+  // El signo del resultado ya distingue ganancia de perdida; el color refuerza.
+  const mainColor = tone ?? (last >= 0 ? "var(--color-pos)" : "var(--color-neg)");
+
   const model = useMemo(() => {
     if (data.length === 0 || width === 0) return null;
     const values = data.map((p) => p.value);
+    if (compare) values.push(...compare.points.map((p) => p.value));
     const [lo, hi] = padDomain(Math.min(0, ...values), Math.max(0, ...values), 0.12);
     const x = linear([0, Math.max(1, data.length - 1)], [area.x0, area.x1]);
     const y = linear([lo, hi], [area.y1, area.y0]);
@@ -33,30 +59,41 @@ export function ReturnChart({ data, height = 150 }: { data: ReturnPoint[]; heigh
       zero: y(0),
       ticks: niceTicks(lo, hi, 3).filter((t) => t >= lo && t <= hi),
       pts: data.map((p, i) => ({ x: x(i), y: y(p.value) })),
+      comparePts: compare?.points.map((p, i) => ({ x: x(i), y: y(p.value) })) ?? null,
     };
-  }, [data, width, area.x0, area.x1, area.y0, area.y1]);
+  }, [data, compare, width, area.x0, area.x1, area.y0, area.y1]);
 
-  const last = data[data.length - 1]?.value ?? 0;
   const active = hover !== null ? data[hover] : null;
-  // El signo del resultado ya distingue ganancia de perdida; el color refuerza.
-  const tone = last >= 0 ? "var(--color-pos)" : "var(--color-neg)";
+  const activeCompare = hover !== null ? compare?.points[hover] : null;
+
+  function pick(clientX: number, rect: DOMRect) {
+    const ratio = (clientX - rect.left - area.x0) / Math.max(1, area.w);
+    setHover(Math.max(0, Math.min(data.length - 1, Math.round(ratio * (data.length - 1)))));
+  }
 
   return (
     <div ref={ref} className="w-full select-none">
+      {compare && (
+        <div className="mb-2 flex items-center gap-4">
+          <span className="flex items-center gap-1.5">
+            <span className="swatch" style={{ background: mainColor }} />
+            <span className="label">Tu cartera</span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="swatch" style={{ background: compare.color }} />
+            <span className="label">{compare.label}</span>
+          </span>
+        </div>
+      )}
+
       {model ? (
         <svg
           width={width}
           height={height}
-          onPointerDown={(e) => {
-            const rect = e.currentTarget.getBoundingClientRect();
-            const ratio = (e.clientX - rect.left - area.x0) / Math.max(1, area.w);
-            setHover(Math.max(0, Math.min(data.length - 1, Math.round(ratio * (data.length - 1)))));
-          }}
+          onPointerDown={(e) => pick(e.clientX, e.currentTarget.getBoundingClientRect())}
           onPointerMove={(e) => {
             if (e.buttons === 0 && e.pointerType !== "mouse") return;
-            const rect = e.currentTarget.getBoundingClientRect();
-            const ratio = (e.clientX - rect.left - area.x0) / Math.max(1, area.w);
-            setHover(Math.max(0, Math.min(data.length - 1, Math.round(ratio * (data.length - 1)))));
+            pick(e.clientX, e.currentTarget.getBoundingClientRect());
           }}
           onPointerLeave={() => setHover(null)}
           onPointerUp={() => setHover(null)}
@@ -72,8 +109,25 @@ export function ReturnChart({ data, height = 150 }: { data: ReturnPoint[]; heigh
               strokeWidth={1}
             />
           ))}
-          <path d={areaPath(model.pts, model.zero)} fill={tone} opacity={0.1} />
-          <path d={linePath(model.pts)} fill="none" stroke={tone} strokeWidth={2} strokeLinejoin="round" />
+
+          <path d={areaPath(model.pts, model.zero)} fill={mainColor} opacity={0.1} />
+          {model.comparePts && (
+            <path
+              d={linePath(model.comparePts)}
+              fill="none"
+              stroke={compare!.color}
+              strokeWidth={2}
+              strokeLinejoin="round"
+            />
+          )}
+          <path
+            d={linePath(model.pts)}
+            fill="none"
+            stroke={mainColor}
+            strokeWidth={2}
+            strokeLinejoin="round"
+          />
+
           {/* Etiquetas al final, sobre un recorte de la superficie. */}
           {model.ticks.map((t) => {
             const text = percent(t, { decimals: 0 });
@@ -110,16 +164,27 @@ export function ReturnChart({ data, height = 150 }: { data: ReturnPoint[]; heigh
                 y2={area.y1}
                 stroke="var(--color-line-strong)"
               />
+              {model.comparePts?.[hover] && (
+                <circle
+                  cx={model.comparePts[hover].x}
+                  cy={model.comparePts[hover].y}
+                  r={4}
+                  fill={compare!.color}
+                  stroke="var(--color-surface)"
+                  strokeWidth={2}
+                />
+              )}
               <circle
                 cx={model.x(hover)}
                 cy={model.y(data[hover].value)}
                 r={4}
-                fill={tone}
+                fill={mainColor}
                 stroke="var(--color-surface)"
                 strokeWidth={2}
               />
             </g>
           )}
+
           {[0, data.length - 1].map((i, idx) => (
             <text
               key={i}
@@ -139,11 +204,19 @@ export function ReturnChart({ data, height = 150 }: { data: ReturnPoint[]; heigh
           <span className="label">Sin datos todavía</span>
         </div>
       )}
+
       {active && (
         <div className="mt-1 flex items-center justify-between">
           <span className="eyebrow">{shortDate(active.day, true)}</span>
-          <span className="num text-[11px]" style={{ color: tone }}>
-            {percent(active.value, { decimals: 1 })}
+          <span className="flex items-baseline gap-3">
+            <span className="num text-[11px]" style={{ color: mainColor }}>
+              {percent(active.value, { decimals: 1 })}
+            </span>
+            {activeCompare && (
+              <span className="num text-[11px]" style={{ color: compare!.color }}>
+                {percent(activeCompare.value, { decimals: 1 })}
+              </span>
+            )}
           </span>
         </div>
       )}

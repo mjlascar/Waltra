@@ -146,6 +146,16 @@ for (const label of ["1M", "3M", "1A", "Todo"]) {
 }
 check("los rangos no rompen el gráfico", (await page.locator("svg path").count()) > 0);
 
+console.log("\n7b. Comparación contra el índice");
+await goto("/");
+await page.getByRole("button", { name: /^Rendimiento$/ }).click();
+await page.waitForTimeout(900);
+const rend = await text();
+check("muestra la leyenda con las dos series", await has("Tu cartera"), rend.slice(0, 200));
+check("da el veredicto en palabras", /ganaste al|te ganó por|empataste/i.test(rend), rend.slice(0, 300));
+await page.getByRole("button", { name: /^Valor$/ }).click();
+await page.waitForTimeout(500);
+
 console.log("\n8. Cruceta del gráfico");
 const svg = page.locator("svg").nth(2);
 const box = await svg.boundingBox();

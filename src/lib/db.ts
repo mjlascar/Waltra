@@ -55,6 +55,9 @@ export const DEFAULT_SETTINGS: Settings = {
   riskProfile: "moderado",
   horizonYears: 5,
   goals: "",
+  // Comparar contra el S&P 500 es la referencia por defecto: es lo que
+  // contesta "¿me hubiera ido mejor sin elegir nada?".
+  benchmark: "SPY",
   onboarded: false,
 };
 

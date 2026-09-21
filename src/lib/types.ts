@@ -141,6 +141,11 @@ export interface Settings {
   accessKey?: string;
   /** Modelo de Claude a usar en insights. */
   model?: string;
+  /**
+   * Indice contra el cual compararse en el grafico de rendimiento.
+   * Simbolo del catalogo, o "none" para no comparar.
+   */
+  benchmark?: string;
   onboarded?: boolean;
 }
 

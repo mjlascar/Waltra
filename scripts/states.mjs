@@ -63,6 +63,13 @@ await page.waitForTimeout(800);
 await page.getByRole("button", { name: /Por cuenta/ }).click();
 await shot("cartera-cuentas", true);
 
+// Modo rendimiento, con el índice de referencia superpuesto.
+await page.goto(BASE, { waitUntil: "networkidle" });
+await page.waitForTimeout(3500);
+await page.getByRole("button", { name: /^Rendimiento$/ }).click();
+await page.waitForTimeout(800);
+await shot("rendimiento");
+
 // Rango corto del gráfico.
 await page.goto(BASE, { waitUntil: "networkidle" });
 await page.waitForTimeout(1200);

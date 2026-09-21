@@ -24,6 +24,7 @@ import type {
 import { DEFAULT_SETTINGS, ensureSeeded, getDb, type WaltraDB } from "@/lib/db";
 import { computePortfolio, type Portfolio } from "@/lib/engine/portfolio";
 import { addDays, today, toDay } from "@/lib/date";
+import { BENCHMARK_ASSET_ID, benchmarkRef } from "@/lib/benchmark";
 
 export type SyncState =
   | { status: "idle" }
@@ -138,6 +139,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try {
         const existing = await db.priceSeries.toArray();
         const byAsset = new Map(existing.map((s) => [s.assetId, s]));
+
+        // El indice de referencia se sincroniza siempre, tenga o no posiciones
+        // el usuario: sin su historia no hay con que compararse.
+        const reference = benchmarkRef(settings.benchmark);
+        const referenceSeries = byAsset.get(BENCHMARK_ASSET_ID);
+        const referenceStale =
+          Boolean(reference) &&
+          (!referenceSeries ||
+            referenceSeries.points.length === 0 ||
+            toDay(referenceSeries.updatedAt) < today() ||
+            referenceSeries.points[0].date > firstDay);
+
         const needHistory = tradable
           .filter((asset) => {
             if (options?.force) return true;
@@ -154,14 +167,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           method: "POST",
           headers: apiHeaders(),
           body: JSON.stringify({
-            refs: tradable.map((a) => ({
-              assetId: a.id,
-              symbol: a.symbol,
-              source: a.source,
-              sourceSymbol: a.sourceSymbol,
-              currency: a.currency,
-            })),
-            history: needHistory,
+            refs: [
+              ...tradable.map((a) => ({
+                assetId: a.id,
+                symbol: a.symbol,
+                source: a.source,
+                sourceSymbol: a.sourceSymbol,
+                currency: a.currency,
+              })),
+              ...(reference ? [reference] : []),
+            ],
+            history: referenceStale ? [...needHistory, BENCHMARK_ASSET_ID] : needHistory,
             from: firstDay,
             includeFx: true,
           }),
@@ -173,7 +189,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const data = await res.json();
 
         const goodQuotes: Quote[] = (data.quotes ?? [])
-          .filter((q: { price: number | null }) => q.price !== null)
+          .filter((q: Quote) => q.price !== null && q.assetId !== BENCHMARK_ASSET_ID)
           .map((q: Quote) => ({ ...q }));
         if (goodQuotes.length) await db.quotes.bulkPut(goodQuotes);
 
@@ -205,10 +221,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const bootRef = useRef(false);
   useEffect(() => {
     if (!ready || !db || bootRef.current) return;
-    if (assets.length === 0) return;
+    // Alcanza con que haya algo cargado: alguien con depositos en pesos y sin
+    // activos igual necesita el dolar para ver su total.
+    if (assets.length === 0 && transactions.length === 0) return;
     bootRef.current = true;
     void refresh();
-  }, [ready, db, assets.length, refresh]);
+  }, [ready, db, assets.length, transactions.length, refresh]);
 
   useEffect(() => {
     if (!ready) return;

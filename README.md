@@ -11,6 +11,7 @@ distancia entre ellas es —literalmente— lo que ganaste.
 <p>
   <img src="docs/img/resumen.png" width="220" alt="Resumen: valor de la cartera contra capital aportado">
   <img src="docs/img/carga.png" width="220" alt="Carga de un movimiento escribiendo la frase">
+  <img src="docs/img/rendimiento.png" width="220" alt="Rendimiento de la cartera contra el S&P 500">
   <img src="docs/img/cartera.png" width="220" alt="Cartera: posiciones con su resultado">
   <img src="docs/img/insights.png" width="220" alt="Insights: análisis con fuentes">
 </p>
@@ -33,6 +34,10 @@ distancia entre ellas es —literalmente— lo que ganaste.
     la plata ensucie el número.
   - *TIR anual (XIRR)*: lo mismo pero desde tu bolsillo, anualizado.
   - Volatilidad anualizada y peor caída desde un pico.
+- **¿Le ganaste al índice?** El gráfico tiene dos modos: *Valor* (cartera
+  contra capital aportado) y *Rendimiento* (tu TWR contra un índice de
+  referencia, configurable: S&P 500, Nasdaq, Bitcoin u oro). Abajo, la
+  conclusión en una línea: «Le ganaste al S&P 500 por 20,5 puntos».
 - **Insights con IA.** Busca noticias recientes sobre tus posiciones, las cruza
   con cómo venís operando y devuelve una lectura con fuentes citadas. Requiere
   tu propia clave de Anthropic; sin ella el resto de la app funciona igual.

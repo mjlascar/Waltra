@@ -10,6 +10,7 @@ import { newId, useStore } from "@/lib/store";
 import { exportBackup, importBackup, parseBackup, wipeAll } from "@/lib/db";
 import { clearDemoData, hasDemoData, loadDemoData } from "@/lib/demo";
 import { KIND_LABEL, money, relativeTime } from "@/lib/format";
+import { BENCHMARK_CHOICES } from "@/lib/benchmark";
 import type { Account, Asset, Broker, Currency, QuoteSource } from "@/lib/types";
 
 interface Health {
@@ -110,6 +111,25 @@ export default function Ajustes() {
               value={settings.horizonYears}
               onChange={(e) => void updateSettings({ horizonYears: Number(e.target.value) || 1 })}
             />
+          </Field>
+          <Field
+            label="Comparar contra"
+            hint="La vara del gráfico de rendimiento: qué habrías conseguido sin elegir nada."
+          >
+            <select
+              className="input"
+              value={settings.benchmark ?? "SPY"}
+              onChange={(e) => {
+                void updateSettings({ benchmark: e.target.value });
+                void refresh({ force: true });
+              }}
+            >
+              {BENCHMARK_CHOICES.map((choice) => (
+                <option key={choice.value} value={choice.value}>
+                  {choice.label}
+                </option>
+              ))}
+            </select>
           </Field>
           <Field label="Objetivo" hint="Con esto el análisis deja de ser genérico.">
             <textarea

@@ -7,11 +7,15 @@ import { Notice } from "@/components/ui/Notice";
 import { SectionTitle, Stat } from "@/components/ui/Stat";
 import { Segmented } from "@/components/ui/Field";
 import { ValueChart } from "@/components/charts/ValueChart";
+import { ReturnChart } from "@/components/charts/ReturnChart";
 import { Allocation } from "@/components/charts/Allocation";
 import { IconChevron } from "@/components/icons";
 import { useStore } from "@/lib/store";
 import { money, percent, shortDate, TX_SHORT } from "@/lib/format";
 import { rangeStart, type RangeKey } from "@/lib/date";
+import { BENCHMARK_ASSET_ID, BENCHMARK_CHOICES, benchmarkReturns } from "@/lib/benchmark";
+import { getDb } from "@/lib/db";
+import { useLiveQuery } from "dexie-react-hooks";
 import { EmptyStart } from "@/components/EmptyStart";
 
 const RANGES: { value: RangeKey; label: string }[] = [
@@ -23,18 +27,83 @@ const RANGES: { value: RangeKey; label: string }[] = [
   { value: "MAX", label: "Todo" },
 ];
 
+type ChartMode = "valor" | "rendimiento";
+
 export default function Overview() {
-  const { portfolio: p, transactions, accounts, assets, sync, ready } = useStore();
+  const { portfolio: p, transactions, accounts, assets, settings, sync, ready } = useStore();
   const [range, setRange] = useState<RangeKey>("MAX");
+  const [mode, setMode] = useState<ChartMode>("valor");
+  const db = getDb();
+
+  const from = useMemo(
+    () => (p.firstDay ? rangeStart(range, p.firstDay, p.asOf) : null),
+    [range, p.firstDay, p.asOf],
+  );
 
   const chartData = useMemo(() => {
-    if (!p.hasData || !p.firstDay) return [];
-    const from = rangeStart(range, p.firstDay, p.asOf);
+    if (!p.hasData || !from) return [];
     const contributions = new Map(p.contributions.map((c) => [c.day, c.value]));
     return p.daily
       .filter((d) => d.day >= from)
       .map((d) => ({ day: d.day, value: d.nav, contributed: contributions.get(d.day) ?? 0 }));
-  }, [p, range]);
+  }, [p, from]);
+
+  /**
+   * Rendimiento dentro de la ventana elegida: se reindexa al primer dia del
+   * rango, asi "3M" muestra lo que pasó en esos tres meses y no el acumulado
+   * desde siempre recortado.
+   */
+  const returnData = useMemo(() => {
+    if (!from || p.twr.length === 0) return [];
+    const window = p.twr.filter((point) => point.day >= from);
+    if (window.length === 0) return [];
+    const base = window[0].index;
+    if (base <= 0) return [];
+    return window.map((point) => ({ day: point.day, value: point.index / base - 1 }));
+  }, [p.twr, from]);
+
+  const benchmarkSeries = useLiveQuery(
+    async () => (db ? db.priceSeries.get(BENCHMARK_ASSET_ID) : undefined),
+    [db],
+  );
+
+  const compare = useMemo(() => {
+    if (settings.benchmark === "none" || returnData.length === 0) return undefined;
+    const points = benchmarkReturns(
+      benchmarkSeries,
+      returnData.map((point) => point.day),
+    );
+    if (!points) return undefined;
+    const choice = BENCHMARK_CHOICES.find((c) => c.value === settings.benchmark);
+    return {
+      label: choice?.label ?? settings.benchmark ?? "Referencia",
+      color: "var(--color-s4)",
+      points,
+    };
+  }, [settings.benchmark, benchmarkSeries, returnData]);
+
+  /** La conclusión en palabras: le ganaste al índice, o no. */
+  const verdict = useMemo(() => {
+    if (!compare || returnData.length === 0) return null;
+    const mine = returnData[returnData.length - 1].value;
+    const theirs = compare.points[compare.points.length - 1].value;
+    const gap = mine - theirs;
+    if (Math.abs(gap) < 0.005) {
+      return { text: `Empataste con el ${compare.label}.`, tone: "plain" as const };
+    }
+    // La diferencia entre dos porcentajes se mide en puntos, no en por ciento.
+    const puntos = (Math.abs(gap) * 100).toLocaleString("es-AR", {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    });
+    return {
+      text:
+        gap > 0
+          ? `Le ganaste al ${compare.label} por ${puntos} puntos.`
+          : `El ${compare.label} te ganó por ${puntos} puntos.`,
+      tone: gap > 0 ? ("pos" as const) : ("neg" as const),
+    };
+  }, [compare, returnData]);
 
   const recent = useMemo(
     () =>
@@ -112,10 +181,42 @@ export default function Overview() {
       </section>
 
       <section className="card mb-4 p-3">
+        <div className="mb-2">
+          <Segmented
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: "valor", label: "Valor" },
+              { value: "rendimiento", label: "Rendimiento" },
+            ]}
+          />
+        </div>
         <div className="mb-3">
           <Segmented value={range} onChange={setRange} options={RANGES} />
         </div>
-        <ValueChart data={chartData} />
+
+        {mode === "valor" ? (
+          <ValueChart data={chartData} />
+        ) : (
+          <>
+            <ReturnChart data={returnData} compare={compare} height={186} tone="var(--color-s1)" />
+            {verdict && (
+              <p
+                className={`mt-2 text-[13px] font-medium ${
+                  verdict.tone === "pos" ? "pos" : verdict.tone === "neg" ? "neg" : ""
+                }`}
+              >
+                {verdict.text}
+              </p>
+            )}
+            <p className="label mt-1.5 leading-snug">
+              Rendimiento sin contar cuándo pusiste la plata.
+              {compare
+                ? " La referencia es lo que habrías conseguido comprando el índice el primer día del período."
+                : ""}
+            </p>
+          </>
+        )}
       </section>
 
       {/* Las cuatro metricas que contestan "como me fue" sin ambiguedad. */}
