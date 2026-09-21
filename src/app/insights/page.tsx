@@ -122,6 +122,7 @@ export default function Insights() {
         signals: data.signals ?? [],
         profileRead: data.profileRead ?? { summary: "", observations: [], risks: [], suggestions: [] },
         sources: data.sources ?? [],
+        degraded: Boolean(data.degraded),
         portfolioDigest: data.portfolioDigest ?? "",
       };
       await saveInsight(saved);
@@ -218,6 +219,13 @@ export default function Insights() {
             {longDate(report.createdAt.slice(0, 10))} · {report.model}
           </p>
 
+          {report.degraded && (
+            <p className="label mb-3 leading-relaxed" style={{ color: "var(--color-warn)" }}>
+              El análisis se completó pero no se pudo separar en secciones. Abajo está
+              el informe tal como salió.
+            </p>
+          )}
+
           {report.marketBrief && (
             <section className="card mb-4 p-3">
               <div className="eyebrow mb-2">El contexto</div>
@@ -255,6 +263,7 @@ export default function Insights() {
             </section>
           )}
 
+          {report.profileRead.summary && (
           <section className="mb-4">
             <SectionTitle>Cómo invertís en los hechos</SectionTitle>
             <div className="card p-3">
@@ -286,6 +295,7 @@ export default function Insights() {
                 ))}
             </div>
           </section>
+          )}
 
           {report.sources.length > 0 && (
             <section className="mb-4">

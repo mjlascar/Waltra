@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Credenciales
+        run: ./scripts/check-secrets.sh
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+
+      # Precios simulados: el recorrido prueba la app, no la disponibilidad de
+      # las APIs publicas de mercado.
+      - name: Levantar la app
+        run: |
+          npm run build
+          WALTRA_MOCK=1 npm start &
+          npx wait-on http://127.0.0.1:3000 --timeout 60000
+        env:
+          NODE_ENV: production
+
+      - name: Recorrido end-to-end
+        run: npm run e2e

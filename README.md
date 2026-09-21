@@ -8,7 +8,12 @@ gráficos de los brokers mezclan las dos cosas, y cada transferencia nueva
 aparece como si la cartera hubiera crecido. Acá son dos líneas separadas, y la
 distancia entre ellas es —literalmente— lo que ganaste.
 
-![Resumen](screenshots/v3-01-resumen.png)
+<p>
+  <img src="docs/img/resumen.png" width="220" alt="Resumen: valor de la cartera contra capital aportado">
+  <img src="docs/img/carga.png" width="220" alt="Carga de un movimiento escribiendo la frase">
+  <img src="docs/img/cartera.png" width="220" alt="Cartera: posiciones con su resultado">
+  <img src="docs/img/insights.png" width="220" alt="Insights: análisis con fuentes">
+</p>
 
 ## Qué hace
 

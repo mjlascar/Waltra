@@ -174,6 +174,11 @@ export interface InsightReport {
     suggestions: string[];
   };
   sources: InsightSource[];
+  /**
+   * El paso de estructurado fallo y se guardo el informe en prosa. La app lo
+   * avisa en vez de mostrar secciones vacias como si no hubiera nada que decir.
+   */
+  degraded?: boolean;
   /** Snapshot de cartera con el que se genero, para poder auditarlo despues. */
   portfolioDigest: string;
 }
