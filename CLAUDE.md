@@ -1,1 +1,99 @@
-@AGENTS.md
+# Waltra — notas para trabajar en este repo
+
+App de seguimiento de inversiones (Cocos Capital + Binance) para un solo
+usuario, en su teléfono. Next.js 16, React 19, TypeScript, Tailwind v4.
+
+## Cómo verificar un cambio
+
+```bash
+npm run check   # tipos + lint + tests + escaneo de credenciales
+npm run e2e     # recorrido en navegador real (necesita la app levantada)
+```
+
+Para el recorrido end-to-end, en otra terminal: `WALTRA_MOCK=1 npm run dev`.
+El `e2e` corre en un viewport de 360×760 (Galaxy S10e) y falla si aparece
+cualquier error en la consola del navegador.
+
+`npm run shoot` saca capturas de todas las vistas a `screenshots/`;
+`node scripts/states.mjs` captura estados puntuales (hojas abiertas,
+importación, comparación contra el índice).
+
+## Decisiones que no conviene deshacer sin pensarlo
+
+**El capital no es ganancia.** Es la razón de existir de la app. Los tipos de
+movimiento se dividen en capital externo (`deposit` / `withdraw`) e internos
+(`buy` / `sell` / `transfer` / `dividend` / `interest` / `fee`). Solo los
+primeros mueven "capital aportado". Si un cambio hace que una transferencia
+entre cuentas propias aparezca como capital nuevo, el cambio está mal.
+
+**Nunca inventar un número.** Sin cotización, una posición se valúa al costo y
+la app lo dice (`missingPrices`). Sin dólar MEP, los montos en pesos quedan
+sin convertir y la app lo dice (`fxMissing`); el fallback de la tabla de
+cambio es 0 y no 1 justamente para eso. Los precios simulados (`WALTRA_MOCK=1`)
+siempre viajan marcados y se avisan en pantalla.
+
+**Las fechas son del teléfono, no de UTC.** `today()` usa el reloj local: en
+Argentina, `toISOString()` después de las 21 devuelve mañana. Los tests corren
+en `America/Argentina/Buenos_Aires` (fijado en `vitest.config.ts`) para que
+esos bugs aparezcan acá.
+
+**El TWR asienta el flujo al cierre del día**: `r = (nav − flujo) / nav_ayer − 1`.
+La plata que se deposita hoy no rindió hoy. La convención opuesta diluye el
+retorno del día en que entró el aporte.
+
+**Nada sensible sale del teléfono.** Los movimientos viven en IndexedDB. Al
+modelo solo viajan tickers, pesos y números (ver `src/lib/insights/digest.ts`,
+que tiene un test que lo fija). La clave de Anthropic se lee solo en el
+servidor. El repositorio es público: `scripts/check-secrets.sh` corre en cada
+verificación y en CI.
+
+## Diseño
+
+Modo oscuro único, `border-radius: 0` en todo, tipografía neutra y números
+monoespaciados con `tabular-nums`. Los tokens están en `src/app/globals.css`.
+
+La paleta de datos (`--color-s1` a `--color-s6`) está validada para banda de
+luminosidad, croma, separación bajo daltonismo y contraste ≥ 3:1 contra la
+superficie oscura. **El orden es la garantía, no una preferencia**: no se cicla
+ni se reordena. Más de 5 series se pliegan a "Otros".
+
+Ninguna información depende del color solo: siempre hay signo, etiqueta o
+ícono al lado. Con dos o más series hay leyenda; con una, no.
+
+Los gráficos son SVG escritos a mano en `src/components/charts/`. Las
+etiquetas del eje se dibujan **después** de las líneas de datos, sobre un
+recorte del color de la superficie: al revés, la línea las cruza.
+
+## Mapa del código
+
+| Dónde | Qué |
+|---|---|
+| `src/lib/engine/` | Ledger, valuación diaria, TWR, XIRR, riesgo. Funciones puras, bien cubiertas por tests. Si tocás esto, corré los tests. |
+| `src/lib/parse/` | Frases sueltas en castellano rioplatense (`quick-add.ts`) y pegado de varias líneas (`bulk.ts`). |
+| `src/lib/market/` | Proveedores de precios. Cada uno aislado: si uno se cae, devuelve el error en el resultado, nunca lanza. `mock.ts` solo se activa con `WALTRA_MOCK=1`. |
+| `src/lib/store.tsx` | Estado de la app, consultas en vivo a IndexedDB y sincronización de mercado. |
+| `src/app/api/` | `market` (precios y dólar), `health` (diagnóstico), `insights` (Claude con búsqueda web), `parse` (respaldo del parser). |
+
+## Al tocar el parser
+
+Probá contra frases reales antes de dar algo por bueno. Los tres bugs que
+aparecieron así están fijados en `quick-add.test.ts`: la marca de moneda al
+final de la frase no convierte unidades en plata, las palabras que cuentan
+unidades ("3 acciones de AAPL") y los sustantivos que funcionan como verbo
+("ingreso 250").
+
+## Al tocar los insights
+
+No todos los modelos aceptan el mismo pedido: `modelShape()` decide la
+variante de búsqueda web y si va pensamiento adaptativo. La elección de
+modelo llega del navegador, así que se valida contra la lista blanca de
+`src/lib/insights/models.ts` — aceptar cualquier cadena sería dejar que un
+pedido cualquiera elija qué se factura.
+
+Para revisar cómo se ve un informe sin gastar créditos:
+`node scripts/insights-preview.mjs` inyecta uno de muestra en la base local.
+
+## Idioma
+
+Interfaz y mensajes al usuario en castellano rioplatense, con acentos.
+Comentarios y commits en castellano. Identificadores en inglés.
