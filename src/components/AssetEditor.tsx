@@ -5,6 +5,7 @@ import { Sheet } from "@/components/ui/Sheet";
 import { Field, Segmented } from "@/components/ui/Field";
 import { IconTrash } from "@/components/icons";
 import { useStore } from "@/lib/store";
+import { syncMarket } from "@/lib/backend";
 import { money } from "@/lib/format";
 import { searchCatalog } from "@/lib/catalog";
 import type { Asset, Currency, QuoteSource } from "@/lib/types";
@@ -35,7 +36,7 @@ export function AssetEditor({
   onSave: (asset: Asset) => Promise<void>;
   onDelete: () => Promise<void>;
 }) {
-  const { apiHeaders } = useStore();
+  const { backend } = useStore();
   const [draft, setDraft] = useState(asset);
   const [prueba, setPrueba] = useState<Prueba>({ estado: "inactiva" });
 
@@ -46,10 +47,8 @@ export function AssetEditor({
   async function probar() {
     setPrueba({ estado: "probando" });
     try {
-      const res = await fetch("/api/market", {
-        method: "POST",
-        headers: apiHeaders(),
-        body: JSON.stringify({
+      const data = await syncMarket(
+        {
           refs: [
             {
               assetId: "prueba",
@@ -61,9 +60,9 @@ export function AssetEditor({
           ],
           history: [],
           includeFx: false,
-        }),
-      });
-      const data = await res.json();
+        },
+        backend(),
+      );
       const quote = data.quotes?.[0];
       if (quote?.price != null) {
         setPrueba({ estado: "ok", precio: quote.price, moneda: quote.currency });

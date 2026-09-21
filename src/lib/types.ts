@@ -139,6 +139,12 @@ export interface Settings {
   lastQuoteSync?: string;
   /** Clave de acceso a /api si el deploy la pide. */
   accessKey?: string;
+  /**
+   * Clave de Anthropic del usuario. Solo existe en el APK, donde no hay
+   * servidor que la guarde: vive en el almacenamiento privado de la app y
+   * viaja unicamente a api.anthropic.com. Nunca entra en un backup.
+   */
+  apiKey?: string;
   /** Modelo de Claude a usar en insights. */
   model?: string;
   /**

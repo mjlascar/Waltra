@@ -24,6 +24,7 @@ import type {
 import { DEFAULT_SETTINGS, ensureSeeded, getDb, type WaltraDB } from "@/lib/db";
 import { computePortfolio, type Portfolio } from "@/lib/engine/portfolio";
 import { addDays, today, toDay } from "@/lib/date";
+import { syncMarket, type BackendContext } from "@/lib/backend";
 import { BENCHMARK_ASSET_ID, benchmarkRef } from "@/lib/benchmark";
 
 export type SyncState =
@@ -52,7 +53,8 @@ interface StoreValue {
   deleteAccount: (id: string) => Promise<void>;
   updateSettings: (patch: Partial<Settings>) => Promise<void>;
   saveInsight: (report: InsightReport) => Promise<void>;
-  apiHeaders: () => Record<string, string>;
+  /** Lo que la capa de backend necesita para saber con quien hablar. */
+  backend: () => BackendContext;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -115,11 +117,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [transactions, assets, accounts, priceSeries, quotes, fxRates],
   );
 
-  const apiHeaders = useCallback((): Record<string, string> => {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (settings.accessKey) headers["x-waltra-key"] = settings.accessKey;
-    return headers;
-  }, [settings.accessKey]);
+  const backend = useCallback(
+    (): BackendContext => ({ accessKey: settings.accessKey, apiKey: settings.apiKey }),
+    [settings.accessKey, settings.apiKey],
+  );
 
   /** Trae cotizaciones, historia faltante y tipo de cambio. */
   const refresh = useCallback(
@@ -161,10 +162,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           })
           .map((a) => a.id);
 
-        const res = await fetch("/api/market", {
-          method: "POST",
-          headers: apiHeaders(),
-          body: JSON.stringify({
+        const data = await syncMarket(
+          {
             refs: [
               ...tradable.map((a) => ({
                 assetId: a.id,
@@ -178,25 +177,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             history: referenceStale ? [...needHistory, BENCHMARK_ASSET_ID] : needHistory,
             from: firstDay,
             includeFx: true,
-          }),
-        });
-        if (!res.ok) {
-          const detail = await res.json().catch(() => ({}));
-          throw new Error(detail.error ?? `HTTP ${res.status}`);
-        }
-        const data = await res.json();
+          },
+          backend(),
+        );
 
-        const goodQuotes: Quote[] = (data.quotes ?? [])
-          .filter((q: Quote) => q.price !== null && q.assetId !== BENCHMARK_ASSET_ID)
-          .map((q: Quote) => ({ ...q }));
+        // Una cotizacion sin precio es un proveedor que fallo, no un precio
+        // de cero: se descarta en vez de guardarse.
+        const goodQuotes: Quote[] = [];
+        for (const q of data.quotes) {
+          if (q.price === null || q.assetId === BENCHMARK_ASSET_ID) continue;
+          goodQuotes.push({ ...q, price: q.price });
+        }
         if (goodQuotes.length) await db.quotes.bulkPut(goodQuotes);
 
-        const series: PriceSeries[] = (data.history ?? [])
-          .filter((h: { points: unknown[] }) => h.points.length > 0)
-          .map((h: PriceSeries) => ({ ...h, updatedAt: new Date().toISOString() }));
+        const now = new Date().toISOString();
+        const series: PriceSeries[] = data.history
+          .filter((h) => h.points.length > 0)
+          .map((h) => ({ assetId: h.assetId, currency: h.currency, points: h.points, updatedAt: now }));
         if (series.length) await db.priceSeries.bulkPut(series);
 
-        if (Array.isArray(data.fx) && data.fx.length) await db.fx.bulkPut(data.fx);
+        if (data.fx.length) await db.fx.bulkPut(data.fx);
 
         const at = new Date().toISOString();
         // Releemos los ajustes en vez de usar los del closure: si el usuario
@@ -211,7 +211,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         syncing.current = false;
       }
     },
-    [db, apiHeaders, settings],
+    [db, backend, settings],
   );
 
   // Primer refresco automatico al abrir, y despues cada 10 minutos mientras la
@@ -263,7 +263,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       sync,
       db,
       refresh,
-      apiHeaders,
+      backend,
       saveTransaction: async (tx) => {
         await db?.transactions.put({ ...tx, updatedAt: new Date().toISOString() });
       },
@@ -300,7 +300,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (stale.length) await db.insights.bulkDelete(stale);
       },
     }),
-    [ready, accounts, assets, transactions, settings, insights, portfolio, sync, db, refresh, apiHeaders],
+    [ready, accounts, assets, transactions, settings, insights, portfolio, sync, db, refresh, backend],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

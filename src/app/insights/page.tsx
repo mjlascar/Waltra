@@ -5,6 +5,12 @@ import Link from "next/link";
 import { Header } from "@/components/ui/Header";
 import { SectionTitle } from "@/components/ui/Stat";
 import { useStore, newId } from "@/lib/store";
+import {
+  describeBackendError,
+  diagnostics,
+  insights as insightsRequest,
+  ON_DEVICE,
+} from "@/lib/backend";
 import { longDate, percent, relativeTime } from "@/lib/format";
 import { daysBetween, toDay, today } from "@/lib/date";
 import type { InsightReport, InsightSignal } from "@/lib/types";
@@ -19,7 +25,7 @@ const ACTION_STYLE: Record<InsightSignal["action"], { color: string; label: stri
 };
 
 export default function Insights() {
-  const { portfolio: p, transactions, accounts, settings, insights, saveInsight, apiHeaders, ready } =
+  const { portfolio: p, transactions, accounts, settings, insights, saveInsight, backend, ready } =
     useStore();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,14 +37,13 @@ export default function Insights() {
   // que solo puede terminar en error.
   useEffect(() => {
     let alive = true;
-    fetch("/api/health?light=1", { headers: apiHeaders() })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => alive && data && setConfig({ aiConfigured: data.aiConfigured, model: data.model }))
+    diagnostics(true, backend())
+      .then((data) => alive && setConfig({ aiConfigured: data.aiConfigured, model: data.model }))
       .catch(() => undefined);
     return () => {
       alive = false;
     };
-  }, [apiHeaders]);
+  }, [backend]);
 
   const report = insights[index] ?? null;
 
@@ -107,22 +112,7 @@ export default function Insights() {
         model: settings.model,
       };
 
-      const res = await fetch("/api/insights", {
-        method: "POST",
-        headers: apiHeaders(),
-        body: JSON.stringify(body),
-      });
-      // Un 504 casi siempre es el limite de tiempo del hosting, no un
-      // problema del modelo: decirlo evita que alguien reintente diez veces.
-      if (res.status === 504 || res.status === 408) {
-        throw new Error(
-          "El servidor cortó la conexión antes de que terminara el análisis. " +
-            "Suele pasar en planes con límite de 60 segundos: probá con un modelo " +
-            "más rápido desde Ajustes, o corré la app en tu red.",
-        );
-      }
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      const data = await insightsRequest(body, backend());
 
       const saved: InsightReport = {
         id: newId(),
@@ -139,7 +129,7 @@ export default function Insights() {
       setIndex(0);
       setQuestion("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(describeBackendError(err));
     } finally {
       setLoading(false);
     }
@@ -183,7 +173,9 @@ export default function Insights() {
               <p className="label mt-2 leading-snug">
                 {config.aiConfigured
                   ? `Usa ${config.model}. Cada análisis consume créditos de tu cuenta de Anthropic.`
-                  : "Falta configurar ANTHROPIC_API_KEY en el servidor. El resto de la app funciona igual; está explicado en el README."}
+                  : ON_DEVICE
+                    ? "Falta tu clave de Anthropic: cargala en Ajustes. El resto de la app funciona igual sin ella."
+                    : "Falta configurar ANTHROPIC_API_KEY en el servidor. El resto de la app funciona igual; está explicado en el README."}
               </p>
             )}
           </div>
@@ -191,10 +183,11 @@ export default function Insights() {
           {error && (
             <div className="card mb-4 p-3" style={{ borderColor: "var(--color-neg)" }}>
               <p className="text-[12px] leading-snug neg">{error}</p>
-              {error.includes("ANTHROPIC_API_KEY") && (
+              {error.includes("clave") && (
                 <p className="label mt-2 leading-snug">
-                  Los insights necesitan tu propia clave de Anthropic en el servidor. Está
-                  explicado en el README; el resto de la app funciona igual sin ella.
+                  {ON_DEVICE
+                    ? "Los insights salen de tu propia cuenta de Anthropic. Cargá la clave en Ajustes; el resto de la app funciona igual sin ella."
+                    : "Los insights necesitan una clave de Anthropic en el servidor. Está explicado en el README; el resto de la app funciona igual sin ella."}
                 </p>
               )}
             </div>

@@ -5,6 +5,7 @@ import { Sheet } from "@/components/ui/Sheet";
 import { Field, Segmented } from "@/components/ui/Field";
 import { IconWarning } from "@/components/icons";
 import { newId, useStore } from "@/lib/store";
+import { describeBackendError, parseEntry } from "@/lib/backend";
 import { parseQuickEntry } from "@/lib/parse/quick-add";
 import { parseLooseNumber } from "@/lib/parse/number";
 import { lookupCatalog, searchCatalog, type CatalogEntry } from "@/lib/catalog";
@@ -76,7 +77,7 @@ export function AddTransaction({
 }) {
   const {
     accounts, assets, transactions, portfolio,
-    saveTransaction, saveAsset, refresh, settings, apiHeaders,
+    saveTransaction, saveAsset, refresh, settings, backend,
   } = useStore();
 
   const defaultAccount = useMemo(
@@ -328,24 +329,15 @@ export function AddTransaction({
     setError(null);
     setAiNote(null);
     try {
-      const res = await fetch("/api/parse", {
-        method: "POST",
-        headers: apiHeaders(),
-        body: JSON.stringify({
+      const data = await parseEntry(
+        {
           text: text.trim(),
           accounts: accounts.map((a) => ({ id: a.id, name: a.name })),
           symbols: assets.map((a) => a.symbol),
           today: today(),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(
-          data.code === "no_api_key"
-            ? "Para esto hace falta configurar una clave de Anthropic en el servidor."
-            : (data.error ?? `HTTP ${res.status}`),
-        );
-      }
+        },
+        backend(),
+      );
       const symbol: string = data.symbol ?? "";
       const match = assets.find((a) => a.symbol.toUpperCase() === symbol.toUpperCase());
       setCatalogHit(lookupCatalog(symbol) ?? null);
@@ -372,7 +364,7 @@ export function AddTransaction({
       // modo texto, la próxima tecla pisaría lo que el modelo interpretó.
       setMode("form");
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(describeBackendError(err));
     } finally {
       setAsking(false);
     }
