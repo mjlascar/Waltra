@@ -15,6 +15,18 @@ const config: CapacitorConfig = {
     // El fondo detras del WebView, para que no pegue un flash blanco al abrir.
     backgroundColor: "#0a0a0b",
   },
+  server: {
+    /**
+     * Fijado a proposito, aunque hoy sea el valor por omision.
+     *
+     * El esquema define el origen del WebView, y el origen define donde vive
+     * IndexedDB. Si algun dia Capacitor cambiara este valor por defecto, la
+     * actualizacion abriria la app en otro origen y la base apareceria vacia:
+     * todos los movimientos seguirian en el telefono, pero inalcanzables, sin
+     * un solo error que lo explique. Escrito aca, eso no puede pasar solo.
+     */
+    androidScheme: "https",
+  },
   plugins: {
     /**
      * El vigia de precios. Android no garantiza el intervalo: 30 minutos es
