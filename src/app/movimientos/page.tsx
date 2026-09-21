@@ -7,6 +7,7 @@ import { Sheet } from "@/components/ui/Sheet";
 import { EmptyStart } from "@/components/EmptyStart";
 import { IconEdit, IconTrash } from "@/components/icons";
 import { useStore } from "@/lib/store";
+import { txColor } from "@/lib/tx-style";
 import {
   longDate,
   money,
@@ -197,8 +198,16 @@ export default function Movimientos() {
                     key={tx.id}
                     onClick={() => setDetail(tx)}
                     className="flex w-full items-center gap-2.5 p-3 text-left"
+                    // Un filete del color del tipo sobre el borde izquierdo:
+                    // se barre la lista de un vistazo sin leer cada rotulo.
+                    style={{ borderLeft: `3px solid ${txColor(tx.type)}` }}
                   >
-                    <span className="chip shrink-0">{TX_SHORT[tx.type]}</span>
+                    <span
+                      className="chip shrink-0"
+                      style={{ color: txColor(tx.type), borderColor: txColor(tx.type) }}
+                    >
+                      {TX_SHORT[tx.type]}
+                    </span>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[13px]">
                         {tx.type === "transfer"

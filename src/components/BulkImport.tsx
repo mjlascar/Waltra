@@ -8,6 +8,7 @@ import { newId, useStore } from "@/lib/store";
 import { parseBulk, summarize, type BulkRow } from "@/lib/parse/bulk";
 import { assetFromSymbol, findAssetBySymbol, lastUsedAccountId } from "@/lib/assets";
 import { money, quantity as fmtQty, shortDate, TX_SHORT } from "@/lib/format";
+import { txColor } from "@/lib/tx-style";
 import { today } from "@/lib/date";
 import type { Asset, Transaction } from "@/lib/types";
 
@@ -275,7 +276,15 @@ export function BulkImport({ open, onClose }: { open: boolean; onClose: () => vo
                           {entry && !bad ? (
                             <>
                               <div className="flex items-baseline gap-1.5">
-                                <span className="chip shrink-0">{TX_SHORT[entry.type]}</span>
+                                <span
+                                  className="chip shrink-0"
+                                  style={{
+                                    color: txColor(entry.type),
+                                    borderColor: txColor(entry.type),
+                                  }}
+                                >
+                                  {TX_SHORT[entry.type]}
+                                </span>
                                 <span className="truncate text-[13px]">
                                   {entry.symbol ?? accountName(entry.accountId)}
                                 </span>
