@@ -104,6 +104,7 @@ export default function Insights() {
           goals: settings.goals.slice(0, 600),
         },
         question: question.trim() || undefined,
+        model: settings.model,
       };
 
       const res = await fetch("/api/insights", {

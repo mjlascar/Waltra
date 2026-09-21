@@ -12,6 +12,7 @@ import { exportBackup, importBackup, parseBackup, wipeAll } from "@/lib/db";
 import { clearDemoData, hasDemoData, loadDemoData } from "@/lib/demo";
 import { KIND_LABEL, money, relativeTime } from "@/lib/format";
 import { BENCHMARK_CHOICES } from "@/lib/benchmark";
+import { DEFAULT_MODEL, MODELS } from "@/lib/insights/models";
 import type { Account, Asset, Broker, Currency, QuoteSource } from "@/lib/types";
 
 interface Health {
@@ -356,6 +357,36 @@ export default function Ajustes() {
             {settings.lastQuoteSync ? relativeTime(settings.lastQuoteSync) : "nunca"}
             {" · "}dólar MEP{" "}
             {portfolio.fxLatest > 0 ? money(portfolio.fxLatest, "ARS", { decimals: 0 }) : "sin dato"}
+          </p>
+        </div>
+      </section>
+
+      {/* --- Insights ------------------------------------------------------ */}
+      <section className="mb-5">
+        <SectionTitle>Insights</SectionTitle>
+        <div className="card p-3">
+          <Field
+            label="Modelo"
+            hint={
+              MODELS.find((m) => m.id === (settings.model ?? DEFAULT_MODEL))?.detail ??
+              "Cada análisis consume créditos de tu cuenta de Anthropic."
+            }
+          >
+            <select
+              className="input"
+              value={settings.model ?? DEFAULT_MODEL}
+              onChange={(e) => void updateSettings({ model: e.target.value })}
+            >
+              {MODELS.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <p className="label mt-2 leading-snug">
+            Cada análisis hace varias búsquedas web y dos llamadas al modelo. Bajar de
+            modelo abarata, a costa de profundidad.
           </p>
         </div>
       </section>

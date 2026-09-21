@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { checkAccess } from "@/lib/api-auth";
 import { MOCK_ENABLED } from "@/lib/market";
+import { resolveModel } from "@/lib/insights/models";
 import { binanceQuotes } from "@/lib/market/binance";
 import { bymaQuotes } from "@/lib/market/byma";
 import { yahooQuote } from "@/lib/market/yahoo";
@@ -26,7 +27,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       mock: MOCK_ENABLED,
       aiConfigured: Boolean(process.env.ANTHROPIC_API_KEY),
-      model: process.env.WALTRA_MODEL ?? "claude-opus-5",
+      model: resolveModel(undefined),
       providers: [],
       at: new Date().toISOString(),
     });
@@ -77,7 +78,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     mock: MOCK_ENABLED,
     aiConfigured: Boolean(process.env.ANTHROPIC_API_KEY),
-    model: process.env.WALTRA_MODEL ?? "claude-opus-5",
+    model: resolveModel(undefined),
     providers,
     totalMs: Date.now() - started,
     at: new Date().toISOString(),

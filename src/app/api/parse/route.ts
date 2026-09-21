@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { checkAccess } from "@/lib/api-auth";
+import { resolveModel } from "@/lib/insights/models";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
 
   try {
     const result = await client.messages.parse({
-      model: process.env.WALTRA_MODEL || "claude-opus-5",
+      model: resolveModel(undefined),
       max_tokens: 2000,
       system: `Convertis frases sueltas en castellano rioplatense en movimientos de una cartera de inversion.
 

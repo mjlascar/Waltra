@@ -87,7 +87,7 @@ Copiá `.env.example` a `.env.local`. Todo es opcional.
 | Variable | Para qué |
 |---|---|
 | `ANTHROPIC_API_KEY` | Habilita la sección de Insights. Se lee **solo en el servidor**: nunca viaja al navegador. |
-| `WALTRA_MODEL` | Modelo a usar. Por defecto `claude-opus-5`. |
+| `WALTRA_MODEL` | Modelo por defecto del servidor. Si no la definís, es `claude-opus-5`. Desde Ajustes podés elegir entre Opus 5, Sonnet 5 y Haiku 4.5 sin redesplegar; cualquier otro valor que llegue del navegador se ignora. |
 | `WALTRA_ACCESS_KEY` | Si publicás la app en internet, exige esta clave en las rutas `/api`. La cargás una vez en Ajustes y queda en el teléfono. |
 | `WALTRA_MOCK` | `1` usa precios simulados para probar la interfaz. La app lo avisa en pantalla con un cartel. |
 

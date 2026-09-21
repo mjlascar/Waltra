@@ -8,12 +8,11 @@ import {
   buildDigest,
   degradedReport,
 } from "@/lib/insights/digest";
+import { resolveModel } from "@/lib/insights/models";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
-
-const DEFAULT_MODEL = "claude-opus-5";
 
 const SYSTEM = `Sos el analista de Waltra, una app de seguimiento de inversiones de un inversor minorista argentino que opera en Cocos Capital (mercado local) y Binance (cripto).
 
@@ -56,7 +55,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const model = process.env.WALTRA_MODEL || DEFAULT_MODEL;
+  const model = resolveModel(body.model);
   const client = new Anthropic({ apiKey });
   const portfolio = buildDigest(body);
   const hoy = new Date().toISOString().slice(0, 10);

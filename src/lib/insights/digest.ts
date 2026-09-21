@@ -44,6 +44,8 @@ export const InsightRequestSchema = z.object({
     goals: z.string().max(600),
   }),
   question: z.string().max(400).optional(),
+  /** Modelo elegido por el usuario. Se valida contra una lista blanca. */
+  model: z.string().max(60).optional(),
 });
 
 export type InsightRequest = z.infer<typeof InsightRequestSchema>;
