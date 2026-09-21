@@ -66,3 +66,51 @@ jobs:
         run: npm run pwa
         env:
           BASE_URL: http://127.0.0.1:3000
+
+      # El build del APK sirve archivos sueltos, sin servidor. Se recorre en
+      # un navegador para saber que arranca y que las pantallas del modo
+      # telefono estan, sin necesitar un Android de verdad.
+      - name: Build nativo en el navegador
+        run: |
+          WALTRA_NATIVE=1 npx next build
+          npm run native
+
+  apk:
+    name: APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      # Capacitor 8 compila con el plugin de Android que pide JDK 21.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+
+      - run: npm ci
+
+      # Exporta el HTML estatico y lo copia adentro del proyecto Android.
+      - name: Preparar los assets
+        run: npm run build:native
+
+      - name: Compilar
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug
+
+      # Firmado con la clave de depuracion, que es la que viene con el SDK.
+      # Alcanza para instalarlo a mano; no sirve para publicar en Play, que no
+      # es el plan. En el README esta como pasar a una clave propia.
+      - name: Guardar el APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: waltra-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 90
