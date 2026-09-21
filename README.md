@@ -43,6 +43,11 @@ distancia entre ellas es —literalmente— lo que ganaste.
   contra capital aportado) y *Rendimiento* (tu TWR contra un índice de
   referencia, configurable: S&P 500, Nasdaq, Bitcoin u oro). Abajo, la
   conclusión en una línea: «Le ganaste al S&P 500 por 20,5 puntos».
+- **Reconciliar con el broker.** Tocás una cuenta y ves su detalle. Si el
+  efectivo que muestra Cocos o Binance no coincide con el de la app (una
+  comisión que no cargaste, el interés de la cuenta remunerada, un redondeo),
+  ponés el número real y se carga la diferencia como un ajuste explícito, que
+  cuenta como resultado y no como capital. Queda anotado: no se disimula.
 - **Insights con IA.** Busca noticias recientes sobre tus posiciones, las cruza
   con cómo venís operando y devuelve una lectura con fuentes citadas. Requiere
   tu propia clave de Anthropic; sin ella el resto de la app funciona igual.

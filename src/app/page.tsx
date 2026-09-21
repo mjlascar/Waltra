@@ -13,11 +13,13 @@ import { IconChevron } from "@/components/icons";
 import { useStore } from "@/lib/store";
 import { money, percent, shortDate, TX_SHORT } from "@/lib/format";
 import { rangeStart, type RangeKey } from "@/lib/date";
+import type { AccountView } from "@/lib/engine/portfolio";
 import { BENCHMARK_ASSET_ID, BENCHMARK_CHOICES, benchmarkReturns } from "@/lib/benchmark";
 import { getDb } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 import { EmptyStart } from "@/components/EmptyStart";
 import { MetricsExplainer } from "@/components/MetricsExplainer";
+import { AccountSheet } from "@/components/AccountSheet";
 
 const RANGES: { value: RangeKey; label: string }[] = [
   { value: "1M", label: "1M" },
@@ -35,6 +37,7 @@ export default function Overview() {
   const [range, setRange] = useState<RangeKey>("MAX");
   const [mode, setMode] = useState<ChartMode>("valor");
   const [explaining, setExplaining] = useState(false);
+  const [account, setAccount] = useState<AccountView | null>(null);
   const db = getDb();
 
   const from = useMemo(
@@ -274,23 +277,28 @@ export default function Overview() {
           {p.accountViews
             .filter((a) => a.valueUsd > 0.01 || a.netContributedUsd !== 0)
             .sort((a, b) => b.valueUsd - a.valueUsd)
-            .map((account) => (
-              <div key={account.accountId} className="flex items-center gap-3 p-3">
+            .map((view) => (
+              <button
+                key={view.accountId}
+                onClick={() => setAccount(view)}
+                className="flex w-full items-center gap-3 p-3 text-left"
+              >
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[14px] font-medium">{account.name}</div>
+                  <div className="truncate text-[14px] font-medium">{view.name}</div>
                   <div className="label mt-0.5">
-                    {money(account.investedUsd, "USD", { compact: true })} invertido ·{" "}
-                    {money(account.cashUsd, "USD", { compact: true })} líquido
+                    {money(view.investedUsd, "USD", { compact: true })} invertido ·{" "}
+                    {money(view.cashUsd, "USD", { compact: true })} líquido
                   </div>
                 </div>
                 <div className="shrink-0 text-right">
-                  <div className="num text-[14px]">{money(account.valueUsd, "USD", { compact: true })}</div>
-                  <div className={`num text-[11px] ${account.pnlUsd >= 0 ? "pos" : "neg"}`}>
-                    {money(account.pnlUsd, "USD", { compact: true, sign: true })}
-                    {account.pnlPct !== null && ` · ${percent(account.pnlPct, { decimals: 0 })}`}
+                  <div className="num text-[14px]">{money(view.valueUsd, "USD", { compact: true })}</div>
+                  <div className={`num text-[11px] ${view.pnlUsd >= 0 ? "pos" : "neg"}`}>
+                    {money(view.pnlUsd, "USD", { compact: true, sign: true })}
+                    {view.pnlPct !== null && ` · ${percent(view.pnlPct, { decimals: 0 })}`}
                   </div>
                 </div>
-              </div>
+                <IconChevron size={13} className="shrink-0" />
+              </button>
             ))}
         </div>
       </section>
@@ -347,6 +355,7 @@ export default function Overview() {
         </section>
       )}
       <MetricsExplainer portfolio={p} open={explaining} onClose={() => setExplaining(false)} />
+      <AccountSheet account={account} onClose={() => setAccount(null)} />
     </div>
   );
 }

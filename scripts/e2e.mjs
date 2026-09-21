@@ -176,6 +176,25 @@ check("usa los números de la cartera", /\d+ días/.test(explica));
 await page.keyboard.press("Escape");
 await page.waitForTimeout(400);
 
+console.log("\n5c. Detalle de cuenta y reconciliación de saldo");
+await goto("/");
+await page.locator("button").filter({ hasText: "Cocos Capital" }).first().click();
+await page.waitForTimeout(700);
+check("abre el detalle de la cuenta", await has("Ajustar el efectivo"), (await text()).slice(0, 200));
+const antes = normalize(await text()).match(/según waltra\s*us\$ ([\d.,]+)/);
+check("muestra el efectivo que conoce la app", Boolean(antes), antes?.[0]);
+await page.locator('[role="dialog"] input[inputmode="decimal"]').first().fill("999");
+await page.waitForTimeout(500);
+check("calcula la diferencia", await has("Diferencia"), (await text()).slice(0, 300));
+await page.getByRole("button", { name: /Cargar el ajuste/ }).click();
+await page.waitForTimeout(1500);
+check("confirma el ajuste", await has("El saldo ya coincide"), (await text()).slice(0, 200));
+await page.keyboard.press("Escape");
+await page.waitForTimeout(600);
+
+await goto("/movimientos");
+check("el ajuste queda anotado como tal", await has("ajuste de saldo"), (await text()).slice(0, 400));
+
 console.log("\n6. Filtros de movimientos");
 await goto("/movimientos");
 const totalCount = Number(normalize(await text()).match(/(\d+) movimientos/)?.[1] ?? 0);
