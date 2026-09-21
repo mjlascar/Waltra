@@ -11,6 +11,7 @@ distancia entre ellas es —literalmente— lo que ganaste.
 <p>
   <img src="docs/img/resumen.png" width="220" alt="Resumen: valor de la cartera contra capital aportado">
   <img src="docs/img/carga.png" width="220" alt="Carga de un movimiento escribiendo la frase">
+  <img src="docs/img/importar.png" width="220" alt="Importar un bloc de notas entero">
   <img src="docs/img/rendimiento.png" width="220" alt="Rendimiento de la cartera contra el S&P 500">
   <img src="docs/img/cartera.png" width="220" alt="Cartera: posiciones con su resultado">
   <img src="docs/img/insights.png" width="220" alt="Insights: análisis con fuentes">
@@ -21,6 +22,10 @@ distancia entre ellas es —literalmente— lo que ganaste.
 - **Cargás como si escribieras una nota.** `pasé 100 dólares a cocos`,
   `compré 50 de QQQ a 480`, `vendí 2 QQQ a 520 ayer`, `retiré 200 de binance`.
   La app muestra lo que entendió antes de guardar, y se corrige de un toque.
+- **Traés tu historia de una.** Si ya venías anotando en un bloc de notas,
+  pegás el archivo entero: la app lee línea por línea, te muestra lo que
+  entendió, marca lo que no cierra y carga todo junto. La cuenta se arrastra
+  entre líneas, como cuando escribís.
 - **Una sola cartera.** Cocos y Binance en la misma vista, con el detalle por
   cuenta cuando lo querés.
 - **Precios al día.** Acciones y ETFs (Yahoo Finance), cripto (Binance), mercado

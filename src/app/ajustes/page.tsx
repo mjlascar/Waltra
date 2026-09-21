@@ -5,6 +5,7 @@ import { Header } from "@/components/ui/Header";
 import { SectionTitle } from "@/components/ui/Stat";
 import { Field, Segmented } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
+import { BulkImport } from "@/components/BulkImport";
 import { IconChevron, IconTrash } from "@/components/icons";
 import { newId, useStore } from "@/lib/store";
 import { exportBackup, importBackup, parseBackup, wipeAll } from "@/lib/db";
@@ -32,6 +33,7 @@ export default function Ajustes() {
   const [health, setHealth] = useState<Health | null>(null);
   const [checking, setChecking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [bulk, setBulk] = useState(false);
   const [wipeText, setWipeText] = useState("");
   const [wiping, setWiping] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -230,6 +232,9 @@ export default function Ajustes() {
               Importar
             </button>
           </div>
+          <button className="btn btn-sm mt-2 w-full" onClick={() => setBulk(true)}>
+            Pegar movimientos desde tus notas
+          </button>
           <input
             ref={fileRef}
             type="file"
@@ -380,6 +385,8 @@ export default function Ajustes() {
         <br />
         Los precios son informativos y pueden tener demora. No es asesoramiento financiero.
       </p>
+
+      <BulkImport open={bulk} onClose={() => setBulk(false)} />
 
       {/* --- Editor de cuenta ---------------------------------------------- */}
       {account && (

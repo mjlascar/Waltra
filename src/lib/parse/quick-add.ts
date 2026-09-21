@@ -16,6 +16,10 @@ export interface ParsedEntry {
   type: TxType;
   /** "vendí todo el SPY": la cantidad sale de la posición actual. */
   all?: boolean;
+  /** La frase traía una fecha. Si no, `day` es hoy por defecto. */
+  dateExplicit: boolean;
+  /** La frase nombraba la cuenta. Si no, se uso la predeterminada. */
+  accountExplicit: boolean;
   day: DayKey;
   accountId?: string;
   counterAccountId?: string;
@@ -204,6 +208,7 @@ export function parseQuickEntry(raw: string, ctx: ParseContext): ParsedEntry | n
     accountId = hits[0].account.id;
     confidence += 0.15;
   } else {
+    /* sin mencion de cuenta: cae en la predeterminada */
     accountId = ctx.defaultAccountId;
     if (ctx.accounts.length > 1) {
       const name = ctx.accounts.find((a) => a.id === accountId)?.name;
@@ -346,6 +351,8 @@ export function parseQuickEntry(raw: string, ctx: ParseContext): ParsedEntry | n
     type,
     all: sellAll || undefined,
     day,
+    dateExplicit: dateHit !== null,
+    accountExplicit: hits.length > 0,
     accountId,
     counterAccountId,
     assetId: symbolHit?.asset?.id,

@@ -29,6 +29,26 @@ if (await demo.count()) {
   await page.waitForTimeout(4500);
 }
 
+// Importación de un bloc de notas.
+await page.goto(`${BASE}/ajustes`, { waitUntil: "networkidle" });
+await page.waitForTimeout(800);
+await page.getByRole("button", { name: /Pegar movimientos desde tus notas/ }).click();
+await page.waitForTimeout(400);
+await page.locator('[role="dialog"] textarea').first().fill(
+  [
+    "# lo que tenia anotado",
+    "12/03/2025 pasé 500 dólares a cocos",
+    "13/03/2025 compré 300 de QQQ a 430",
+    "20/04/2025 pasé 200 a binance",
+    "21/04/2025 compré 0,002 BTC a 84000",
+    "che acordate de revisar esto",
+    "15/06/2025 vendí 0,3 QQQ a 470",
+  ].join("\n"),
+);
+await page.waitForTimeout(900);
+await shot("importar", true);
+await page.keyboard.press("Escape");
+
 // Detalle de una posición.
 await page.goto(`${BASE}/cartera`, { waitUntil: "networkidle" });
 await page.waitForTimeout(800);

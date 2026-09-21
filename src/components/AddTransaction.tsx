@@ -8,6 +8,7 @@ import { newId, useStore } from "@/lib/store";
 import { parseQuickEntry } from "@/lib/parse/quick-add";
 import { parseLooseNumber } from "@/lib/parse/number";
 import { lookupCatalog, searchCatalog, type CatalogEntry } from "@/lib/catalog";
+import { assetFromSymbol, findAssetBySymbol, lastUsedAccountId } from "@/lib/assets";
 import { longDate, money, quantity as fmtQty, TX_LABEL } from "@/lib/format";
 import { today } from "@/lib/date";
 import type { Asset, Currency, Transaction, TxType } from "@/lib/types";
@@ -78,15 +79,10 @@ export function AddTransaction({
     saveTransaction, saveAsset, refresh, settings, apiHeaders,
   } = useStore();
 
-  // La cuenta predeterminada es la ultima que usaste: en la practica uno carga
-  // varios movimientos seguidos del mismo lado.
-  const defaultAccount = useMemo(() => {
-    const last = [...transactions].sort((a, b) =>
-      a.date < b.date ? -1 : a.date > b.date ? 1 : a.createdAt.localeCompare(b.createdAt),
-    )[transactions.length - 1];
-    if (last && accounts.some((a) => a.id === last.accountId)) return last.accountId;
-    return accounts[0]?.id ?? "";
-  }, [transactions, accounts]);
+  const defaultAccount = useMemo(
+    () => lastUsedAccountId(transactions, accounts),
+    [transactions, accounts],
+  );
   const defaultCurrency =
     accounts.find((a) => a.id === defaultAccount)?.currency ?? accounts[0]?.currency ?? "USD";
 
@@ -290,32 +286,13 @@ export function AddTransaction({
     const symbol = draft.symbol.trim().toUpperCase();
     if (!symbol) return undefined;
 
-    const existing = assets.find((a) => a.symbol.toUpperCase() === symbol);
+    const existing = findAssetBySymbol(assets, symbol);
     if (existing) return existing.id;
 
-    const entry = catalogHit ?? lookupCatalog(symbol);
-    const asset: Asset = entry
-      ? {
-          id: newId(),
-          symbol: entry.symbol,
-          name: entry.name,
-          kind: entry.kind,
-          currency: entry.currency,
-          source: entry.source,
-          sourceSymbol: entry.sourceSymbol,
-          precision: entry.precision,
-        }
-      : {
-          id: newId(),
-          symbol,
-          name: symbol,
-          kind: "stock",
-          currency: draft.currency,
-          // Sin catalogo apostamos a Yahoo, que es el que mas cobertura tiene.
-          source: "yahoo",
-          sourceSymbol: symbol,
-          precision: 6,
-        };
+    const asset = assetFromSymbol(symbol, newId(), {
+      catalog: catalogHit ?? undefined,
+      currency: draft.currency,
+    });
     await saveAsset(asset);
     return asset.id;
   }

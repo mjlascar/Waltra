@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useStore } from "@/lib/store";
 import { loadDemoData } from "@/lib/demo";
 import { AddTransaction } from "@/components/AddTransaction";
+import { BulkImport } from "@/components/BulkImport";
 
 /**
  * Primera pantalla. No pide configurar nada: o cargas tu primer movimiento, o
@@ -13,6 +14,7 @@ import { AddTransaction } from "@/components/AddTransaction";
 export function EmptyStart() {
   const { db, refresh } = useStore();
   const [adding, setAdding] = useState(false);
+  const [bulk, setBulk] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function demo() {
@@ -51,6 +53,9 @@ export function EmptyStart() {
         <button className="btn btn-primary w-full" onClick={() => setAdding(true)}>
           Cargar mi primer movimiento
         </button>
+        <button className="btn w-full" onClick={() => setBulk(true)}>
+          Ya tengo todo anotado: pegar la lista
+        </button>
         <button className="btn w-full" onClick={demo} disabled={loading}>
           {loading ? "Cargando…" : "Ver con datos de ejemplo"}
         </button>
@@ -60,6 +65,7 @@ export function EmptyStart() {
       </div>
 
       <AddTransaction open={adding} onClose={() => setAdding(false)} />
+      <BulkImport open={bulk} onClose={() => setBulk(false)} />
     </div>
   );
 }

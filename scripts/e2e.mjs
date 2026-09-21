@@ -126,6 +126,33 @@ await page.getByRole("button", { name: /Sí, borrar/ }).click();
 await page.waitForTimeout(1500);
 check("el movimiento se borra", !(await has("probando la edición")));
 
+console.log("\n4b. Importar un bloc de notas entero");
+await goto("/ajustes");
+await page.getByRole("button", { name: /Pegar movimientos desde tus notas/ }).click();
+await page.waitForTimeout(500);
+const notas = [
+  "# mis notas",
+  "05/01/2026 pasé 400 dólares a cocos",
+  "06/01/2026 compré 200 de SOL a 190",
+  "esto no es un movimiento",
+  "10/02/2026 vendí 0,2 SOL a 210",
+].join("\n");
+await page.locator('[role="dialog"] textarea').first().fill(notas);
+await page.waitForTimeout(900);
+const bulk = await text();
+check("cuenta las líneas listas", /3 de 4 listas/i.test(bulk), bulk.slice(0, 300));
+check("marca la línea que no entiende", await has("Sin monto"), bulk.slice(0, 400));
+await page.getByRole("button", { name: /^Agregar 3$/ }).click();
+await page.waitForTimeout(3000);
+check("confirma cuántos cargó", await has("Se cargaron 3"), (await text()).slice(0, 200));
+await page.getByRole("button", { name: /^Listo$/ }).click();
+await page.waitForTimeout(600);
+
+await goto("/movimientos");
+check("los movimientos importados aparecen", await has("SOL"));
+await goto("/cartera");
+check("la posición importada llega a la cartera", await has("SOL"));
+
 console.log("\n5. Navegación entre vistas");
 for (const [path, marker] of [
   ["/", "Valor total"],
