@@ -203,7 +203,10 @@ export function parseQuickEntry(raw: string, ctx: ParseContext): ParsedEntry | n
     confidence += 0.15;
   } else {
     accountId = ctx.defaultAccountId;
-    if (ctx.accounts.length > 1) warnings.push("No dijiste la cuenta, use la predeterminada.");
+    if (ctx.accounts.length > 1) {
+      const name = ctx.accounts.find((a) => a.id === accountId)?.name;
+      warnings.push(name ? `No dijiste la cuenta: usé ${name}.` : "No dijiste la cuenta.");
+    }
   }
   for (const h of hits) work = cut(work, strip(h.account.name).split(/\s+/)[0]);
 

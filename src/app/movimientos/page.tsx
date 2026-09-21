@@ -1,0 +1,297 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { Header } from "@/components/ui/Header";
+import { AddTransaction } from "@/components/AddTransaction";
+import { Sheet } from "@/components/ui/Sheet";
+import { EmptyStart } from "@/components/EmptyStart";
+import { IconEdit, IconTrash } from "@/components/icons";
+import { useStore } from "@/lib/store";
+import { longDate, money, percent, quantity as fmtQty, shortDate, TX_LABEL, TX_SHORT } from "@/lib/format";
+import type { Transaction, TxType } from "@/lib/types";
+
+const FILTERS: { value: TxType | "todos" | "capital"; label: string }[] = [
+  { value: "todos", label: "Todos" },
+  { value: "capital", label: "Capital" },
+  { value: "buy", label: "Compras" },
+  { value: "sell", label: "Ventas" },
+  { value: "dividend", label: "Rentas" },
+];
+
+const MONTHS = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+];
+
+export default function Movimientos() {
+  const { transactions, accounts, assets, portfolio, ready, deleteTransaction } = useStore();
+  const [filter, setFilter] = useState<(typeof FILTERS)[number]["value"]>("todos");
+  const [account, setAccount] = useState<string>("todas");
+  const [query, setQuery] = useState("");
+  const [detail, setDetail] = useState<Transaction | null>(null);
+  const [editing, setEditing] = useState<Transaction | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return transactions
+      .filter((tx) => {
+        if (account !== "todas" && tx.accountId !== account && tx.counterAccountId !== account) {
+          return false;
+        }
+        if (filter === "capital" && tx.type !== "deposit" && tx.type !== "withdraw") return false;
+        if (filter === "dividend" && tx.type !== "dividend" && tx.type !== "interest") return false;
+        if (filter !== "todos" && filter !== "capital" && filter !== "dividend" && tx.type !== filter) {
+          return false;
+        }
+        if (q) {
+          const asset = assets.find((a) => a.id === tx.assetId);
+          const hay = [
+            asset?.symbol,
+            asset?.name,
+            tx.note,
+            tx.raw,
+            TX_LABEL[tx.type],
+            accounts.find((a) => a.id === tx.accountId)?.name,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.createdAt.localeCompare(a.createdAt)));
+  }, [transactions, filter, account, query, assets, accounts]);
+
+  /** Agrupado por mes: da ritmo a la lista y hace visible la cadencia de aportes. */
+  const months = useMemo(() => {
+    const groups = new Map<string, Transaction[]>();
+    for (const tx of filtered) {
+      const key = tx.date.slice(0, 7);
+      const bucket = groups.get(key);
+      if (bucket) bucket.push(tx);
+      else groups.set(key, [tx]);
+    }
+    return [...groups.entries()];
+  }, [filtered]);
+
+  if (!ready) return <div className="py-20 text-center"><span className="label">Abriendo…</span></div>;
+  if (transactions.length === 0) return <EmptyStart />;
+
+  const assetOf = (tx: Transaction) => assets.find((a) => a.id === tx.assetId);
+  const accountOf = (id?: string) => accounts.find((a) => a.id === id)?.name ?? "—";
+
+  return (
+    <div className="pb-6">
+      <Header title="Movimientos" />
+
+      <input
+        className="input mb-3"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Buscar por activo, nota o cuenta…"
+      />
+
+      <div className="no-scrollbar mb-2 flex gap-1.5 overflow-x-auto pb-1">
+        {FILTERS.map((f) => (
+          <button
+            key={f.value}
+            className="chip shrink-0"
+            style={{
+              background: filter === f.value ? "var(--color-surface-3)" : "transparent",
+              color: filter === f.value ? "var(--color-ink)" : undefined,
+              height: 28,
+            }}
+            onClick={() => setFilter(f.value)}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {accounts.length > 1 && (
+        <div className="no-scrollbar mb-4 flex gap-1.5 overflow-x-auto pb-1">
+          {[{ id: "todas", name: "Todas las cuentas" }, ...accounts].map((a) => (
+            <button
+              key={a.id}
+              className="chip shrink-0"
+              style={{
+                background: account === a.id ? "var(--color-surface-3)" : "transparent",
+                color: account === a.id ? "var(--color-ink)" : undefined,
+                height: 28,
+                textTransform: "none",
+                letterSpacing: 0,
+              }}
+              onClick={() => setAccount(a.id)}
+            >
+              {a.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <p className="label mb-3">
+        {filtered.length} {filtered.length === 1 ? "movimiento" : "movimientos"}
+        {filter === "capital" &&
+          ` · neto ${money(portfolio.netContributedUsd, "USD", { compact: true })}`}
+      </p>
+
+      {months.map(([key, rows]) => {
+        const [year, month] = key.split("-");
+        return (
+          <section key={key} className="mb-4">
+            <div className="eyebrow mb-1.5">
+              {MONTHS[Number(month) - 1]} {year}
+            </div>
+            <div className="card divide-hairline">
+              {rows.map((tx) => {
+                const asset = assetOf(tx);
+                const outflow = tx.type === "withdraw" || tx.type === "buy" || tx.type === "fee";
+                // El detalle va debajo junto a la fecha: en 360px, una columna
+                // de fecha aparte le come el ancho al dato que importa.
+                const detailParts = [
+                  tx.quantity
+                    ? `${fmtQty(tx.quantity, 6)} @ ${money(tx.price ?? 0, tx.currency)}`
+                    : null,
+                  asset ? accountOf(tx.accountId) : null,
+                  tx.note && tx.note !== "ejemplo" ? tx.note : null,
+                  shortDate(tx.date, true),
+                ].filter(Boolean);
+                return (
+                  <button
+                    key={tx.id}
+                    onClick={() => setDetail(tx)}
+                    className="flex w-full items-center gap-2.5 p-3 text-left"
+                  >
+                    <span className="chip shrink-0">{TX_SHORT[tx.type]}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[13px]">
+                        {asset?.symbol ?? accountOf(tx.accountId)}
+                        {tx.type === "transfer" && ` → ${accountOf(tx.counterAccountId)}`}
+                      </div>
+                      <div className="label mt-0.5 truncate">{detailParts.join(" · ")}</div>
+                    </div>
+                    <span className="num shrink-0 text-[13px]">
+                      {outflow ? "−" : ""}
+                      {money(tx.amount, tx.currency, { compact: true })}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+
+      {filtered.length === 0 && (
+        <p className="label py-10 text-center">Ningún movimiento coincide con el filtro.</p>
+      )}
+
+      {detail && (
+        <Sheet
+          open
+          onClose={() => {
+            setDetail(null);
+            setConfirmDelete(false);
+          }}
+          title={TX_LABEL[detail.type]}
+          footer={
+            confirmDelete ? (
+              <div className="flex gap-2">
+                <button className="btn btn-ghost flex-1" onClick={() => setConfirmDelete(false)}>
+                  No, volver
+                </button>
+                <button
+                  className="btn flex-1"
+                  style={{ borderColor: "var(--color-neg)", color: "var(--color-neg)" }}
+                  onClick={async () => {
+                    await deleteTransaction(detail.id);
+                    setConfirmDelete(false);
+                    setDetail(null);
+                  }}
+                >
+                  Sí, borrar
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  className="btn btn-ghost flex-1"
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  <IconTrash size={16} /> Borrar
+                </button>
+                <button
+                  className="btn btn-primary flex-1"
+                  onClick={() => {
+                    setEditing(detail);
+                    setDetail(null);
+                  }}
+                >
+                  <IconEdit size={16} /> Editar
+                </button>
+              </div>
+            )
+          }
+        >
+          {confirmDelete && (
+            <p className="mb-4 text-[13px]" style={{ color: "var(--color-warn)" }}>
+              Se borra el movimiento y todas las métricas se recalculan. No se puede deshacer.
+            </p>
+          )}
+          <div className="card divide-hairline">
+            {(
+              [
+                ["Fecha", longDate(detail.date)],
+                ["Cuenta", accountOf(detail.accountId)],
+                detail.counterAccountId ? ["Hacia", accountOf(detail.counterAccountId)] : null,
+                assetOf(detail) ? ["Activo", `${assetOf(detail)!.symbol} — ${assetOf(detail)!.name}`] : null,
+                detail.quantity ? ["Cantidad", fmtQty(detail.quantity, 8)] : null,
+                detail.price ? ["Precio unitario", money(detail.price, detail.currency)] : null,
+                ["Monto", money(detail.amount, detail.currency)],
+                detail.fee ? ["Comisión", money(detail.fee, detail.currency)] : null,
+                detail.fxRate ? ["Dólar usado", `$ ${detail.fxRate}`] : null,
+                detail.note ? ["Nota", detail.note] : null,
+                detail.raw ? ["Lo escribiste así", `«${detail.raw}»`] : null,
+              ].filter(Boolean) as [string, string][]
+            ).map(([label, value]) => (
+              <div key={label} className="flex items-baseline gap-3 p-3">
+                <span className="eyebrow shrink-0" style={{ width: 96 }}>
+                  {label}
+                </span>
+                <span className="flex-1 text-right text-[13px]">{value}</span>
+              </div>
+            ))}
+          </div>
+          {(detail.type === "deposit" || detail.type === "withdraw") && (
+            <p className="label mt-3 leading-snug">
+              Esto cuenta como capital: entra en «capital aportado» y no como ganancia.
+            </p>
+          )}
+          {detail.type === "transfer" && (
+            <p className="label mt-3 leading-snug">
+              Una transferencia entre tus cuentas no suma capital nuevo: solo cambia dónde
+              está la plata.
+            </p>
+          )}
+          {detail.type === "buy" && assetOf(detail) && (
+            <p className="label mt-3 leading-snug">
+              {(() => {
+                const pos = portfolio.positions.find((x) => x.assetId === detail.assetId);
+                if (!pos || !detail.price) return "Compra registrada.";
+                const now = pos.price ?? detail.price;
+                const change = now / detail.price - 1;
+                return `Desde esta compra, ${pos.symbol} ${
+                  change >= 0 ? "subió" : "bajó"
+                } ${percent(Math.abs(change), { decimals: 1, sign: false })}.`;
+              })()}
+            </p>
+          )}
+        </Sheet>
+      )}
+
+      <AddTransaction open={Boolean(editing)} onClose={() => setEditing(null)} editing={editing} />
+    </div>
+  );
+}
