@@ -17,6 +17,7 @@ import { BENCHMARK_ASSET_ID, BENCHMARK_CHOICES, benchmarkReturns } from "@/lib/b
 import { getDb } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 import { EmptyStart } from "@/components/EmptyStart";
+import { MetricsExplainer } from "@/components/MetricsExplainer";
 
 const RANGES: { value: RangeKey; label: string }[] = [
   { value: "1M", label: "1M" },
@@ -33,6 +34,7 @@ export default function Overview() {
   const { portfolio: p, transactions, accounts, assets, settings, sync, ready } = useStore();
   const [range, setRange] = useState<RangeKey>("MAX");
   const [mode, setMode] = useState<ChartMode>("valor");
+  const [explaining, setExplaining] = useState(false);
   const db = getDb();
 
   const from = useMemo(
@@ -219,8 +221,14 @@ export default function Overview() {
         )}
       </section>
 
-      {/* Las cuatro metricas que contestan "como me fue" sin ambiguedad. */}
-      <section className="card mb-4 grid grid-cols-2" style={{ gap: 1, background: "var(--color-line)" }}>
+      {/* Las cuatro metricas que contestan "como me fue" sin ambiguedad.
+          Todo el bloque abre la explicacion: son numeros que solo sirven si
+          se entiende que mide cada uno. */}
+      <button
+        className="card mb-1 grid w-full grid-cols-2 text-left"
+        style={{ gap: 1, background: "var(--color-line)" }}
+        onClick={() => setExplaining(true)}
+      >
         <div style={{ background: "var(--color-surface)" }}>
           <Stat label="Capital aportado" value={money(p.netContributedUsd, "USD", { compact: true })} />
         </div>
@@ -253,7 +261,12 @@ export default function Overview() {
             hint="tu plata, anualizada"
           />
         </div>
-      </section>
+      </button>
+      <p className="label mb-5 text-right">
+        <button onClick={() => setExplaining(true)} className="underline">
+          ¿Cómo se calcula?
+        </button>
+      </p>
 
       <section className="mb-5">
         <SectionTitle>Dónde está la plata</SectionTitle>
@@ -333,6 +346,7 @@ export default function Overview() {
           </div>
         </section>
       )}
+      <MetricsExplainer portfolio={p} open={explaining} onClose={() => setExplaining(false)} />
     </div>
   );
 }

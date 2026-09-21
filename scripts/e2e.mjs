@@ -165,6 +165,17 @@ for (const [path, marker] of [
   check(`${path} renderiza`, await has(marker));
 }
 
+console.log("\n5b. Explicación de las métricas");
+await goto("/");
+await page.getByRole("button", { name: /¿Cómo se calcula\?/ }).click();
+await page.waitForTimeout(700);
+const explica = await text();
+check("explica el capital aportado", await has("no es capital nuevo"), explica.slice(0, 200));
+check("explica el rendimiento real", await has("neutralizando los aportes"));
+check("usa los números de la cartera", /\d+ días/.test(explica));
+await page.keyboard.press("Escape");
+await page.waitForTimeout(400);
+
 console.log("\n6. Filtros de movimientos");
 await goto("/movimientos");
 const totalCount = Number(normalize(await text()).match(/(\d+) movimientos/)?.[1] ?? 0);
