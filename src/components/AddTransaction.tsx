@@ -73,8 +73,10 @@ export function AddTransaction({
   onClose: () => void;
   editing?: Transaction | null;
 }) {
-  const { accounts, assets, transactions, saveTransaction, saveAsset, refresh, settings, apiHeaders } =
-    useStore();
+  const {
+    accounts, assets, transactions, portfolio,
+    saveTransaction, saveAsset, refresh, settings, apiHeaders,
+  } = useStore();
 
   // La cuenta predeterminada es la ultima que usaste: en la practica uno carga
   // varios movimientos seguidos del mismo lado.
@@ -152,6 +154,12 @@ export function AddTransaction({
     setCatalogHit(parsed.catalog ?? null);
     setConfidence(parsed.confidence);
     setAiNote(null);
+    // "vendí todo el SPY": completamos la cantidad con la tenencia real.
+    const holding = parsed.assetId
+      ? portfolio.positions.find((pos) => pos.assetId === parsed.assetId)
+      : undefined;
+    const allQuantity = parsed.all && holding ? holding.quantity : undefined;
+
     setDraft((prev) => ({
       ...prev,
       type: parsed.type,
@@ -160,14 +168,24 @@ export function AddTransaction({
       counterAccountId: parsed.counterAccountId ?? "",
       symbol: parsed.symbol ?? "",
       assetId: parsed.assetId ?? "",
-      quantityText: parsed.quantity !== undefined ? fmtQty(parsed.quantity, 8) : "",
-      priceText: parsed.price !== undefined ? String(parsed.price) : "",
+      quantityText:
+        allQuantity !== undefined
+          ? fmtQty(allQuantity, 8)
+          : parsed.quantity !== undefined
+            ? fmtQty(parsed.quantity, 8)
+            : "",
+      priceText:
+        parsed.price !== undefined
+          ? String(parsed.price)
+          : allQuantity !== undefined && holding?.price
+            ? String(holding.price)
+            : "",
       amountText: parsed.amount !== undefined ? String(parsed.amount) : "",
       currency: parsed.currency,
       feeText: parsed.fee !== undefined ? String(parsed.fee) : "",
-      basis: parsed.basis,
+      basis: allQuantity !== undefined ? "quantity" : parsed.basis,
     }));
-  }, [text, mode, open, accounts, assets, defaultAccount]);
+  }, [text, mode, open, accounts, assets, defaultAccount, portfolio.positions]);
 
   const needsAsset = draft.type === "buy" || draft.type === "sell" || draft.type === "dividend";
   const isTrade = draft.type === "buy" || draft.type === "sell";

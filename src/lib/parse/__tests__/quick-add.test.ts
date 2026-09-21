@@ -172,3 +172,62 @@ describe("parseQuickEntry", () => {
     expect(claro.confidence).toBeGreaterThan(0.8);
   });
 });
+
+describe("casos que aparecieron probando con frases reales", () => {
+  it("una marca de moneda al final no convierte las unidades en plata", () => {
+    // "2 qqq" son dos unidades, aunque despues diga "usd".
+    const r = p("compré 2 qqq a 480 usd");
+    expect(r.basis).toBe("quantity");
+    expect(r.quantity).toBe(2);
+    expect(r.amount).toBeCloseTo(960);
+  });
+
+  it("entiende las palabras que cuentan unidades", () => {
+    const acciones = p("compré 3 acciones de AAPL a 230");
+    expect(acciones.basis).toBe("quantity");
+    expect(acciones.quantity).toBe(3);
+    expect(acciones.amount).toBeCloseTo(690);
+
+    const cedears = p("compré 10 cedears de AAPL a 500");
+    expect(cedears.quantity).toBe(10);
+  });
+
+  it("el sustantivo también funciona como acción", () => {
+    expect(p("ingreso 250 en cocos").type).toBe("deposit");
+    expect(p("ingreso 250 en cocos").amount).toBe(250);
+    expect(p("retiro 1000 de cocos").type).toBe("withdraw");
+  });
+
+  it("avisa cuando monto y cantidad son genuinamente ambiguos", () => {
+    const r = p("compré 50 de QQQ");
+    expect(r.basis).toBe("amount");
+    expect(r.warnings.some((w) => w.includes("Por unidades"))).toBe(true);
+  });
+
+  it("no avisa cuando la frase dice la moneda", () => {
+    const r = p("compré 50 usd de QQQ");
+    expect(r.warnings.some((w) => w.includes("Por unidades"))).toBe(false);
+  });
+
+  it("marca «vender todo» para que la app complete la tenencia", () => {
+    const r = p("vendí todo el QQQ");
+    expect(r.type).toBe("sell");
+    expect(r.symbol).toBe("QQQ");
+    expect(r.all).toBe(true);
+    // Sin monto, pero no es un error: la cantidad la pone la app.
+    expect(r.warnings.some((w) => w.includes("monto"))).toBe(false);
+  });
+
+  it("una venta normal no queda marcada como total", () => {
+    expect(p("vendí 2 QQQ a 520").all).toBeUndefined();
+  });
+
+  it("frases sueltas del día a día", () => {
+    expect(p("le puse 300 a cocos").type).toBe("deposit");
+    expect(p("saqué 100 de binance").type).toBe("withdraw");
+    expect(p("cobré 15 de dividendos de QQQ").type).toBe("dividend");
+    expect(p("rendimiento 2,5 en cocos").amount).toBeCloseTo(2.5);
+    expect(p("comisión 0,75 en binance").type).toBe("fee");
+    expect(p("metí 500 en binance ayer").day).toBe("2025-06-14");
+  });
+});

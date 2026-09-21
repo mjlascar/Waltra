@@ -73,6 +73,20 @@ await page.waitForTimeout(2500);
 await goto("/movimientos");
 check("el movimiento aparece en la lista", await has("SOL"));
 
+console.log("\n2b. «Vendí todo» completa la tenencia real");
+await goto("/");
+await page.getByRole("button", { name: /agregar movimiento/i }).click();
+await page.waitForTimeout(500);
+await page.locator('input[placeholder*="QQQ"]').first().fill("vendí todo el QQQ");
+await page.waitForTimeout(900);
+const vendeTodo = await text();
+check("lee la venta total", await has("Venta"), vendeTodo.slice(0, 160));
+// La cartera de ejemplo tiene 2,95 unidades de QQQ.
+check("completa la cantidad desde la posición", /2,95|2\.95/.test(vendeTodo), vendeTodo.slice(0, 200));
+check("no reclama un monto que puede deducir", !(await has("No encontré ningún monto")));
+await page.getByRole("button", { name: /Cancelar/ }).click();
+await page.waitForTimeout(500);
+
 console.log("\n3. La posición nueva llega a la cartera");
 await goto("/cartera");
 check("la posición figura en la cartera", await has("SOL"));

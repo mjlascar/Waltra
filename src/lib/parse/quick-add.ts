@@ -14,6 +14,8 @@ export interface ParseContext {
 
 export interface ParsedEntry {
   type: TxType;
+  /** "vendí todo el SPY": la cantidad sale de la posición actual. */
+  all?: boolean;
   day: DayKey;
   accountId?: string;
   counterAccountId?: string;
@@ -54,7 +56,7 @@ const VERBS: { re: RegExp; type: TxType }[] = [
   { re: /\b(comisi[oó]n|comisiones|fee|arancel|impuesto|gasto)\b/, type: "fee" },
   { re: /\b(retir[eé]|retire|retiro|saqu[eé]|saque|extraj[eé]|extraje|sali[oó])\b/, type: "withdraw" },
   {
-    re: /\b(depos[ieé]t[eé]?|deposit[eoé]|deposito|dep[oó]sito|pas[eé]|pase|transfer[ií]|transferi|carg[uú][eé]|cargue|ingres[eé]|ingrese|met[ií]|meti|pus[eé]|puse|mand[eé]|mande|envi[eé]|envie|sum[eé]|sume|agregu[eé]|agregue)\b/,
+    re: /\b(depos[ieé]t[eé]?|deposit[eoé]|deposito|dep[oó]sito|pas[eé]|pase|transfer[ií]|transferi|carg[uú][eé]|cargue|ingres[eé]|ingrese|ingresos?|met[ií]|meti|pus[eé]|puse|mand[eé]|mande|envi[eé]|envie|sum[eé]|sume|agregu[eé]|agregue)\b/,
     type: "deposit",
   },
 ];
@@ -248,6 +250,8 @@ export function parseQuickEntry(raw: string, ctx: ParseContext): ParsedEntry | n
 
   // --- Activo --------------------------------------------------------------
   const needsAsset = type === "buy" || type === "sell" || type === "dividend";
+  // "vendí todo el SPY": la cantidad la completa la app con la tenencia real.
+  const sellAll = type === "sell" && /\b(todo|toda|todos|todas)\b/.test(work);
   const symbolHit = findSymbol(work, input, ctx.assets);
   if (symbolHit) {
     work = cut(work, symbolHit.match);
@@ -278,8 +282,10 @@ export function parseQuickEntry(raw: string, ctx: ParseContext): ParsedEntry | n
     }
   }
   if (main === undefined) {
-    warnings.push("No encontré ningún monto.");
-    confidence -= 0.2;
+    if (!sellAll) {
+      warnings.push("No encontré ningún monto.");
+      confidence -= 0.2;
+    }
   } else {
     confidence += 0.15;
   }
@@ -296,18 +302,30 @@ export function parseQuickEntry(raw: string, ctx: ParseContext): ParsedEntry | n
     const norm = ` ${strip(input)} `;
     const num = esc(numbers[0]?.text ?? "");
     const sym = symbolHit ? esc(symbolHit.match) : null;
-    // "2 QQQ" / "2 unidades de QQQ" -> unidades.
+    // Palabras que cuentan unidades, no plata: "3 acciones de apple".
+    const UNIDADES = "(?:unidades?|acciones?|papeles?|cedears?|nominales?|monedas?|t[ií]tulos?)";
+    // "2 QQQ" / "3 acciones de apple" -> unidades.
     const directQuantity =
-      sym !== null && new RegExp(`${num}\\s+(?:unidades?\\s+(?:de\\s+)?)?${sym}`).test(norm);
+      sym !== null &&
+      new RegExp(`${num}\\s+(?:${UNIDADES}\\s+(?:de\\s+)?)?${sym}`).test(norm);
     // "50 de QQQ" / "50 usd de QQQ" -> plata.
     const amountOf =
       sym !== null && new RegExp(`${num}\\s+[a-z$]*\\s*de\\s+${sym}`).test(norm);
     const saidMoney = Boolean(usdHit || arsHit) || /\$/.test(input);
 
-    if (saidMoney) basis = "amount";
-    else if (directQuantity) basis = "quantity";
+    // El orden importa: en "compré 2 QQQ a 480 usd" hay una marca de moneda,
+    // pero el 2 sigue siendo cantidad. Que el numero toque al simbolo pesa
+    // mas que una mencion de moneda en cualquier otro lugar de la frase.
+    if (directQuantity) basis = "quantity";
+    else if (saidMoney) basis = "amount";
     else if (amountOf) basis = main < 1 ? "quantity" : "amount";
     else basis = main < 1 ? "quantity" : "amount";
+
+    // "50 de QQQ" sin moneda ni precio es genuinamente ambiguo: avisamos en
+    // vez de decidir en silencio.
+    if (basis === "amount" && amountOf && !saidMoney && price === undefined) {
+      warnings.push("Lo leí como plata. Si eran unidades, cambiá a «Por unidades».");
+    }
 
     if (basis === "quantity") {
       quantity = main;
@@ -326,6 +344,7 @@ export function parseQuickEntry(raw: string, ctx: ParseContext): ParsedEntry | n
 
   return {
     type,
+    all: sellAll || undefined,
     day,
     accountId,
     counterAccountId,
