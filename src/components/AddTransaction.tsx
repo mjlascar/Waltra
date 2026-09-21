@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Sheet } from "@/components/ui/Sheet";
 import { Field, Segmented } from "@/components/ui/Field";
 import { IconWarning } from "@/components/icons";
@@ -11,7 +11,7 @@ import { lookupCatalog, searchCatalog, type CatalogEntry } from "@/lib/catalog";
 import { assetFromSymbol, findAssetBySymbol, lastUsedAccountId } from "@/lib/assets";
 import { longDate, money, quantity as fmtQty, TX_LABEL } from "@/lib/format";
 import { today } from "@/lib/date";
-import type { Asset, Currency, Transaction, TxType } from "@/lib/types";
+import type { Currency, Transaction, TxType } from "@/lib/types";
 
 const TYPES: { value: TxType; label: string }[] = [
   { value: "deposit", label: "Ingreso" },
@@ -94,12 +94,21 @@ export function AddTransaction({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [confidence, setConfidence] = useState(1);
+  // Las posiciones se leen por referencia para que su recalculo no dispare el
+  // efecto que interpreta la frase.
+  const positionsRef = useRef(portfolio.positions);
+  useEffect(() => {
+    positionsRef.current = portfolio.positions;
+  }, [portfolio.positions]);
   const [asking, setAsking] = useState(false);
   const [aiNote, setAiNote] = useState<string | null>(null);
 
   // Al abrir: o cargamos el movimiento que se esta editando, o empezamos limpio.
   useEffect(() => {
     if (!open) return;
+    // Abrir la hoja resetea el formulario: es sincronizacion con una entrada
+    // que cambia, no una derivacion que pueda calcularse en el render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setError(null);
     setWarnings([]);
     if (editing) {
@@ -133,9 +142,15 @@ export function AddTransaction({
   }, [open, editing, assets, defaultAccount, defaultCurrency]);
 
   // En modo rapido, cada tecla vuelve a interpretar la frase completa.
+  //
+  // El estado se escribe desde el efecto a proposito: no es una derivacion
+  // pura, es un "resetear el formulario cuando cambia la frase". Despues de
+  // cada lectura el usuario puede editar cualquier campo a mano, asi que el
+  // borrador tiene que vivir en estado y no calcularse en cada render.
   useEffect(() => {
     if (mode !== "quick" || !open) return;
     if (!text.trim()) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setWarnings([]);
       setCatalogHit(null);
       return;
@@ -152,7 +167,7 @@ export function AddTransaction({
     setAiNote(null);
     // "vendí todo el SPY": completamos la cantidad con la tenencia real.
     const holding = parsed.assetId
-      ? portfolio.positions.find((pos) => pos.assetId === parsed.assetId)
+      ? positionsRef.current.find((pos) => pos.assetId === parsed.assetId)
       : undefined;
     const allQuantity = parsed.all && holding ? holding.quantity : undefined;
 
@@ -181,7 +196,10 @@ export function AddTransaction({
       feeText: parsed.fee !== undefined ? String(parsed.fee) : "",
       basis: allQuantity !== undefined ? "quantity" : parsed.basis,
     }));
-  }, [text, mode, open, accounts, assets, defaultAccount, portfolio.positions]);
+    // Sin `portfolio` en las dependencias a proposito: un refresco de precios
+    // no tiene que volver a parsear la frase y pisar lo que el usuario acaba
+    // de retocar a mano.
+  }, [text, mode, open, accounts, assets, defaultAccount]);
 
   const needsAsset = draft.type === "buy" || draft.type === "sell" || draft.type === "dividend";
   const isTrade = draft.type === "buy" || draft.type === "sell";

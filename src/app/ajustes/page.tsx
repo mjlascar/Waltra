@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { Header } from "@/components/ui/Header";
 import { SectionTitle } from "@/components/ui/Stat";
@@ -30,6 +31,7 @@ export default function Ajustes() {
     db, refresh, apiHeaders, portfolio,
   } = useStore();
 
+  const router = useRouter();
   const [account, setAccount] = useState<Account | null>(null);
   const [asset, setAsset] = useState<Asset | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
@@ -303,7 +305,7 @@ export default function Ajustes() {
                   await wipeAll(db);
                   setWipeText("");
                   setWiping(false);
-                  window.location.href = "/";
+                  router.replace("/");
                 }}
               >
                 <IconTrash size={16} />

@@ -1,6 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+
+const DISPLAY_MODE = "(display-mode: standalone)";
+
+function subscribeDisplayMode(onChange: () => void): () => void {
+  const query = window.matchMedia(DISPLAY_MODE);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+function isStandalone(): boolean {
+  return window.matchMedia(DISPLAY_MODE).matches;
+}
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -17,7 +29,9 @@ interface BeforeInstallPromptEvent extends Event {
 export function InstallPrompt() {
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
-  const [standalone, setStandalone] = useState(false);
+  // El modo de visualizacion es estado del navegador, no de React: se lee con
+  // la API pensada para suscribirse a fuentes externas.
+  const standalone = useSyncExternalStore(subscribeDisplayMode, isStandalone, () => false);
 
   useEffect(() => {
     const onPrompt = (event: Event) => {
@@ -30,7 +44,6 @@ export function InstallPrompt() {
     };
     window.addEventListener("beforeinstallprompt", onPrompt);
     window.addEventListener("appinstalled", onInstalled);
-    setStandalone(window.matchMedia("(display-mode: standalone)").matches);
     return () => {
       window.removeEventListener("beforeinstallprompt", onPrompt);
       window.removeEventListener("appinstalled", onInstalled);

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect } from "react";
 
 /**
@@ -35,12 +36,12 @@ export default function Error({
         <button className="btn btn-primary w-full" onClick={reset}>
           Reintentar
         </button>
-        <a className="btn w-full" href="/">
+        <Link className="btn w-full" href="/">
           Volver al resumen
-        </a>
-        <a className="btn btn-ghost w-full" href="/ajustes">
+        </Link>
+        <Link className="btn btn-ghost w-full" href="/ajustes">
           Ir a Ajustes y exportar un backup
-        </a>
+        </Link>
       </div>
     </div>
   );

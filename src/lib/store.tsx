@@ -86,7 +86,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
   }, [db]);
 
-  /* eslint-disable react-hooks/exhaustive-deps */
   const accounts = useTable<Account>((d) => d.accounts.toArray());
   const assets = useTable<Asset>((d) => d.assets.toArray());
   const transactions = useTable<Transaction>((d) => d.transactions.toArray());
@@ -97,7 +96,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     d.insights.orderBy("createdAt").reverse().toArray(),
   );
   const settingsRow = useLiveQuery(async () => (db ? db.settings.get("settings") : undefined), [db]);
-  /* eslint-enable react-hooks/exhaustive-deps */
 
   const settings = useMemo<Settings>(
     () => ({ ...DEFAULT_SETTINGS, ...(settingsRow ?? {}) }),
@@ -225,13 +223,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // activos igual necesita el dolar para ver su total.
     if (assets.length === 0 && transactions.length === 0) return;
     bootRef.current = true;
+    // Arrancar la busqueda al montar es justamente para lo que sirve un
+    // efecto; que `refresh` marque "sincronizando" al empezar es parte de eso.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
   }, [ready, db, assets.length, transactions.length, refresh]);
+
+  // El temporizador guarda la funcion en una referencia en vez de depender de
+  // ella: `refresh` cambia de identidad cada vez que se tocan los ajustes, y
+  // si el intervalo se recreara con cada cambio, alguien que edita su perfil
+  // cada nueve minutos nunca veria un refresco automatico.
+  const refreshRef = useRef(refresh);
+  useEffect(() => {
+    refreshRef.current = refresh;
+  }, [refresh]);
 
   useEffect(() => {
     if (!ready) return;
     const tick = () => {
-      if (document.visibilityState === "visible") void refresh();
+      if (document.visibilityState === "visible") void refreshRef.current();
     };
     const timer = setInterval(tick, 10 * 60 * 1000);
     document.addEventListener("visibilitychange", tick);
@@ -239,7 +249,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", tick);
     };
-  }, [ready, refresh]);
+  }, [ready]);
 
   const value = useMemo<StoreValue>(
     () => ({
