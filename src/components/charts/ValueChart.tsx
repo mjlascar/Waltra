@@ -56,6 +56,31 @@ export function ValueChart({ data, height = 210 }: { data: ValuePoint[]; height?
     setHover(Math.max(0, Math.min(data.length - 1, index)));
   }
 
+  // El div que mide el ancho es siempre el mismo nodo: si el componente
+  // devolviera otro cuando no hay curva, el observador quedaria mirando un
+  // nodo desmontado y el grafico nunca sabria cuanto mide al llegar los datos.
+  if (!model) {
+    return (
+      <div ref={ref} className="w-full">
+        <div
+          className="flex flex-col items-center justify-center gap-1 px-6 text-center"
+          style={{ height: 120 }}
+        >
+          <span className="label">
+            {data.length === 1
+              ? "Con un solo día cargado todavía no hay curva."
+              : "Sin datos en este período."}
+          </span>
+          {data.length === 1 && (
+            <span className="label" style={{ color: "var(--color-ink-3)" }}>
+              Mañana ya vas a ver la línea.
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div ref={ref} className="w-full select-none">
       {/* Leyenda: con dos series siempre esta presente, nunca color solo. */}
@@ -82,7 +107,7 @@ export function ValueChart({ data, height = 210 }: { data: ValuePoint[]; height?
         )}
       </div>
 
-      {model ? (
+      {(
         <svg
           width={width}
           height={height}
@@ -199,22 +224,6 @@ export function ValueChart({ data, height = 210 }: { data: ValuePoint[]; height?
             ),
           )}
         </svg>
-      ) : (
-        <div
-          style={{ height }}
-          className="flex flex-col items-center justify-center gap-1 px-6 text-center"
-        >
-          <span className="label">
-            {data.length === 1
-              ? "Con un solo día cargado todavía no hay curva."
-              : "Sin datos en este período."}
-          </span>
-          {data.length === 1 && (
-            <span className="label" style={{ color: "var(--color-ink-3)" }}>
-              Mañana ya vas a ver la línea.
-            </span>
-          )}
-        </div>
       )}
 
       {hover !== null && data[hover] && (

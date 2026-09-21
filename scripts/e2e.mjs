@@ -332,6 +332,26 @@ check(
   erroresPrimerDia.length === 0,
   erroresPrimerDia.slice(0, 2).join(" | "),
 );
+
+// Al aparecer el segundo dia el grafico tiene que dibujarse de verdad: el
+// componente pasa de su estado vacio al SVG, y con el cambia el nodo que
+// mide el ancho.
+await virgen.getByRole("button", { name: /agregar movimiento/i }).click();
+await virgen.waitForTimeout(500);
+await virgen.locator('input[placeholder*="QQQ"]').first().fill("pasé 200 dólares a cocos hace 5 días");
+await virgen.waitForTimeout(800);
+await virgen.getByRole("button", { name: /^Agregar$/ }).click();
+await virgen.waitForTimeout(3000);
+
+const conDosDias = (await virgen.evaluate(() => document.body.innerText)).replace(/\u00a0/g, " ");
+check("ya no dice que falta historia", !/todavía no hay curva/i.test(conDosDias), conDosDias.slice(0, 200));
+const trazos = await virgen.locator("svg path").count();
+check("el gráfico se dibuja al haber dos días", trazos > 0, `${trazos} trazos`);
+check(
+  "sigue sin errores de consola",
+  erroresPrimerDia.length === 0,
+  erroresPrimerDia.slice(0, 2).join(" | "),
+);
 await fresh.close();
 
 await browser.close();
