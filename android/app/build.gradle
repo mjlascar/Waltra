@@ -16,6 +16,11 @@ apply plugin: 'com.android.application'
 def keystorePath = System.getenv("WALTRA_KEYSTORE_FILE")
 def hasKeystore = keystorePath != null && !keystorePath.isEmpty() && file(keystorePath).exists()
 
+// Sin parentesis y sin `as`: en Groovy `versionCode (x) as Integer` se parsea
+// como `versionCode(x).asType(Integer)`, que no es lo que uno escribio.
+def envVersionCode = System.getenv("WALTRA_VERSION_CODE")
+def envVersionName = System.getenv("WALTRA_VERSION_NAME")
+
 android {
     namespace = "app.waltra"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -25,8 +30,8 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // El numero de version tiene que crecer para que Android acepte la
         // actualizacion. En CI lo provee el numero de corrida.
-        versionCode (System.getenv("WALTRA_VERSION_CODE") ?: "1") as Integer
-        versionName System.getenv("WALTRA_VERSION_NAME") ?: "1.0"
+        versionCode envVersionCode ? Integer.parseInt(envVersionCode) : 1
+        versionName envVersionName ? envVersionName : "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
