@@ -94,6 +94,10 @@ describe("formato sin Intl", () => {
     expect(runner.dinero(12.5)).toBe("US$ 12,50");
   });
 
+  it("el signo va antes del simbolo, como en el resto de la app", () => {
+    expect(runner.dinero(-1500)).toBe("-US$ 1.500");
+  });
+
   it("los porcentajes llevan signo siempre", () => {
     expect(runner.porcentaje(5.24)).toBe("+5,2%");
     expect(runner.porcentaje(-3)).toBe("-3,0%");

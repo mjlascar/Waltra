@@ -283,7 +283,7 @@ signo, etiqueta o ícono al lado.
 npm run check   # tipos + lint + tests + escaneo de credenciales
 ```
 
-- **192 tests** del motor de cálculo, el parser, la base local, el formato, los
+- **193 tests** del motor de cálculo, el parser, la base local, el formato, los
   proveedores de precios, la ruta de insights y el vigía de precios. Los
   proveedores y el SDK corren simulados: son servicios externos que no se
   pueden alcanzar desde CI, y son justamente los que más conviene tener

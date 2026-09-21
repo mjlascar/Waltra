@@ -72,10 +72,14 @@ function numero(value, decimals) {
   return (neg ? "-" : "") + out;
 }
 
+/**
+ * Mismo formato que `money()` en src/lib/format.ts, incluido que el signo va
+ * antes del simbolo: "-US$ 1.000" y no "US$ -1.000". Es la misma app hablando.
+ */
 function dinero(value) {
   var abs = Math.abs(value);
   var decimals = abs >= 1000 ? 0 : 2;
-  return "US$ " + numero(value, decimals);
+  return (value < 0 ? "-" : "") + "US$ " + numero(abs, decimals);
 }
 
 function porcentaje(value) {
