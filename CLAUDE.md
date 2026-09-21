@@ -2,6 +2,7 @@
 
 App de seguimiento de inversiones (Cocos Capital + Binance) para un solo
 usuario, en su teléfono. Next.js 16, React 19, TypeScript, Tailwind v4.
+Se empaqueta como APK con Capacitor; la versión web sigue andando igual.
 
 ## Cómo verificar un cambio
 
@@ -18,6 +19,10 @@ cualquier error en la consola del navegador.
 que la app abra y acepte movimientos sin conexión). Necesita un build de
 producción: el service worker no se registra en desarrollo.
 
+`npm run native` recorre el build del APK sin necesitar un teléfono: sirve la
+exportación estática como archivos sueltos, igual que el WebView, y verifica
+que la app arranca sin servidor. Antes hay que correr `npm run build:native`.
+
 ```bash
 npm run build && WALTRA_MOCK=1 npm start          # en una terminal
 BASE_URL=http://127.0.0.1:3000 npm run pwa        # en otra
@@ -26,6 +31,29 @@ BASE_URL=http://127.0.0.1:3000 npm run pwa        # en otra
 `npm run shoot` saca capturas de todas las vistas a `screenshots/`;
 `node scripts/states.mjs` captura estados puntuales (hojas abiertas,
 importación, comparación contra el índice).
+
+## Los dos modos
+
+La app corre en dos envoltorios y el código es el mismo. `src/lib/platform.ts`
+decide cuál, **en tiempo de compilación** (`NEXT_PUBLIC_WALTRA_NATIVE`), no en
+tiempo de ejecución: así el empaquetador borra el camino que no corresponde y
+no hay ventana en la que el primer refresco salga por el transporte equivocado.
+
+| | Web / desarrollo | APK |
+|---|---|---|
+| Mercado e insights | las rutas `/api` | el mismo código, en el teléfono |
+| HTTP a proveedores | `fetch` desde el servidor | `CapacitorHttp`, que no tiene CORS |
+| Clave de Anthropic | del entorno del servidor | la carga el usuario en Ajustes |
+| Notificaciones | no hay | el vigía de `public/runners/` |
+
+Las pantallas hablan con `src/lib/backend/` y no saben cuál de los dos es. Si
+agregás una llamada nueva, va ahí: `fetch("/api/...")` directo desde un
+componente rompe el APK y no lo vas a notar hasta compilarlo.
+
+`WALTRA_NATIVE=1` saca las rutas `/api` del build quitando `ts` de
+`pageExtensions`. Es la única forma limpia de excluirlas sin mover archivos, y
+funciona porque todas las pantallas son `.tsx`. Si algún día hace falta un
+`.ts` adentro de `src/app`, esto se rompe.
 
 ## Decisiones que no conviene deshacer sin pensarlo
 
@@ -52,9 +80,11 @@ retorno del día en que entró el aporte.
 
 **Nada sensible sale del teléfono.** Los movimientos viven en IndexedDB. Al
 modelo solo viajan tickers, pesos y números (ver `src/lib/insights/digest.ts`,
-que tiene un test que lo fija). La clave de Anthropic se lee solo en el
-servidor. El repositorio es público: `scripts/check-secrets.sh` corre en cada
-verificación y en CI.
+que tiene un test que lo fija). En la web la clave de Anthropic se lee solo en
+el servidor; en el APK la carga el usuario, no se vuelve a mostrar y queda
+fuera del backup, que es un archivo que termina en Drive o en un mail. El
+backup automático de Android está apagado por lo mismo. El repositorio es
+público: `scripts/check-secrets.sh` corre en cada verificación y en CI.
 
 ## Diseño
 
@@ -81,7 +111,10 @@ recorte del color de la superficie: al revés, la línea las cruza.
 | `src/lib/parse/` | Frases sueltas en castellano rioplatense (`quick-add.ts`) y pegado de varias líneas (`bulk.ts`). |
 | `src/lib/market/` | Proveedores de precios. Cada uno aislado: si uno se cae, devuelve el error en el resultado, nunca lanza. `mock.ts` solo se activa con `WALTRA_MOCK=1`. |
 | `src/lib/store.tsx` | Estado de la app, consultas en vivo a IndexedDB y sincronización de mercado. |
-| `src/app/api/` | `market` (precios y dólar), `health` (diagnóstico), `insights` (Claude con búsqueda web), `parse` (respaldo del parser). |
+| `src/app/api/` | Envoltorio fino sobre lo de arriba, para el modo web. La lógica no vive acá. |
+| `src/lib/backend/` | Elige entre las rutas `/api` y correr todo en el teléfono. Es con quien hablan las pantallas. |
+| `src/lib/alerts/` | El plan que lee el vigía de precios, y el puente a las preferencias de Android. |
+| `public/runners/alerts.js` | El vigía. JavaScript plano, sin módulos: corre fuera del WebView. |
 
 ## Al tocar el parser
 
@@ -106,3 +139,28 @@ Para revisar cómo se ve un informe sin gastar créditos:
 
 Interfaz y mensajes al usuario en castellano rioplatense, con acentos.
 Comentarios y commits en castellano. Identificadores en inglés.
+
+## Al tocar las alertas
+
+El vigía (`public/runners/alerts.js`) no es la app: corre en un motor chico de
+Android, sin módulos, sin `Intl` y con un `fetch` que solo acepta `method`,
+`headers` y `body`. No lo importes ni lo compiles; está escrito a mano a
+propósito. Se prueba cargándolo en un contexto con las globales simuladas
+(`src/lib/alerts/__tests__/runner.test.ts`), que es el archivo exacto que viaja
+en el APK y no una copia en TypeScript.
+
+El plan viaja por las preferencias compartidas de Android, y la app y el vigía
+solo se ven si **`KV_GROUP` en `src/lib/alerts/mirror.ts` es igual al `label`
+del runner en `capacitor.config.ts`**. Si se separan, las alertas dejan de
+salir sin un solo error en ningún lado.
+
+Android decide cuándo corre: el intervalo que se pide es un pedido, no una
+promesa, y nunca baja de 15 minutos. La pantalla lo dice así en vez de prometer
+puntualidad.
+
+## Al tocar los plugins de Capacitor
+
+Son proxies que convierten cualquier acceso a una propiedad en una llamada al
+puente nativo, `.then` incluido. Devolver uno desde una función `async` hace
+que el motor lo tome por una promesa y explote con
+`"Preferences.then() is not implemented"`. Va envuelto en un objeto común.

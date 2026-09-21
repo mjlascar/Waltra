@@ -60,6 +60,13 @@ cartel amarillo. Con precios reales ese aviso no aparece.</sub>
   y restauración a un archivo JSON que es tuyo.
 - **Instalable y offline.** Es una PWA: se agrega a la pantalla de inicio y abre
   sin conexión (lo único que no anda sin internet es traer precios nuevos).
+- **Y también es un APK.** Empaquetada con Capacitor, sin cuentas ni servidor:
+  la instalás y anda. En esa versión la clave de Anthropic la cargás vos desde
+  Ajustes y no sale del teléfono.
+- **Alertas de precio** (solo en el APK). Waltra mira los precios con la
+  pantalla apagada y te avisa cuando algo se mueve más de lo que pediste:
+  umbral general, excepciones por activo, umbral de la cartera entera, resumen
+  diario a la hora que elijas y una franja de no molestar.
 
 ## Arrancar
 
@@ -73,8 +80,36 @@ ver cómo se comporta con historia real antes de meter los tuyos.
 
 ### Desde el celular
 
-La app vive en tu teléfono, pero necesita estar servida desde algún lado. Dos
-caminos, según cuánto te importe tenerla siempre a mano.
+Tres caminos. El primero es el que probablemente quieras.
+
+**a) El APK.** Es una app de verdad: se instala y listo, sin servidor, sin
+cuenta y sin que nadie tenga que dejar la compu prendida. Es además la única
+versión con alertas de precio.
+
+Lo compila GitHub Actions en cada push, porque hace falta el SDK de Android:
+
+1. Andá a la pestaña **Actions** del repo, entrá al último workflow verde y
+   bajá el artefacto **waltra-apk**.
+2. Descomprimilo y pasá el `app-debug.apk` al teléfono.
+3. Instalalo. Android va a pedirte permitir instalar desde esa app (el
+   navegador o el explorador de archivos); es el paso normal para algo que no
+   viene de Play.
+4. Abrila, y si querés insights andá a *Ajustes → Tu clave de Anthropic*.
+
+Para compilarlo en tu propia máquina hace falta el SDK de Android y JDK 21:
+
+```bash
+npm run apk    # deja android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Va firmado con la clave de depuración, que es la que trae el SDK. Alcanza para
+instalarlo a mano entre conocidos. Para una clave propia (necesaria si algún
+día lo publicás), generás un keystore con `keytool`, lo cargás como secreto del
+repositorio y cambiás `assembleDebug` por `assembleRelease` con su
+`signingConfig`.
+
+**b) Solo en tu red, sin desplegar nada.** Levantás el server en tu compu y
+entrás desde el celular:
 
 **a) Solo en tu red, sin desplegar nada.** Levantás el server en tu compu y
 entrás desde el celular:
@@ -87,7 +122,7 @@ Entrá desde el teléfono a `http://<ip-de-tu-compu>:3000` y agregala a la
 pantalla de inicio. Anda offline una vez instalada, pero para refrescar
 precios la compu tiene que estar prendida.
 
-**b) Desplegada, para tenerla siempre.** Es una app Next.js común, así que
+**c) Desplegada, para tenerla siempre.** Es una app Next.js común, así que
 anda tal cual en Vercel, Railway, Fly o un VPS con Node:
 
 1. Subí el repo a GitHub (ya está) e importalo en Vercel.
@@ -98,8 +133,8 @@ anda tal cual en Vercel, Railway, Fly o un VPS con Node:
    frase. Queda guardada en el teléfono.
 4. *Agregar a la pantalla principal* y listo.
 
-Tus movimientos **no** viajan al servidor en ninguno de los dos casos: viven
-en el navegador del teléfono. El servidor solo busca precios y, si se lo
+Tus movimientos **no** viajan al servidor en ninguno de los tres casos: viven
+en el teléfono. El servidor solo busca precios y, si se lo
 pedís, genera los insights.
 
 > Si desplegás, hacé backup desde Ajustes igual: los datos siguen atados a
@@ -121,6 +156,12 @@ Copiá `.env.example` a `.env.local`. Todo es opcional.
 | `WALTRA_MODEL` | Modelo por defecto del servidor. Si no la definís, es `claude-opus-5`. Desde Ajustes podés elegir entre Opus 5, Sonnet 5 y Haiku 4.5 sin redesplegar; cualquier otro valor que llegue del navegador se ignora. |
 | `WALTRA_ACCESS_KEY` | Si publicás la app en internet, exige esta clave en las rutas `/api`. La cargás una vez en Ajustes y queda en el teléfono. |
 | `WALTRA_MOCK` | `1` usa precios simulados para probar la interfaz. La app lo avisa en pantalla con un cartel. |
+
+En el APK no hay servidor, así que ninguna de estas variables aplica: la clave
+de Anthropic la cargás desde *Ajustes* y se guarda en el almacenamiento privado
+de la app, que Android no deja leer a otras apps. No se vuelve a mostrar, no
+entra en el backup y el backup automático de Android está apagado por lo mismo.
+Cada uno usa su propia clave y paga lo suyo.
 
 > Este repositorio es público: `.env` y `.env.local` están en `.gitignore` y
 > ninguna clave se commitea. `.env.example` va siempre con los valores vacíos.
@@ -168,17 +209,36 @@ pantalla. Preferimos subestimar antes que inventar.
 ```
 src/
   app/                 Páginas (Resumen, Cartera, Movimientos, Insights, Ajustes)
-    api/               market · health · insights · parse
+    api/               market · health · insights · parse (solo modo web)
   components/
     charts/            Gráficos SVG propios, sin librería
     ui/                Primitivas: hoja inferior, campos, métricas
   lib/
+    backend/           Elige entre las rutas /api y correr todo en el teléfono
     engine/            Ledger, valuación diaria, TWR, XIRR, riesgo
     market/            Proveedores de precios + simulador
     parse/             Parser de frases en castellano rioplatense
+    alerts/            Plan de alertas y puente a las preferencias de Android
     db.ts              IndexedDB (Dexie), backup e importación
     store.tsx          Estado de la app y sincronización
+public/
+  runners/alerts.js    El vigía de precios: corre fuera del WebView
+android/               Proyecto Capacitor (el APK)
 ```
+
+### Los dos modos
+
+El mismo código corre en dos envoltorios. La decisión se toma **al compilar**,
+no al ejecutar, así el empaquetador borra el camino que no corresponde:
+
+| | Web | APK |
+|---|---|---|
+| Mercado e insights | las rutas `/api` | el mismo código, en el teléfono |
+| HTTP a los proveedores | desde el servidor | puente nativo, que no tiene CORS |
+| Clave de Anthropic | del entorno del servidor | la carga el usuario |
+| Alertas de precio | no hay | sí |
+
+Las pantallas hablan con `src/lib/backend/` y no saben cuál de los dos es.
 
 ## Diseño
 
@@ -198,10 +258,13 @@ signo, etiqueta o ícono al lado.
 npm run check   # tipos + lint + tests + escaneo de credenciales
 ```
 
-- **151 tests** del motor de cálculo, el parser, la base local, el formato, los
-  proveedores de precios y la ruta de insights. Los dos últimos corren con el
-  `fetch` y el SDK simulados: son servicios externos que no se pueden alcanzar
-  desde CI, y son justamente los que más conviene tener fijados.
+- **192 tests** del motor de cálculo, el parser, la base local, el formato, los
+  proveedores de precios, la ruta de insights y el vigía de precios. Los
+  proveedores y el SDK corren simulados: son servicios externos que no se
+  pueden alcanzar desde CI, y son justamente los que más conviene tener
+  fijados. El vigía se prueba cargando **el archivo exacto que viaja en el
+  APK** en un contexto con las funciones globales de Android simuladas, no una
+  copia en TypeScript que podría irse separando.
 - **`npm run e2e`**: 60 comprobaciones sobre un navegador real, en un viewport
   de 360×760 (Galaxy S10e), con la app levantada. Carga movimientos
   escribiendo, edita, borra, filtra, arrastra la cruceta del gráfico, importa
@@ -209,12 +272,19 @@ npm run check   # tipos + lint + tests + escaneo de credenciales
   cualquier error en la consola del navegador.
 - **`npm run pwa`**: contra un build de producción, verifica manifest, íconos,
   service worker y que la app abra y acepte movimientos **con la red cortada**.
+- **`npm run native`**: sirve la exportación estática que va adentro del APK
+  como archivos sueltos, igual que el WebView, y la recorre en el navegador.
+  No prueba los plugins nativos (para eso hace falta un Android de verdad),
+  pero sí que la app arranca sin servidor, que las pantallas del modo teléfono
+  están y que no queda ninguna llamada a `/api`.
 
-Todo corre en CI en cada push.
+Todo corre en CI en cada push, incluida la compilación del APK.
 
 ```bash
 npm run dev              # desarrollo
-npm run build            # build de producción
+npm run build            # build de producción (web)
+npm run build:native     # exportación estática + copia al proyecto Android
+npm run apk              # lo anterior + compila el APK (necesita el SDK)
 npm run shoot            # capturas de todas las vistas
 npm run docs:shots       # regenera las imágenes del README
 node scripts/icons.mjs   # regenera los íconos de la PWA
@@ -222,8 +292,10 @@ node scripts/icons.mjs   # regenera los íconos de la PWA
 
 ## Límites conocidos
 
-- Los datos viven en este navegador. Si borrás los datos del sitio o cambiás de
-  teléfono, se pierden: **hacé backup desde Ajustes**.
+- Los datos viven en este teléfono. Si borrás los datos de la app o cambiás de
+  equipo, se pierden: **hacé backup desde Ajustes**. El backup automático de
+  Android está apagado a propósito, porque subiría tus movimientos y tu clave
+  a Google Drive.
 - Las fuentes de precios son APIs públicas gratuitas y sin garantía de
   disponibilidad. Ajustes → Diagnóstico dice cuál está caída.
 - El MEP histórico viene de una fuente pública; para operaciones viejas en pesos
@@ -231,3 +303,11 @@ node scripts/icons.mjs   # regenera los íconos de la PWA
 - El costo es promedio ponderado, no FIFO. Para impuestos puede no coincidir.
 - Los insights son una lectura generada por un modelo a partir de búsquedas
   públicas. No es asesoramiento financiero.
+- **Las alertas dependen de Android, no de Waltra.** El intervalo que se pide
+  es un pedido, no una promesa: el sistema decide cuándo despertar la app y
+  nunca lo hace más seguido que cada 15 minutos. En los Samsung conviene sacar
+  a Waltra de *Ajustes → Batería → Apps en suspensión*, o se van a espaciar
+  solas. No sirven para operar al segundo; sirven para enterarte.
+- La app tiene un solo usuario por teléfono y no hay cuentas ni sincronización
+  entre equipos. Pasar la cartera a otro teléfono es exportar e importar el
+  backup.

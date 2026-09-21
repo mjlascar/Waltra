@@ -92,7 +92,17 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - uses: android-actions/setup-android@v3
+      # El runner de ubuntu ya trae el SDK de Android. No se usa
+      # android-actions/setup-android porque intenta instalar el paquete
+      # `tools`, que Google retiro del repositorio, y falla antes de empezar.
+      # Solo hay que asegurarse de que esten la plataforma y las build-tools
+      # que pide android/variables.gradle.
+      - name: Preparar el SDK
+        run: |
+          set -euo pipefail
+          sdkmanager=$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -1)
+          yes | "$sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$sdkmanager" "platforms;android-36" "build-tools;36.0.0"
 
       - run: npm ci
 
