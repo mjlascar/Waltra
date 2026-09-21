@@ -53,6 +53,12 @@ export async function getJson<T>(
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return (await res.json()) as T;
+  } catch (err) {
+    // "This operation was aborted" no le dice nada a nadie.
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(`no respondió en ${Math.round(timeoutMs / 1000)} s`);
+    }
+    throw err;
   } finally {
     clearTimeout(timer);
   }

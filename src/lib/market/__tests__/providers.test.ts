@@ -250,3 +250,38 @@ describe("Dólar MEP", () => {
     expect(await fxHistory()).toEqual([]);
   });
 });
+
+describe("Yahoo: el segundo host", () => {
+  it("prueba query2 cuando query1 responde error", async () => {
+    const vistos: string[] = [];
+    mockFetch((url) => {
+      vistos.push(url);
+      if (url.includes("query1")) return { status: 429, body: { msg: "too many" } };
+      return {
+        body: {
+          chart: {
+            error: null,
+            result: [
+              {
+                meta: { regularMarketPrice: 500, chartPreviousClose: 490 },
+                timestamp: [],
+                indicators: { quote: [{ close: [] }] },
+              },
+            ],
+          },
+        },
+      };
+    });
+    const quote = await yahooQuote(qqq);
+    expect(quote.price).toBeCloseTo(500);
+    expect(vistos.some((u) => u.includes("query1"))).toBe(true);
+    expect(vistos.some((u) => u.includes("query2"))).toBe(true);
+  });
+
+  it("si los dos fallan, informa el error sin lanzar", async () => {
+    mockFetch(() => ({ status: 500, body: {} }));
+    const quote = await yahooQuote(qqq);
+    expect(quote.price).toBeNull();
+    expect(quote.error).toContain("500");
+  });
+});

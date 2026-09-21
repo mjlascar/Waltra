@@ -18,10 +18,26 @@ interface ChartResponse {
   };
 }
 
-function chartUrl(symbol: string, range: string): string {
-  return `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
+// Yahoo atiende el mismo endpoint en dos hosts y a veces uno responde 429
+// mientras el otro anda. Probar el segundo sale casi gratis.
+const HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"];
+
+function chartUrl(host: string, symbol: string, range: string): string {
+  return `https://${host}/v8/finance/chart/${encodeURIComponent(
     symbol,
   )}?range=${range}&interval=1d&includePrePost=false`;
+}
+
+async function fetchChart(symbol: string, range: string): Promise<ChartResponse> {
+  let last: unknown;
+  for (const host of HOSTS) {
+    try {
+      return await getJson<ChartResponse>(chartUrl(host, symbol, range));
+    } catch (err) {
+      last = err;
+    }
+  }
+  throw last instanceof Error ? last : new Error(String(last));
 }
 
 /** Rango de Yahoo que cubre los dias pedidos, redondeando para arriba. */
@@ -40,7 +56,7 @@ function rangeFor(days: number): string {
 export async function yahooQuote(ref: MarketRef): Promise<QuoteResult> {
   const at = new Date().toISOString();
   try {
-    const data = await getJson<ChartResponse>(chartUrl(ref.sourceSymbol, "5d"));
+    const data = await fetchChart(ref.sourceSymbol, "5d");
     const result = data.chart?.result?.[0];
     if (!result) throw new Error(data.chart?.error?.description ?? "sin datos");
     const price = result.meta.regularMarketPrice ?? null;
@@ -69,7 +85,7 @@ export async function yahooQuote(ref: MarketRef): Promise<QuoteResult> {
 export async function yahooHistory(req: HistoryRequest): Promise<HistoryResult> {
   try {
     const days = Math.max(5, daysBetween(req.from, today()) + 2);
-    const data = await getJson<ChartResponse>(chartUrl(req.sourceSymbol, rangeFor(days)));
+    const data = await fetchChart(req.sourceSymbol, rangeFor(days));
     const result = data.chart?.result?.[0];
     if (!result) throw new Error(data.chart?.error?.description ?? "sin datos");
     const stamps = result.timestamp ?? [];

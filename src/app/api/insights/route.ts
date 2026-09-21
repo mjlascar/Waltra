@@ -8,7 +8,7 @@ import {
   buildDigest,
   degradedReport,
 } from "@/lib/insights/digest";
-import { resolveModel } from "@/lib/insights/models";
+import { modelShape, resolveModel } from "@/lib/insights/models";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,6 +56,7 @@ export async function POST(request: Request) {
   }
 
   const model = resolveModel(body.model);
+  const shape = modelShape(model);
   const client = new Anthropic({ apiKey });
   const portfolio = buildDigest(body);
   const hoy = new Date().toISOString().slice(0, 10);
@@ -69,8 +70,8 @@ export async function POST(request: Request) {
         model,
         max_tokens: 16000,
         system: SYSTEM,
-        thinking: { type: "adaptive" },
-        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 8 }],
+        ...(shape.adaptiveThinking ? { thinking: { type: "adaptive" as const } } : {}),
+        tools: [{ type: shape.webSearchType, name: "web_search", max_uses: 8 }],
         messages: [
           {
             role: "user",

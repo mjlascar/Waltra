@@ -35,3 +35,29 @@ describe("resolveModel", () => {
     expect(DEFAULT_MODEL).toBe("claude-opus-5");
   });
 });
+
+describe("modelShape", () => {
+  it("la familia Opus/Sonnet usa la búsqueda nueva y pensamiento adaptativo", async () => {
+    const { modelShape } = await import("@/lib/insights/models");
+    for (const id of ["claude-opus-5", "claude-sonnet-5"]) {
+      expect(modelShape(id).webSearchType).toBe("web_search_20260209");
+      expect(modelShape(id).adaptiveThinking).toBe(true);
+    }
+  });
+
+  it("Haiku 4.5 usa la búsqueda básica y sin adaptativo", async () => {
+    const { modelShape } = await import("@/lib/insights/models");
+    // Mandarle la variante nueva devuelve 400 y el usuario solo ve "falló".
+    expect(modelShape("claude-haiku-4-5").webSearchType).toBe("web_search_20250305");
+    expect(modelShape("claude-haiku-4-5").adaptiveThinking).toBe(false);
+  });
+
+  it("todos los modelos de la lista tienen una forma definida", async () => {
+    const { modelShape } = await import("@/lib/insights/models");
+    for (const model of MODELS) {
+      const shape = modelShape(model.id);
+      expect(shape.webSearchType).toBeTruthy();
+      expect(typeof shape.adaptiveThinking).toBe("boolean");
+    }
+  });
+});
