@@ -57,15 +57,21 @@ describe("backup", () => {
     expect(await db.transactions.count()).toBe(2);
   });
 
-  it("no incluye la clave de acceso en el archivo", async () => {
+  it("no incluye ninguna credencial en el archivo", async () => {
+    // El backup termina en Drive, en un mail o en un chat. Cualquier clave
+    // que viaje ahi adentro ya no es del telefono.
     await ensureSeeded(db);
     await db.settings.put({
       id: "settings", baseCurrency: "USD", riskProfile: "moderado",
       horizonYears: 5, goals: "", accessKey: "una-clave-secreta",
+      apiKey: "la-clave-de-anthropic-del-usuario",
     });
     const backup = await exportBackup(db);
     expect(backup.settings.accessKey).toBeUndefined();
-    expect(JSON.stringify(backup)).not.toContain("una-clave-secreta");
+    expect(backup.settings.apiKey).toBeUndefined();
+    const texto = JSON.stringify(backup);
+    expect(texto).not.toContain("una-clave-secreta");
+    expect(texto).not.toContain("la-clave-de-anthropic-del-usuario");
   });
 
   it("importar en modo combinar conserva lo que ya estaba", async () => {
