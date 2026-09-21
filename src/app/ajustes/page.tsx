@@ -8,6 +8,7 @@ import { Field, Segmented } from "@/components/ui/Field";
 import { Sheet } from "@/components/ui/Sheet";
 import { BulkImport } from "@/components/BulkImport";
 import { InstallPrompt } from "@/components/InstallPrompt";
+import { AlertSettings } from "@/components/AlertSettings";
 import { AssetEditor } from "@/components/AssetEditor";
 import { IconChevron, IconTrash } from "@/components/icons";
 import { newId, useStore } from "@/lib/store";
@@ -402,6 +403,14 @@ export default function Ajustes() {
           </p>
         </div>
       </section>
+
+      {/* --- Alertas ------------------------------------------------------- */}
+      {ON_DEVICE && (
+        <section className="mb-5">
+          <SectionTitle>Alertas de precio</SectionTitle>
+          <AlertSettings />
+        </section>
+      )}
 
       {/* --- Acceso -------------------------------------------------------- */}
       <section className="mb-5">

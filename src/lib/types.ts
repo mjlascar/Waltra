@@ -153,6 +153,11 @@ export interface Settings {
    */
   benchmark?: string;
   onboarded?: boolean;
+  /**
+   * Alertas de precio. Solo tienen efecto en el APK: en la web no hay quien
+   * mire los precios con la pantalla apagada.
+   */
+  alerts?: import("@/lib/alerts/plan").AlertRules;
 }
 
 export interface InsightSource {

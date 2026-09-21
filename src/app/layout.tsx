@@ -7,6 +7,7 @@ import { Nav } from "@/components/Nav";
 import { ServiceWorker } from "@/components/ServiceWorker";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { NativeShell } from "@/components/NativeShell";
+import { AlertsMirror } from "@/components/AlertsMirror";
 
 export const metadata: Metadata = {
   title: "Waltra",
@@ -44,6 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Nav />
           <ServiceWorker />
           <NativeShell />
+          <AlertsMirror />
         </StoreProvider>
       </body>
     </html>

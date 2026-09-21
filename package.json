@@ -17,6 +17,7 @@
     "e2e": "node scripts/e2e.mjs",
     "shoot": "node scripts/shoot.mjs",
     "pwa": "node scripts/pwa-check.mjs",
+    "native": "node scripts/native-check.mjs",
     "docs:shots": "node scripts/docs-shots.mjs"
   },
   "dependencies": {
