@@ -86,16 +86,24 @@ Tres caminos. El primero es el que probablemente quieras.
 cuenta y sin que nadie tenga que dejar la compu prendida. Es además la única
 versión con alertas de precio.
 
-Lo compila GitHub Actions en cada push, porque hace falta el SDK de Android:
+Lo compila GitHub Actions en cada push, porque hace falta el SDK de Android, y
+lo publica en un enlace fijo:
 
-1. Andá a la pestaña **Actions** del repo, entrá al último workflow verde y
-   bajá el artefacto **waltra-apk** (o `waltra-apk-firma-descartable`; la
-   diferencia está más abajo).
-2. Descomprimilo y pasá el `app-release.apk` al teléfono.
-3. Instalalo. Android va a pedirte permitir instalar desde esa app (el
+**https://github.com/mjlascar/Waltra/releases/download/apk-latest/waltra.apk**
+
+Ese enlace siempre apunta a la última compilación. Se abre desde el navegador
+del teléfono, baja el APK directo (sin zip y sin estar logueado) y se puede
+pasar por WhatsApp a quien quieras.
+
+1. Abrí el enlace en el celular.
+2. Instalalo. Android va a pedirte permitir instalar desde esa app (el
    navegador o el explorador de archivos); es el paso normal para algo que no
    viene de Play.
-4. Abrila, y si querés insights andá a *Ajustes → Tu clave de Anthropic*.
+3. Abrila, y si querés insights andá a *Ajustes → Tu clave de Anthropic*.
+
+También queda como artefacto en la pestaña **Actions**, pero ahí viene en un
+zip, pide estar logueado y no se puede bajar desde la app de GitHub del
+celular. El release existe justamente para evitar las tres cosas.
 
 Para compilarlo en tu propia máquina hace falta el SDK de Android y JDK 21:
 

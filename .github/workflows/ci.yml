@@ -78,6 +78,9 @@ jobs:
   apk:
     name: APK
     runs-on: ubuntu-latest
+    # Para publicar el APK como release descargable.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -157,3 +160,35 @@ jobs:
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 90
+
+      # Los artefactos de Actions vienen en un zip, piden estar logueado y no
+      # se pueden bajar desde la app de GitHub del celular. Un release resuelve
+      # las tres cosas: el APK se baja directo, desde cualquier navegador, y el
+      # enlace es siempre el mismo, asi que se puede compartir y guardar.
+      #
+      # Se borra y se rehace en vez de editarlo para que la etiqueta apunte
+      # siempre al commit que se acaba de compilar.
+      - name: Publicar el APK para descargar
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ESTABLE: ${{ steps.firma.outputs.estable }}
+        run: |
+          set -euo pipefail
+          cp android/app/build/outputs/apk/release/app-release.apk waltra.apk
+          if [ "$ESTABLE" = "si" ]; then
+            firma="Firmado con la clave del repositorio: las actualizaciones se instalan encima y conservan los datos."
+          else
+            firma="ATENCION: firmado con una clave descartable, distinta en cada compilacion. Sirve para probar, pero no se puede instalar encima de una version anterior sin desinstalar, y desinstalar borra los movimientos. El README explica como configurar una clave propia."
+          fi
+          notas=$(printf '%s\n\n%s\n\n%s' \
+            "Version 1.0.${GITHUB_RUN_NUMBER}, de ${GITHUB_SHA:0:8} en ${GITHUB_REF_NAME}." \
+            "$firma" \
+            "Descarga waltra.apk de aca abajo y abrilo en el telefono. Android va a pedirte permitir instalar desde el navegador: es el paso normal para algo que no viene de Play.")
+          gh release delete apk-latest --yes --cleanup-tag 2>/dev/null || true
+          gh release create apk-latest waltra.apk \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "Waltra - ultima compilacion" \
+            --notes "$notas"
+          echo "Descarga directa: https://github.com/${GITHUB_REPOSITORY}/releases/download/apk-latest/waltra.apk"

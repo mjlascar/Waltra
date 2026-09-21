@@ -175,3 +175,8 @@ configura con cuatro secretos del repositorio (ver README); sin ellos el build
 igual sale, con un aviso en el log.
 
 El `versionCode` viene del número de corrida y tiene que crecer siempre.
+
+Cada push publica el APK en el release `apk-latest`, que se borra y se rehace
+para que la etiqueta apunte al commit recién compilado. El enlace de descarga
+es siempre el mismo. Existe porque los artefactos de Actions vienen en un zip,
+piden estar logueado y no se bajan desde la app de GitHub del celular.
