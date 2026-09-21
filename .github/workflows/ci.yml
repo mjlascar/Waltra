@@ -58,3 +58,11 @@ jobs:
 
       - name: Recorrido end-to-end
         run: npm run e2e
+
+      # La promesa de PWA (instalable y usable sin conexion) solo se puede
+      # verificar contra un build de produccion: el service worker no se
+      # registra en desarrollo.
+      - name: PWA e instalación
+        run: npm run pwa
+        env:
+          BASE_URL: http://127.0.0.1:3000

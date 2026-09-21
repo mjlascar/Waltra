@@ -14,6 +14,15 @@ Para el recorrido end-to-end, en otra terminal: `WALTRA_MOCK=1 npm run dev`.
 El `e2e` corre en un viewport de 360×760 (Galaxy S10e) y falla si aparece
 cualquier error en la consola del navegador.
 
+`npm run pwa` verifica la promesa de PWA (manifest, íconos, service worker y
+que la app abra y acepte movimientos sin conexión). Necesita un build de
+producción: el service worker no se registra en desarrollo.
+
+```bash
+npm run build && WALTRA_MOCK=1 npm start          # en una terminal
+BASE_URL=http://127.0.0.1:3000 npm run pwa        # en otra
+```
+
 `npm run shoot` saca capturas de todas las vistas a `screenshots/`;
 `node scripts/states.mjs` captura estados puntuales (hojas abiertas,
 importación, comparación contra el índice).
