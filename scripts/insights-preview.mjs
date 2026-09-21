@@ -76,7 +76,10 @@ const REPORT = {
 };
 
 const browser = await chromium.launch({ executablePath: chromiumPath(), args: ["--no-sandbox"] });
-const page = await (await browser.newContext(MOBILE)).newPage();
+const page = await (
+  // Escala 1: estas capturas terminan en el README, donde se ven a 220 px.
+  await browser.newContext({ ...MOBILE, deviceScaleFactor: 1 })
+).newPage();
 
 await page.goto(BASE, { waitUntil: "networkidle" });
 await page.waitForTimeout(1200);
@@ -110,11 +113,12 @@ await page.waitForTimeout(1500);
 await page.screenshot({ path: "screenshots/insights-completo.png", fullPage: true });
 console.log("· screenshots/insights-completo.png");
 // Version recortada para el README: la completa es muy larga para leerla.
-await page.screenshot({
-  path: "screenshots/insights-doc.png",
-  clip: { x: 0, y: 0, width: 360, height: 1400 },
-});
-console.log("· screenshots/insights-doc.png");
+// Bajamos hasta el informe: arriba esta la tarjeta de generar, que no es lo
+// que hay que mostrar en el README.
+await page.evaluate(() => window.scrollTo(0, 430));
+await page.waitForTimeout(500);
+await page.screenshot({ path: "docs/img/insights.png" });
+console.log("· docs/img/insights.png");
 
 // Y ahora el caso degradado, que es el que nadie mira hasta que pasa.
 await inject({

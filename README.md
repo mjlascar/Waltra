@@ -9,13 +9,16 @@ aparece como si la cartera hubiera crecido. Acá son dos líneas separadas, y la
 distancia entre ellas es —literalmente— lo que ganaste.
 
 <p>
-  <img src="docs/img/resumen.png" width="220" alt="Resumen: valor de la cartera contra capital aportado">
-  <img src="docs/img/carga.png" width="220" alt="Carga de un movimiento escribiendo la frase">
-  <img src="docs/img/importar.png" width="220" alt="Importar un bloc de notas entero">
-  <img src="docs/img/rendimiento.png" width="220" alt="Rendimiento de la cartera contra el S&P 500">
-  <img src="docs/img/cartera.png" width="220" alt="Cartera: posiciones con su resultado">
-  <img src="docs/img/insights.png" width="220" alt="Insights: análisis con fuentes">
+  <img src="docs/img/resumen.png" width="200" alt="Resumen: valor de la cartera contra capital aportado">
+  <img src="docs/img/rendimiento.png" width="200" alt="Rendimiento de la cartera contra el S&P 500">
+  <img src="docs/img/carga.png" width="200" alt="Carga de un movimiento escribiendo la frase">
+  <img src="docs/img/importar.png" width="200" alt="Importar un bloc de notas entero">
+  <img src="docs/img/cartera.png" width="200" alt="Cartera: posiciones con su resultado">
+  <img src="docs/img/insights.png" width="200" alt="Insights: análisis con fuentes">
 </p>
+
+<sub>Las capturas usan la cartera de ejemplo con precios simulados — de ahí el
+cartel amarillo. Con precios reales ese aviso no aparece.</sub>
 
 ## Qué hace
 
@@ -111,13 +114,19 @@ pedís, genera los insights.
 > Si desplegás, hacé backup desde Ajustes igual: los datos siguen atados a
 > este navegador, no al deploy.
 
+**Sobre los insights en un plan gratuito:** el análisis hace varias búsquedas
+web y puede tardar más de un minuto. Si tu hosting corta las funciones a los
+60 segundos (Vercel Hobby, por ejemplo), va a fallar con un mensaje que te lo
+dice. Salidas: elegir Sonnet o Haiku desde *Ajustes → Insights*, o correr la
+app en tu red, donde no hay límite.
+
 ## Configuración
 
 Copiá `.env.example` a `.env.local`. Todo es opcional.
 
 | Variable | Para qué |
 |---|---|
-| `ANTHROPIC_API_KEY` | Habilita la sección de Insights. Se lee **solo en el servidor**: nunca viaja al navegador. |
+| `ANTHROPIC_API_KEY` | Habilita la sección de Insights. Se lee **solo en el servidor**: nunca viaja al navegador. La sacás de [console.anthropic.com](https://console.anthropic.com/) y se paga por uso: cada análisis son unas cuantas búsquedas web y dos llamadas al modelo. Sin esta variable, el resto de la app funciona igual. |
 | `WALTRA_MODEL` | Modelo por defecto del servidor. Si no la definís, es `claude-opus-5`. Desde Ajustes podés elegir entre Opus 5, Sonnet 5 y Haiku 4.5 sin redesplegar; cualquier otro valor que llegue del navegador se ignora. |
 | `WALTRA_ACCESS_KEY` | Si publicás la app en internet, exige esta clave en las rutas `/api`. La cargás una vez en Ajustes y queda en el teléfono. |
 | `WALTRA_MOCK` | `1` usa precios simulados para probar la interfaz. La app lo avisa en pantalla con un cartel. |

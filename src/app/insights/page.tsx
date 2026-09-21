@@ -112,7 +112,16 @@ export default function Insights() {
         headers: apiHeaders(),
         body: JSON.stringify(body),
       });
-      const data = await res.json();
+      // Un 504 casi siempre es el limite de tiempo del hosting, no un
+      // problema del modelo: decirlo evita que alguien reintente diez veces.
+      if (res.status === 504 || res.status === 408) {
+        throw new Error(
+          "El servidor cortó la conexión antes de que terminara el análisis. " +
+            "Suele pasar en planes con límite de 60 segundos: probá con un modelo " +
+            "más rápido desde Ajustes, o corré la app en tu red.",
+        );
+      }
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
 
       const saved: InsightReport = {

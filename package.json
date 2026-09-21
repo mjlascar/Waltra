@@ -14,7 +14,8 @@
     "check": "npm run typecheck && npm run lint && npm run test && ./scripts/check-secrets.sh",
     "e2e": "node scripts/e2e.mjs",
     "shoot": "node scripts/shoot.mjs",
-    "pwa": "node scripts/pwa-check.mjs"
+    "pwa": "node scripts/pwa-check.mjs",
+    "docs:shots": "node scripts/docs-shots.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",
