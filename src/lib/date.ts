@@ -9,8 +9,18 @@ export function toDay(value: string | Date): DayKey {
   return value.slice(0, 10);
 }
 
-export function today(): DayKey {
-  return new Date().toISOString().slice(0, 10);
+/**
+ * El dia de hoy segun el reloj del telefono, no segun UTC.
+ *
+ * Importa mas de lo que parece: en Argentina (UTC-3), entre las 21 y la
+ * medianoche `toISOString()` ya devuelve la fecha de manana. Alguien que carga
+ * sus movimientos de noche veria todo fechado un dia adelante.
+ */
+export function today(now: Date = new Date()): DayKey {
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 export function dayToUtc(day: DayKey): number {

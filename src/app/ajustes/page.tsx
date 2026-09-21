@@ -329,7 +329,8 @@ export default function Ajustes() {
           <p className="label mt-3">
             Último refresco:{" "}
             {settings.lastQuoteSync ? relativeTime(settings.lastQuoteSync) : "nunca"}
-            {" · "}dólar MEP {money(portfolio.fxLatest, "ARS", { decimals: 0 })}
+            {" · "}dólar MEP{" "}
+            {portfolio.fxLatest > 0 ? money(portfolio.fxLatest, "ARS", { decimals: 0 }) : "sin dato"}
           </p>
         </div>
       </section>

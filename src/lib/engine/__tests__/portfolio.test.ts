@@ -262,3 +262,51 @@ describe("computePortfolio", () => {
     expect(p.positions).toEqual([]);
   });
 });
+
+describe("sin cotización del dólar", () => {
+  it("no cuenta los pesos como si fueran dólares", () => {
+    const p = computePortfolio({
+      // 100.000 pesos: si se contaran uno a uno serían US$ 100.000.
+      transactions: [tx("deposit", "2024-01-01", { amount: 100_000, currency: "ARS" })],
+      assets,
+      accounts: [cocos],
+      priceSeries: [],
+      quotes: [],
+      fxRates: [],
+      asOf: "2024-01-10",
+    });
+    expect(p.fxMissing).toBe(true);
+    expect(p.totalValueUsd).toBe(0);
+    expect(p.netContributedUsd).toBe(0);
+  });
+
+  it("no avisa si la operación trae su propio tipo de cambio", () => {
+    const p = computePortfolio({
+      transactions: [
+        tx("deposit", "2024-01-01", { amount: 100_000, currency: "ARS", fxRate: 1000 }),
+      ],
+      assets,
+      accounts: [cocos],
+      priceSeries: [],
+      quotes: [],
+      fxRates: [],
+      asOf: "2024-01-10",
+    });
+    expect(p.fxMissing).toBe(false);
+    expect(p.netContributedUsd).toBeCloseTo(100);
+  });
+
+  it("una cartera solo en dólares no se ve afectada", () => {
+    const p = computePortfolio({
+      transactions: [tx("deposit", "2024-01-01", { amount: 500 })],
+      assets: [asset("qqq")],
+      accounts: [cocos],
+      priceSeries: [],
+      quotes: [],
+      fxRates: [],
+      asOf: "2024-01-10",
+    });
+    expect(p.fxMissing).toBe(false);
+    expect(p.totalValueUsd).toBeCloseTo(500);
+  });
+});

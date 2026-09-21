@@ -5,6 +5,10 @@ import type { DayKey } from "@/lib/date";
  * Tabla de tipo de cambio ARS/USD con busqueda "el valor conocido mas cercano
  * hacia atras". Si no hay ningun dato previo usa el primero disponible; si la
  * tabla esta vacia devuelve el fallback.
+ *
+ * El fallback importa: con 0, un monto en pesos queda sin convertir (y la app
+ * lo avisa) en vez de contarse como si un peso fuera un dolar. Un saldo de
+ * 100.000 pesos mostrado como US$ 100.000 seria el peor error posible acá.
  */
 export class FxTable {
   private readonly days: DayKey[];

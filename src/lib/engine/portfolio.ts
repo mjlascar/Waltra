@@ -97,6 +97,11 @@ export interface Portfolio {
   fxLatest: number;
   /** Activos sin cotizacion disponible: la UI avisa en vez de mentir. */
   missingPrices: string[];
+  /**
+   * Hay exposicion en pesos pero no se pudo traer el dolar MEP, asi que esos
+   * montos no estan contados en los totales.
+   */
+  fxMissing: boolean;
 }
 
 export interface PortfolioInput {
@@ -142,7 +147,9 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
   const assetsById: Record<string, Asset> = Object.fromEntries(
     input.assets.map((a) => [a.id, a]),
   );
-  const fx = new FxTable(input.fxRates, 1);
+  // Sin cotizacion del dolar, los pesos quedan sin convertir en vez de
+  // contarse uno a uno. `fxMissing` hace que la app lo diga en pantalla.
+  const fx = new FxTable(input.fxRates, 0);
   const prices = new PriceLookup(input.priceSeries);
   const quoteByAsset = new Map(input.quotes.map((q) => [q.assetId, q]));
   const txs = sortTransactions(input.transactions).filter((t) => toDay(t.date) <= asOf);
@@ -178,8 +185,14 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
     },
     fxLatest: fx.latest,
     missingPrices: [],
+    fxMissing: false,
   };
   if (txs.length === 0) return empty;
+
+  const hasArs =
+    txs.some((t) => t.currency === "ARS" && !(t.fxRate && t.fxRate > 0)) ||
+    input.assets.some((a) => a.currency === "ARS");
+  const fxMissing = fx.isEmpty && hasArs;
 
   const firstDay = toDay(txs[0].date);
   const lastDay = maxDay(firstDay, asOf);
@@ -363,5 +376,6 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
     },
     fxLatest: fxNow,
     missingPrices: [...new Set(missingPrices)],
+    fxMissing,
   };
 }

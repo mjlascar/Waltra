@@ -185,7 +185,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (Array.isArray(data.fx) && data.fx.length) await db.fx.bulkPut(data.fx);
 
         const at = new Date().toISOString();
-        await db.settings.put({ ...settings, lastQuoteSync: at });
+        // Releemos los ajustes en vez de usar los del closure: si el usuario
+        // toco su perfil mientras la sincronizacion estaba en vuelo, escribir
+        // la copia vieja le borraria el cambio.
+        const current = (await db.settings.get("settings")) ?? settings;
+        await db.settings.put({ ...current, lastQuoteSync: at });
         setSync({ status: "ok", at, mock: Boolean(data.mock) });
       } catch (err) {
         setSync({ status: "error", message: err instanceof Error ? err.message : String(err) });

@@ -83,3 +83,19 @@ describe("fechas", () => {
     expect(relativeTime("2026-06-12T12:00:00.000Z", now)).toBe("hace 3 d");
   });
 });
+
+describe("hoy es el dia del telefono, no el de UTC", () => {
+  it("de noche en Argentina no adelanta un dia", async () => {
+    const { today } = await import("@/lib/date");
+    // 21:30 del 15 de junio en Buenos Aires ya es 16 de junio en UTC.
+    const noche = new Date(2026, 5, 15, 21, 30, 0);
+    expect(today(noche)).toBe("2026-06-15");
+    expect(noche.toISOString().slice(0, 10)).not.toBe("2026-06-15");
+  });
+
+  it("relativeDate usa la misma referencia local", () => {
+    const noche = new Date(2026, 5, 15, 22, 0, 0);
+    expect(relativeDate("2026-06-15", noche)).toBe("hoy");
+    expect(relativeDate("2026-06-14", noche)).toBe("ayer");
+  });
+});

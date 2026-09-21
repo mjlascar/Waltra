@@ -86,7 +86,11 @@ export function longDate(day: string): string {
 /** "hace 3 dias", "hoy", "hace 2 meses". */
 export function relativeDate(day: string, now = new Date()): string {
   const then = Date.parse(`${day.slice(0, 10)}T00:00:00.000Z`);
-  const today = Date.parse(`${now.toISOString().slice(0, 10)}T00:00:00.000Z`);
+  // "Hoy" es el dia del reloj del telefono, no el de UTC.
+  const local = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+    now.getDate(),
+  ).padStart(2, "0")}`;
+  const today = Date.parse(`${local}T00:00:00.000Z`);
   const days = Math.round((today - then) / 86_400_000);
   if (days === 0) return "hoy";
   if (days === 1) return "ayer";

@@ -83,6 +83,12 @@ export default function Overview() {
           guardado.
         </Notice>
       )}
+      {p.fxMissing && (
+        <Notice>
+          No pude traer el dólar MEP, así que los montos en pesos todavía no están
+          contados en los totales. Tocá actualizar cuando tengas señal.
+        </Notice>
+      )}
       {p.missingPrices.length > 0 && (
         <Notice>
           Sin cotización para {p.missingPrices.join(", ")}. Esas posiciones están valuadas

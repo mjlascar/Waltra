@@ -8,5 +8,9 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
+    // La app es para alguien que vive en Argentina y carga movimientos de
+    // noche: los tests corren en esa zona horaria para que los bugs de fecha
+    // aparezcan acá y no en su teléfono.
+    env: { TZ: "America/Argentina/Buenos_Aires" },
   },
 });
