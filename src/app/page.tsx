@@ -22,6 +22,7 @@ import { MetricsExplainer } from "@/components/MetricsExplainer";
 import { AccountSheet } from "@/components/AccountSheet";
 
 const RANGES: { value: RangeKey; label: string }[] = [
+  { value: "7D", label: "7D" },
   { value: "1M", label: "1M" },
   { value: "3M", label: "3M" },
   { value: "6M", label: "6M" },
@@ -34,7 +35,10 @@ type ChartMode = "valor" | "rendimiento";
 
 export default function Overview() {
   const { portfolio: p, transactions, accounts, assets, settings, sync, ready } = useStore();
-  const [range, setRange] = useState<RangeKey>("MAX");
+  // Un mes por defecto y no todo el historial: al abrir la app lo que se
+  // quiere saber es como viene esto, no como viene desde el principio. El
+  // historico sigue a un toque.
+  const [range, setRange] = useState<RangeKey>("1M");
   const [mode, setMode] = useState<ChartMode>("valor");
   const [explaining, setExplaining] = useState(false);
   const [account, setAccount] = useState<AccountView | null>(null);

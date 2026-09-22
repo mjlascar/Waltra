@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
+import { overlayOpen } from "@/components/ui/overlay";
 
 const THRESHOLD = 70;
 const MAX_PULL = 110;
@@ -25,6 +26,10 @@ export function PullToRefresh() {
   const syncing = sync.status === "syncing";
 
   const onTouchStart = useCallback((e: TouchEvent) => {
+    // Con una hoja abierta el body no scrollea, asi que la pagina siempre
+    // esta arriba de todo: sin esta guarda, cada intento de subir el
+    // contenido de la hoja se lo comia el refresco.
+    if (overlayOpen()) return;
     if (window.scrollY > 0) return;
     startY.current = e.touches[0].clientY;
     active.current = false;
@@ -32,7 +37,7 @@ export function PullToRefresh() {
 
   const onTouchMove = useCallback(
     (e: TouchEvent) => {
-      if (startY.current === null || syncing) return;
+      if (startY.current === null || syncing || overlayOpen()) return;
       const delta = e.touches[0].clientY - startY.current;
       if (delta <= 0 || window.scrollY > 0) {
         if (active.current) {

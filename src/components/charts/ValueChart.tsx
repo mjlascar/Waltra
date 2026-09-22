@@ -112,14 +112,26 @@ export function ValueChart({ data, height = 210 }: { data: ValuePoint[]; height?
           width={width}
           height={height}
           className="touch-pan-y"
-          onPointerDown={(e) => pick(e.clientX, e.currentTarget.getBoundingClientRect())}
+          // El puntero se captura al apoyar el dedo: sin eso, arrastrar hasta
+          // el borde saca el puntero del SVG, dejan de llegar eventos y la
+          // cruceta se queda clavada o desaparece a mitad del gesto. Con la
+          // captura, los eventos siguen llegando aunque el dedo se vaya
+          // afuera, y `pick` ya recorta al rango de datos.
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            pick(e.clientX, e.currentTarget.getBoundingClientRect());
+          }}
           onPointerMove={(e) => {
             if (e.buttons > 0 || e.pointerType === "mouse") {
               pick(e.clientX, e.currentTarget.getBoundingClientRect());
             }
           }}
-          onPointerLeave={() => setHover(null)}
           onPointerUp={() => setHover(null)}
+          // Si el sistema decide que el gesto era un scroll, avisa con
+          // `pointercancel` y no con `pointerup`: sin esto la cruceta queda
+          // colgada hasta el toque siguiente.
+          onPointerCancel={() => setHover(null)}
+          onLostPointerCapture={() => setHover(null)}
         >
           {/* Grilla: hairline solida, un paso por encima de la superficie. */}
           {model.ticks.map((t) => (

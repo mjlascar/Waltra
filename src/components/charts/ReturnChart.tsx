@@ -91,13 +91,22 @@ export function ReturnChart({
         <svg
           width={width}
           height={height}
-          onPointerDown={(e) => pick(e.clientX, e.currentTarget.getBoundingClientRect())}
+          // Horizontal es de la cruceta, vertical sigue siendo scroll de la
+          // pagina. Sin esto el navegador puede quedarse con las dos.
+          className="touch-pan-y"
+          // Ver el comentario en ValueChart: la captura del puntero es lo que
+          // evita que la cruceta se cuelgue al arrastrar hasta el borde.
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            pick(e.clientX, e.currentTarget.getBoundingClientRect());
+          }}
           onPointerMove={(e) => {
             if (e.buttons === 0 && e.pointerType !== "mouse") return;
             pick(e.clientX, e.currentTarget.getBoundingClientRect());
           }}
-          onPointerLeave={() => setHover(null)}
           onPointerUp={() => setHover(null)}
+          onPointerCancel={() => setHover(null)}
+          onLostPointerCapture={() => setHover(null)}
         >
           {model.ticks.map((t) => (
             <line

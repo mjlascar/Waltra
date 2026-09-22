@@ -524,29 +524,27 @@ export function AddTransaction({
             ))}
           </div>
 
-          <div className="eyebrow mb-2 mt-5">Menos frecuentes</div>
+          <div className="eyebrow mb-2 mt-4">Menos frecuentes</div>
           <ul className="card divide-hairline">
             {SECUNDARIOS.map((t) => (
               <li key={t.value}>
                 <button
-                  className="flex w-full items-center gap-3 p-3 text-left"
+                  className="flex w-full items-center gap-3 px-3 py-2.5 text-left"
                   onClick={() => elegirTipo(t.value)}
                 >
                   <span
                     aria-hidden
-                    style={{ width: 3, height: 26, background: txColor(t.value) }}
+                    style={{ width: 3, height: 16, background: txColor(t.value) }}
                   />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[13px]">{t.label}</span>
-                    <span className="label">{t.detalle}</span>
-                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[13px]">{t.label}</span>
+                  <span className="label shrink-0">{t.detalle}</span>
                 </button>
               </li>
             ))}
           </ul>
 
           <button
-            className="btn btn-sm mt-5 w-full"
+            className="btn btn-sm mt-4 w-full"
             onClick={() => {
               setPaso("escribir");
               setText("");
@@ -554,9 +552,6 @@ export function AddTransaction({
           >
             Escribirlo en una línea
           </button>
-          <p className="label mt-2 text-center leading-snug">
-            «compré 50 de QQQ a 480», «pasé 100 dólares a cocos»
-          </p>
         </>
       )}
 
@@ -612,7 +607,7 @@ export function AddTransaction({
 
       {/* --- Paso 2: solo lo que este tipo necesita -------------------------- */}
       {paso === "datos" && (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {needsAsset && (
             <div>
               <Field

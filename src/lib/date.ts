@@ -56,12 +56,13 @@ export function maxDay(a: DayKey, b: DayKey): DayKey {
   return a > b ? a : b;
 }
 
-/** Resta un periodo relativo a hoy: "1M", "3M", "6M", "1A", "YTD", "MAX". */
-export type RangeKey = "1M" | "3M" | "6M" | "1A" | "YTD" | "MAX";
+/** Resta un periodo relativo a hoy: "7D", "1M", "3M", "6M", "1A", "YTD", "MAX". */
+export type RangeKey = "7D" | "1M" | "3M" | "6M" | "1A" | "YTD" | "MAX";
 
 export function rangeStart(range: RangeKey, first: DayKey, end: DayKey = today()): DayKey {
   if (range === "MAX") return first;
   if (range === "YTD") return maxDay(first, `${end.slice(0, 4)}-01-01`);
+  if (range === "7D") return maxDay(first, addDays(end, -7));
   const months = range === "1M" ? 1 : range === "3M" ? 3 : range === "6M" ? 6 : 12;
   const d = new Date(dayToUtc(end));
   d.setUTCMonth(d.getUTCMonth() - months);

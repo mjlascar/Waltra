@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import { IconClose } from "@/components/icons";
+import { overlayClosed, overlayOpened } from "@/components/ui/overlay";
 
 /**
  * Panel que sube desde abajo. Es el patron correcto en un telefono: el
@@ -30,9 +31,11 @@ export function Sheet({
     document.addEventListener("keydown", onKey);
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    overlayOpened();
     return () => {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = previous;
+      overlayClosed();
     };
   }, [open, onClose]);
 
