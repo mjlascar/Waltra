@@ -113,11 +113,15 @@ for (const [ruta, marca] of [
 
 console.log("\n3. Lo que corresponde al modo teléfono");
 await goto("/ajustes");
-check("pide la clave de Anthropic del usuario", await has("Tu clave de Anthropic"));
+check("es un índice de secciones", await has("Cuentas y activos"));
 check("ofrece las alertas de precio", await has("Alertas de precio"));
+
+await goto("/ajustes/insights");
+check("pide la clave de Anthropic del usuario", await has("Tu clave de Anthropic"));
 check("no habla de la clave del servidor", !(await has("WALTRA_ACCESS_KEY")));
 
 console.log("\n4. Las alertas se pueden configurar");
+await goto("/ajustes/alertas");
 await page.getByRole("button", { name: /activar alertas/i }).click();
 await page.waitForTimeout(600);
 check("aparecen los umbrales por activo", await has("Avisarme si un activo se mueve"));

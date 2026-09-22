@@ -161,7 +161,7 @@ await page.waitForTimeout(1500);
 check("el movimiento se borra", !(await has("probando la edición")));
 
 console.log("\n4b. Importar un bloc de notas entero");
-await goto("/ajustes");
+await goto("/ajustes/datos");
 await page.getByRole("button", { name: /Pegar movimientos desde tus notas/ }).click();
 await page.waitForTimeout(500);
 const notas = [
@@ -193,7 +193,7 @@ for (const [path, marker] of [
   ["/cartera", "Invertido"],
   ["/movimientos", "movimientos"],
   ["/insights", "Insights"],
-  ["/ajustes", "Tu perfil como inversor"],
+  ["/ajustes", "Cuentas y activos"],
 ]) {
   await goto(path);
   check(`${path} renderiza`, await has(marker));
@@ -276,14 +276,23 @@ if (box) {
   check("la cruceta muestra el capital del día", false, "no encontré el gráfico");
 }
 
-console.log("\n9. Ajustes: perfil y activos");
+console.log("\n9. Ajustes: índice, perfil y activos");
 await goto("/ajustes");
+check("es un índice de secciones", await has("Cuentas y activos"));
+check("resume el estado de cada una sin entrar", await has("Tu perfil como inversor"));
+check("no vuelca todo en una sola pantalla", !(await has("Tolerancia al riesgo")));
+
+await goto("/ajustes/perfil");
 await page.getByRole("button", { name: /^Agresivo$/ }).click();
 await page.waitForTimeout(700);
-await goto("/ajustes");
+await goto("/ajustes/perfil");
 const agresivo = await page.getByRole("button", { name: /^Agresivo$/ }).getAttribute("data-active");
 check("el perfil persiste tras recargar", agresivo === "true", `data-active=${agresivo}`);
+await page.getByRole("link", { name: /^Ajustes$/ }).click();
+await page.waitForTimeout(600);
+check("se vuelve al índice desde la sección", await has("Cuentas y activos"));
 
+await goto("/ajustes/cartera");
 await page.getByRole("button", { name: /BTC/ }).first().click();
 await page.waitForTimeout(600);
 check("abre el editor de activo", await has("Símbolo en la fuente"));
@@ -307,6 +316,7 @@ await page.keyboard.press("Escape");
 await page.waitForTimeout(400);
 
 console.log("\n10. Backup");
+await goto("/ajustes/datos");
 const download = page.waitForEvent("download", { timeout: 8000 }).catch(() => null);
 await page.getByRole("button", { name: /^Exportar$/ }).click();
 const file = await download;
