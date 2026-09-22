@@ -60,6 +60,10 @@ cartel amarillo. Con precios reales ese aviso no aparece.</sub>
   lunes a las 9»— y a esa hora llega un recordatorio. Funciona con **Claude o
   con Gemini**, a elección: Gemini tiene nivel gratuito. Requiere tu propia
   clave; sin ella el resto de la app funciona igual.
+- **Y si no tenés clave de API**, hay un tercer camino: la app arma el pedido
+  completo para copiar, lo pegás en el chat que uses (un abono de Claude o de
+  ChatGPT no da acceso por API, pero sí a mano) y traés la respuesta de vuelta.
+  Acepta el JSON estructurado o texto suelto.
 - **Todo vive en tu teléfono.** IndexedDB, sin cuenta ni servidor propio. Backup
   y restauración a un archivo JSON que es tuyo.
 - **Instalable y offline.** Es una PWA: se agrega a la pantalla de inicio y abre
@@ -299,7 +303,7 @@ signo, etiqueta o ícono al lado.
 npm run check   # tipos + lint + tests + escaneo de credenciales
 ```
 
-- **229 tests** del motor de cálculo, el parser, la base local, el formato, los
+- **238 tests** del motor de cálculo, el parser, la base local, el formato, los
   proveedores de precios, la ruta de insights y el vigía de precios. Los
   proveedores y el SDK corren simulados: son servicios externos que no se
   pueden alcanzar desde CI, y son justamente los que más conviene tener

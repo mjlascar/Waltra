@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Header } from "@/components/ui/Header";
 import { SectionTitle } from "@/components/ui/Stat";
+import { ExternalReport } from "@/components/ExternalReport";
 import { useStore, newId } from "@/lib/store";
 import {
   describeBackendError,
@@ -47,6 +48,7 @@ export default function Insights() {
   const [error, setError] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
   const [index, setIndex] = useState(0);
+  const [externo, setExterno] = useState(false);
   const [config, setConfig] = useState<{ aiConfigured: boolean; model: string } | null>(null);
 
   // Preguntamos una sola vez si hay clave cargada, para no ofrecer un boton
@@ -74,13 +76,16 @@ export default function Insights() {
     return out;
   }, [transactions]);
 
-  async function generate(kind: ReportKind = "cartera") {
-    if (loading) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const now = today();
-      const body = {
+  /**
+   * El resumen que viaja al modelo.
+   *
+   * Es un memo y no algo que se arme adentro de `generate` porque lo usan dos
+   * caminos: el informe que genera la app y el que se copia para hacer afuera.
+   * Si se armaran por separado, tarde o temprano dirian cosas distintas.
+   */
+  const datosCartera = useMemo(() => {
+    const now = today();
+    return {
         holdings: p.positions.map((pos) => ({
           symbol: pos.symbol,
           name: pos.name,
@@ -124,6 +129,16 @@ export default function Insights() {
           horizonYears: settings.horizonYears,
           goals: settings.goals.slice(0, 600),
         },
+    };
+  }, [p, transactions, accounts, settings, heldSince]);
+
+  async function generate(kind: ReportKind = "cartera") {
+    if (loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const body = {
+        ...datosCartera,
         question: question.trim() || undefined,
         model: settings.model,
         provider: settings.provider,
@@ -246,6 +261,23 @@ export default function Insights() {
         </>
       )}
 
+      {/* --- Informe hecho afuera --------------------------------------------- */}
+      {p.positions.length > 0 && (
+        <section className="mb-5">
+          <SectionTitle>Sin clave de API</SectionTitle>
+          <div className="card p-3">
+            <p className="label mb-3 leading-relaxed">
+              Si tenés un abono de Claude, ChatGPT o similar, no hay clave que sacar de
+              ahí: esos planes no dan acceso por API. Pero podés copiar el pedido, pegarlo
+              allá y traer la respuesta de vuelta.
+            </p>
+            <button className="btn btn-sm w-full" onClick={() => setExterno(true)}>
+              Copiar el pedido y pegar el análisis
+            </button>
+          </div>
+        </section>
+      )}
+
       {/* --- Informes agendados ---------------------------------------------- */}
       {p.positions.length > 0 && (
         <section className="mb-5">
@@ -326,6 +358,16 @@ export default function Insights() {
           </p>
         </section>
       )}
+
+      <ExternalReport
+        open={externo}
+        onClose={() => setExterno(false)}
+        body={p.positions.length > 0 ? { ...datosCartera, kind: "cartera" } : null}
+        onSave={async (report) => {
+          await saveInsight(report);
+          setIndex(0);
+        }}
+      />
 
       {insights.length > 1 && (
         <div className="no-scrollbar mb-3 flex gap-1.5 overflow-x-auto pb-1">

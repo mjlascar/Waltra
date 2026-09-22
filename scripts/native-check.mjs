@@ -139,10 +139,38 @@ check("aparece la franja sin molestar", await has("No molestar"));
 check("advierte sobre las suspensiones de Samsung", await has("Apps en suspensión"));
 check("deja probar una notificación", (await page.getByRole("button", { name: /probar una notificación/i }).count()) === 1);
 
-console.log("\n5. Nada sale a la red que no sea el propio bundle");
-const externos = pedidos.filter((u) => !u.startsWith(BASE));
-check("no se pide nada a un servidor propio", externos.length === 0, externos.slice(0, 3).join(", "));
-check("no quedó ninguna llamada a /api", !pedidos.some((u) => u.includes("/api/")));
+console.log("\n4b. El informe externo, para usar un abono sin API");
+// Insights necesita posiciones para tener algo que analizar.
+await goto("/");
+const ejemplo = page.getByRole("button", { name: /datos de ejemplo/i });
+if (await ejemplo.count()) {
+  await ejemplo.click();
+  await page.waitForTimeout(2500);
+}
+await goto("/insights");
+check("ofrece el camino sin clave de API", await has("Sin clave de API"));
+await page.getByRole("button", { name: /copiar el pedido y pegar/i }).click();
+await page.waitForTimeout(600);
+// El pedido vive en el `value` de un textarea, que `innerText` no ve.
+const pedidoTexto = await page.locator("textarea[readonly]").first().inputValue();
+check("arma el pedido completo", /## Cartera/.test(pedidoTexto) && /marketBrief/.test(pedidoTexto), pedidoTexto.slice(0, 120));
+check("el pedido lleva las posiciones reales", /QQQ/.test(pedidoTexto));
+check("deja elegir el tipo de informe", (await page.getByRole("button", { name: /^Mercado$/ }).count()) === 1);
+check("aclara qué se comparte", await has("No lleva los montos"));
+await page.locator('[aria-label="Cerrar"]').first().click();
+await page.waitForTimeout(400);
+
+console.log("\n5. No hay servidor propio en el medio");
+// La prueba no es "no sale nada a internet": con datos cargados la app SI
+// consulta a los proveedores, y que lo haga directo es justamente el punto
+// del modo nativo. Lo que no puede existir es una llamada a un servidor de
+// Waltra, porque adentro del APK no hay ninguno.
+const aNuestroApi = pedidos.filter((u) => u.startsWith(`${BASE}/api/`));
+check("ninguna llamada a un /api propio", aNuestroApi.length === 0, aNuestroApi.slice(0, 3).join(", "));
+const aProveedores = pedidos.filter(
+  (u) => u.includes("binance.com") || u.includes("finance.yahoo.com") || u.includes("data912.com"),
+);
+check("los precios se piden directo al proveedor", aProveedores.length > 0, `${aProveedores.length} pedidos`);
 
 console.log("\n6. Consola limpia");
 check("sin errores de consola", consoleErrors.length === 0, consoleErrors.slice(0, 3).join(" | "));

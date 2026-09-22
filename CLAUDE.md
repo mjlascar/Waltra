@@ -148,6 +148,19 @@ Las claves de los dos proveedores se guardan por separado (`apiKey` y
 `geminiKey`): cambiar de proveedor para probar no tiene que borrar la del otro.
 Las dos quedan fuera del backup.
 
+**El informe externo** (`src/lib/insights/external.ts`) es el tercer camino:
+la app arma el pedido completo para copiar y acepta de vuelta lo que venga. El
+JSON si vino, la prosa pelada si no — rechazarla por una formalidad sería
+perder el informe. Existe porque un abono de claude.ai no se puede llamar desde
+código, y es además el punto de enganche para una automatización: lo que sale
+de ahí es lo que un proceso programado leería, y lo que se pega es lo que
+escribiría. Sin credenciales nuevas y sin que la app dependa de que ese proceso
+exista.
+
+El cuerpo del pedido lo arma un solo memo en la pantalla de Insights
+(`datosCartera`) que usan los dos caminos. Armarlos por separado terminaría en
+que dicen cosas distintas.
+
 Para revisar cómo se ve un informe sin gastar créditos:
 `node scripts/insights-preview.mjs` inyecta uno de muestra en la base local.
 
