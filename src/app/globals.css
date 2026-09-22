@@ -218,6 +218,39 @@ body {
     padding-right: 32px;
   }
 
+  /* Casilla de verificacion. La nativa viene azul redondeada, que es el azul
+     de la primera serie de datos y el unico borde redondeado de la app. */
+  .check {
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-line-strong);
+    position: relative;
+  }
+  .check:checked {
+    background: var(--color-ink);
+    border-color: var(--color-ink);
+  }
+  /* La marca se dibuja con dos bordes girados 45 grados: no depende de una
+     fuente de iconos ni de que el sistema sepa pintar ::after en un input. */
+  .check:checked::after {
+    content: "";
+    position: absolute;
+    left: 5px;
+    top: 1px;
+    width: 6px;
+    height: 11px;
+    border: solid var(--color-bg);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+  }
+  .check:focus-visible {
+    outline: 2px solid var(--color-ink-2);
+    outline-offset: 1px;
+  }
+
   /* Grupo de opciones tipo interruptor segmentado. */
   .segmented {
     display: flex;

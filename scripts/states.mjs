@@ -30,7 +30,7 @@ if (await demo.count()) {
 }
 
 // Importación de un bloc de notas.
-await page.goto(`${BASE}/ajustes`, { waitUntil: "networkidle" });
+await page.goto(`${BASE}/ajustes/datos`, { waitUntil: "networkidle" });
 await page.waitForTimeout(800);
 await page.getByRole("button", { name: /Pegar movimientos desde tus notas/ }).click();
 await page.waitForTimeout(400);
@@ -47,6 +47,30 @@ await page.locator('[role="dialog"] textarea').first().fill(
 );
 await page.waitForTimeout(900);
 await shot("importar", true);
+await page.keyboard.press("Escape");
+
+// Importación del historial de Binance.
+await page.goto(`${BASE}/ajustes/datos`, { waitUntil: "networkidle" });
+await page.waitForTimeout(800);
+await page.getByRole("button", { name: /Importar el historial de Binance/ }).click();
+await page.waitForTimeout(400);
+await page.locator('[data-testid="binance-file"]').setInputFiles({
+  name: "Binance-Spot-Order-History.csv",
+  mimeType: "text/csv",
+  buffer: Buffer.from(
+    [
+      "\ufeffTime,OrderNo,Pair,Type\u00b9,Side,Order Price,Order Amount,Time,Executed\u00b2,Average Price,Trading total\u00b3,Status",
+      "2026-01-05 10:00:00,9001,BTCUSDT,Market,BUY,0,0.002BTC,2026-01-05 10:00:00,0.002BTC,90000,180USDT,FILLED",
+      "2026-01-20 11:30:00,9002,ETHUSDT,Limit,BUY,3000,0.05ETH,2026-01-22 09:15:00,0.05ETH,3000,150USDT,FILLED",
+      "2026-02-10 12:00:00,9003,BTCUSDT,Market,SELL,0,0.001BTC,2026-02-10 12:00:00,0.001BTC,95000,95USDT,FILLED",
+      "2026-02-11 12:00:00,9004,ETHUSDT,Limit,BUY,2000,1ETH,2026-02-11 12:00:00,0ETH,0,0USDT,CANCELED",
+      "2026-02-12 12:00:00,9005,SOLETH,Market,BUY,0,1SOL,2026-02-12 12:00:00,1SOL,0.055,0.055ETH,FILLED",
+    ].join("\n"),
+    "utf8",
+  ),
+});
+await page.waitForTimeout(900);
+await shot("binance", true);
 await page.keyboard.press("Escape");
 
 // Detalle de una posición.
@@ -68,13 +92,21 @@ await page.goto(BASE, { waitUntil: "networkidle" });
 await page.waitForTimeout(800);
 await page.getByRole("button", { name: /agregar movimiento/i }).click();
 await page.waitForTimeout(400);
+// El primer paso pregunta que hizo; el texto libre esta un toque mas abajo.
+await shot("carga-tipo");
+await page.getByRole("button", { name: /escribirlo en una línea/i }).click();
+await page.waitForTimeout(400);
 await page.locator('input[placeholder*="QQQ"]').first().fill("le metí unos mangos al bitcoin");
 await shot("carga-dudosa");
+await page.keyboard.press("Escape");
 
-// Formulario completo.
-await page.getByRole("button", { name: /^Formulario$/ }).click();
+// El recorrido guiado, con el paso de datos abierto.
 await page.waitForTimeout(400);
-await shot("formulario");
+await page.getByRole("button", { name: /agregar movimiento/i }).click();
+await page.waitForTimeout(400);
+await page.getByRole("button", { name: /^Compré/ }).first().click();
+await page.waitForTimeout(400);
+await shot("carga-datos", true);
 await page.keyboard.press("Escape");
 
 // Cartera agrupada por cuenta.

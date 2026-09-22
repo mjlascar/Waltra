@@ -108,7 +108,7 @@ recorte del color de la superficie: al revés, la línea las cruza.
 | Dónde | Qué |
 |---|---|
 | `src/lib/engine/` | Ledger, valuación diaria, TWR, XIRR, riesgo. Funciones puras, bien cubiertas por tests. Si tocás esto, corré los tests. |
-| `src/lib/parse/` | Frases sueltas en castellano rioplatense (`quick-add.ts`) y pegado de varias líneas (`bulk.ts`). |
+| `src/lib/parse/` | Frases sueltas en castellano rioplatense (`quick-add.ts`), pegado de varias líneas (`bulk.ts`) y la exportación de Binance (`binance.ts`). |
 | `src/lib/market/` | Proveedores de precios. Cada uno aislado: si uno se cae, devuelve el error en el resultado, nunca lanza. `mock.ts` solo se activa con `WALTRA_MOCK=1`. |
 | `src/lib/store.tsx` | Estado de la app, consultas en vivo a IndexedDB y sincronización de mercado. |
 | `src/app/api/` | Envoltorio fino sobre lo de arriba, para el modo web. La lógica no vive acá. |
@@ -123,6 +123,37 @@ aparecieron así están fijados en `quick-add.test.ts`: la marca de moneda al
 final de la frase no convierte unidades en plata, las palabras que cuentan
 unidades ("3 acciones de AAPL") y los sustantivos que funcionan como verbo
 ("ingreso 250").
+
+## Al tocar la importación de Binance
+
+Es la exportación "Spot Order History", una fila por orden. La otra
+("Transaction History") parte cada operación en varias filas que hay que
+aparear por timestamp: no vale la pena.
+
+Tres cosas del formato que ya mordieron y están fijadas en los tests:
+el archivo tiene **dos columnas llamadas `Time`** (la segunda es la de
+ejecución, y es la que vale: una orden limit se ejecuta días después de
+ponerse), los encabezados traen los superíndices de las llamadas al pie
+(`Type¹`, `Executed²`, `Trading total³`) y las cantidades vienen con el símbolo
+pegado al número, sin espacio (`0.033ETH`).
+
+El par se separa del sufijo más largo al más corto, o `BTCFDUSD` se lee como
+`BTCF` contra `USD`. Un par que no cotiza contra dólares se **rechaza con su
+motivo**: contarlo como una operación en dólares ensuciaría el costo para
+siempre.
+
+El id de cada movimiento sale del número de orden, así que reimportar el mismo
+archivo reemplaza en vez de duplicar. El ingreso de capital que ofrece la
+pantalla tiene id fijo por la misma razón.
+
+**La exportación no trae ingresos, retiros ni comisiones.** Sin cargar el
+capital aparte, el efectivo de la cuenta queda en negativo y el capital
+aportado en cero, que es justo lo que la app existe para arreglar. De ahí el
+`netoUsd` del resumen y la casilla que ofrece anotarlo: el número sale de las
+órdenes, pero el monto y la fecha los decide el usuario.
+
+Los tests usan filas inventadas con el formato exacto. **El historial del
+usuario no entra al repositorio**, que es público.
 
 ## Al tocar los insights
 

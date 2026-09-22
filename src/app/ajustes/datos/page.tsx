@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { AjustesShell } from "@/components/ajustes/Shell";
+import { BinanceImport } from "@/components/BinanceImport";
 import { BulkImport } from "@/components/BulkImport";
 import { IconTrash } from "@/components/icons";
 import { useStore } from "@/lib/store";
@@ -16,6 +17,7 @@ export default function DatosAjustes() {
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
   const [bulk, setBulk] = useState(false);
+  const [binance, setBinance] = useState(false);
   const [wipeText, setWipeText] = useState("");
   const [wiping, setWiping] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -66,6 +68,9 @@ export default function DatosAjustes() {
           </div>
           <button className="btn btn-sm mt-2 w-full" onClick={() => setBulk(true)}>
             Pegar movimientos desde tus notas
+          </button>
+          <button className="btn btn-sm mt-2 w-full" onClick={() => setBinance(true)}>
+            Importar el historial de Binance
           </button>
           <input
             ref={fileRef}
@@ -143,6 +148,7 @@ export default function DatosAjustes() {
         </div>
 
       <BulkImport open={bulk} onClose={() => setBulk(false)} />
+      <BinanceImport open={binance} onClose={() => setBinance(false)} />
     </AjustesShell>
   );
 }

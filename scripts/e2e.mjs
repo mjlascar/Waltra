@@ -187,6 +187,51 @@ check("los movimientos importados aparecen", await has("SOL"));
 await goto("/cartera");
 check("la posición importada llega a la cartera", await has("SOL"));
 
+console.log("\n4c. Importar el historial de Binance");
+// Filas inventadas con el formato exacto de la exportacion: marca de orden de
+// bytes, dos columnas "Time" y el simbolo pegado al numero.
+const binanceCsv = [
+  "\ufeffTime,OrderNo,Pair,Type\u00b9,Side,Order Price,Order Amount,Time,Executed\u00b2,Average Price,Trading total\u00b3,Status",
+  "2026-01-05 10:00:00,9001,BTCUSDT,Market,BUY,0,0.002BTC,2026-01-05 10:00:00,0.002BTC,90000,180USDT,FILLED",
+  "2026-01-20 11:30:00,9002,ETHUSDT,Limit,BUY,3000,0.05ETH,2026-01-22 09:15:00,0.05ETH,3000,150USDT,FILLED",
+  "2026-02-10 12:00:00,9003,BTCUSDT,Market,SELL,0,0.001BTC,2026-02-10 12:00:00,0.001BTC,95000,95USDT,FILLED",
+  "2026-02-11 12:00:00,9004,ETHUSDT,Limit,BUY,2000,1ETH,2026-02-11 12:00:00,0ETH,0,0USDT,CANCELED",
+].join("\n");
+await goto("/ajustes/datos");
+await page.getByRole("button", { name: /Importar el historial de Binance/ }).click();
+await page.waitForTimeout(400);
+await page.locator('[data-testid="binance-file"]').setInputFiles({
+  name: "Binance-Spot-Order-History.csv",
+  mimeType: "text/csv",
+  buffer: Buffer.from(binanceCsv, "utf8"),
+});
+await page.waitForTimeout(900);
+const bnc = await text();
+check("cuenta las órdenes ejecutadas", /3 órdenes ejecutadas/i.test(bnc), bnc.slice(0, 400));
+check("no cuenta la cancelada", /1 sin ejecutar/i.test(bnc), bnc.slice(0, 400));
+check("avisa que no vienen los ingresos", await has("no los ingresos ni los retiros"));
+check("propone el capital que consumieron las órdenes", await has("US$ 235,00"), bnc.slice(0, 600));
+await page.getByRole("button", { name: /^Importar 3$/ }).click();
+await page.waitForTimeout(3000);
+// Tres ordenes mas el ingreso de capital.
+check("carga las órdenes y el capital", await has("Se cargaron 4"), (await text()).slice(0, 200));
+await page.getByRole("button", { name: /^Listo$/ }).click();
+await page.waitForTimeout(600);
+
+await goto("/movimientos");
+check("las órdenes de Binance aparecen", await has("Binance ETH/USDT"));
+check("el capital entró como ingreso, no como ganancia", await has("Capital estimado"));
+await goto("/cartera");
+// El BTC ya existia en la cartera de ejemplo: la importacion tiene que sumar
+// a esa posicion, no abrir una segunda con el mismo simbolo.
+const btcRows = await page.evaluate(
+  () =>
+    [...document.querySelectorAll("section button span")].filter(
+      (el) => el.textContent.trim() === "BTC",
+    ).length,
+);
+check("reusa el activo que ya existía", btcRows === 1, `filas BTC: ${btcRows}`);
+
 console.log("\n5. Navegación entre vistas");
 for (const [path, marker] of [
   ["/", "Valor total"],

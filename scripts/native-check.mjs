@@ -160,6 +160,31 @@ check("aclara qué se comparte", await has("No lleva los montos"));
 await page.locator('[aria-label="Cerrar"]').first().click();
 await page.waitForTimeout(400);
 
+console.log("\n4c. El historial de Binance se importa sin servidor");
+// La lectura del CSV es del navegador: si algun dia se moviera a /api, esto
+// fallaria en el APK y en ningun otro lado.
+await goto("/ajustes/datos");
+await page.getByRole("button", { name: /Importar el historial de Binance/ }).click();
+await page.waitForTimeout(400);
+await page.locator('[data-testid="binance-file"]').setInputFiles({
+  name: "Binance-Spot-Order-History.csv",
+  mimeType: "text/csv",
+  buffer: Buffer.from(
+    [
+      "\ufeffTime,OrderNo,Pair,Type\u00b9,Side,Order Price,Order Amount,Time,Executed\u00b2,Average Price,Trading total\u00b3,Status",
+      "2026-01-05 10:00:00,9001,BTCUSDT,Market,BUY,0,0.002BTC,2026-01-05 10:00:00,0.002BTC,90000,180USDT,FILLED",
+      "2026-01-20 11:30:00,9002,ETHUSDT,Limit,BUY,3000,0.05ETH,2026-01-22 09:15:00,0.05ETH,3000,150USDT,FILLED",
+      "2026-02-11 12:00:00,9004,ETHUSDT,Limit,BUY,2000,1ETH,2026-02-11 12:00:00,0ETH,0,0USDT,CANCELED",
+    ].join("\n"),
+    "utf8",
+  ),
+});
+await page.waitForTimeout(800);
+check("lee el archivo en el teléfono", await has("2 órdenes ejecutadas"), (await text()).slice(0, 300));
+check("avisa que faltan los ingresos", await has("no los ingresos ni los retiros"));
+await page.locator('[aria-label="Cerrar"]').first().click();
+await page.waitForTimeout(400);
+
 console.log("\n5. No hay servidor propio en el medio");
 // La prueba no es "no sale nada a internet": con datos cargados la app SI
 // consulta a los proveedores, y que lo haga directo es justamente el punto

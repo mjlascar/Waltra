@@ -29,6 +29,15 @@ cartel amarillo. Con precios reales ese aviso no aparece.</sub>
   pegás el archivo entero: la app lee línea por línea, te muestra lo que
   entendió, marca lo que no cierra y carga todo junto. La cuenta se arrastra
   entre líneas, como cuando escribís.
+- **El historial de Binance, de una.** Ajustes → Tus datos → *Importar el
+  historial de Binance* toma la exportación de órdenes spot tal como sale del
+  exchange: lee las ejecutadas, omite las canceladas, rechaza los pares que no
+  cotizan contra dólares en vez de anotarlos mal y muestra todo antes de
+  guardar. Cada orden se guarda con su número, así que volver a exportar dentro
+  de unos meses reemplaza las que ya están y no duplica nada. Como esa
+  exportación no trae ingresos ni retiros de dinero, la app dice cuánto capital
+  consumieron las órdenes y ofrece anotarlo, con el monto y la fecha editables.
+  Cocos no tiene exportación: eso va a mano o pegado desde tus notas.
 - **Una sola cartera.** Cocos y Binance en la misma vista, con el detalle por
   cuenta cuando lo querés.
 - **Precios al día.** Acciones y ETFs (Yahoo Finance), cripto (Binance), mercado
@@ -262,7 +271,7 @@ src/
     backend/           Elige entre las rutas /api y correr todo en el teléfono
     engine/            Ledger, valuación diaria, TWR, XIRR, riesgo
     market/            Proveedores de precios + simulador
-    parse/             Parser de frases en castellano rioplatense
+    parse/             Frases en castellano rioplatense y el historial de Binance
     alerts/            Plan de alertas y puente a las preferencias de Android
     db.ts              IndexedDB (Dexie), backup e importación
     store.tsx          Estado de la app y sincronización
