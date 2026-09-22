@@ -44,11 +44,18 @@ export const InsightRequestSchema = z.object({
     goals: z.string().max(600),
   }),
   question: z.string().max(400).optional(),
+  /**
+   * Que clase de informe se pide. `cartera` mira lo que tenes; `mercado`
+   * ademas sale a buscar afuera lo que podria interesarte.
+   */
+  kind: z.enum(["cartera", "mercado"]).default("cartera"),
   /** Modelo elegido por el usuario. Se valida contra una lista blanca. */
   model: z.string().max(60).optional(),
 });
 
-export type InsightRequest = z.infer<typeof InsightRequestSchema>;
+export type InsightRequest = z.output<typeof InsightRequestSchema>;
+/** Lo que arma la pantalla, antes de que el esquema complete los faltantes. */
+export type InsightRequestInput = z.input<typeof InsightRequestSchema>;
 
 export const ReportSchema = z.object({
   marketBrief: z

@@ -54,8 +54,11 @@ cartel amarillo. Con precios reales ese aviso no aparece.</sub>
   ponés el número real y se carga la diferencia como un ajuste explícito, que
   cuenta como resultado y no como capital. Queda anotado: no se disimula.
 - **Insights con IA.** Busca noticias recientes sobre tus posiciones, las cruza
-  con cómo venís operando y devuelve una lectura con fuentes citadas. Requiere
-  tu propia clave de Anthropic; sin ella el resto de la app funciona igual.
+  con cómo venís operando y devuelve una lectura con fuentes citadas. Hay dos
+  informes: el de tu cartera y un resumen de mercado que además sale a buscar
+  afuera qué podría interesarte. Se pueden agendar —«resumen de mercado los
+  lunes a las 9»— y a esa hora llega un recordatorio. Requiere tu propia clave
+  de Anthropic; sin ella el resto de la app funciona igual.
 - **Todo vive en tu teléfono.** IndexedDB, sin cuenta ni servidor propio. Backup
   y restauración a un archivo JSON que es tuyo.
 - **Instalable y offline.** Es una PWA: se agrega a la pantalla de inicio y abre
@@ -294,14 +297,14 @@ signo, etiqueta o ícono al lado.
 npm run check   # tipos + lint + tests + escaneo de credenciales
 ```
 
-- **193 tests** del motor de cálculo, el parser, la base local, el formato, los
+- **219 tests** del motor de cálculo, el parser, la base local, el formato, los
   proveedores de precios, la ruta de insights y el vigía de precios. Los
   proveedores y el SDK corren simulados: son servicios externos que no se
   pueden alcanzar desde CI, y son justamente los que más conviene tener
   fijados. El vigía se prueba cargando **el archivo exacto que viaja en el
   APK** en un contexto con las funciones globales de Android simuladas, no una
   copia en TypeScript que podría irse separando.
-- **`npm run e2e`**: 60 comprobaciones sobre un navegador real, en un viewport
+- **`npm run e2e`**: 72 comprobaciones sobre un navegador real, en un viewport
   de 360×760 (Galaxy S10e), con la app levantada. Carga movimientos
   escribiendo, edita, borra, filtra, arrastra la cruceta del gráfico, importa
   un bloc de notas, reconcilia un saldo y exporta un backup. Falla si aparece

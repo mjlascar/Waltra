@@ -11,6 +11,15 @@ import {
   insights as insightsRequest,
   ON_DEVICE,
 } from "@/lib/backend";
+import {
+  describeSchedule,
+  isDue,
+  KIND_DETAIL,
+  DIA_OPCIONES,
+  KIND_LABEL,
+  schedules,
+  type ReportKind,
+} from "@/lib/insights/schedule";
 import { longDate, percent, relativeTime } from "@/lib/format";
 import { daysBetween, toDay, today } from "@/lib/date";
 import type { InsightReport, InsightSignal } from "@/lib/types";
@@ -25,8 +34,15 @@ const ACTION_STYLE: Record<InsightSignal["action"], { color: string; label: stri
 };
 
 export default function Insights() {
-  const { portfolio: p, transactions, accounts, settings, insights, saveInsight, backend, ready } =
-    useStore();
+  const {
+    portfolio: p, transactions, accounts, settings, insights,
+    saveInsight, updateSettings, backend, ready,
+  } = useStore();
+  const agenda = useMemo(() => schedules(settings), [settings]);
+  // `ahora` se congela al montar: si se recalculara en cada render, el aviso
+  // de "toca generarlo" podria aparecer y desaparecer solo mientras se mira.
+  const ahora = useMemo(() => new Date(), []);
+  const pendientes = agenda.filter((a) => isDue(a, ahora));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
@@ -58,7 +74,7 @@ export default function Insights() {
     return out;
   }, [transactions]);
 
-  async function generate() {
+  async function generate(kind: ReportKind = "cartera") {
     if (loading) return;
     setLoading(true);
     setError(null);
@@ -110,6 +126,7 @@ export default function Insights() {
         },
         question: question.trim() || undefined,
         model: settings.model,
+        kind,
       };
 
       const data = await insightsRequest(body, backend());
@@ -128,6 +145,16 @@ export default function Insights() {
       await saveInsight(saved);
       setIndex(0);
       setQuestion("");
+      // El informe agendado queda marcado como hecho recien cuando salio bien:
+      // si fallo, la semana que viene sigue pendiente.
+      const agendado = agenda.find((a) => a.kind === kind);
+      if (agendado?.enabled) {
+        await updateSettings({
+          schedules: agenda.map((a) =>
+            a.kind === kind ? { ...a, lastRun: new Date().toISOString() } : a,
+          ),
+        });
+      }
     } catch (err) {
       setError(describeBackendError(err));
     } finally {
@@ -149,6 +176,29 @@ export default function Insights() {
         </div>
       ) : (
         <>
+          {/* Lo agendado que ya venció: es lo primero que hay que ver al
+              entrar, porque es justamente lo que se vino a buscar. */}
+          {pendientes.map((a) => (
+            <div
+              key={a.kind}
+              className="card mb-4 p-3"
+              style={{ borderColor: "var(--color-line-strong)" }}
+            >
+              <div className="eyebrow mb-2">Te toca</div>
+              <p className="text-[14px] font-medium">{KIND_LABEL[a.kind]}</p>
+              <p className="label mt-1 leading-relaxed">
+                {describeSchedule(a)}. {KIND_DETAIL[a.kind]}
+              </p>
+              <button
+                className="btn btn-primary btn-sm mt-3 w-full"
+                onClick={() => void generate(a.kind)}
+                disabled={loading || config?.aiConfigured === false}
+              >
+                {loading ? "Analizando…" : "Generarlo ahora"}
+              </button>
+            </div>
+          ))}
+
           <div className="card mb-4 p-3">
             <div className="eyebrow mb-2">Análisis del mercado sobre tu cartera</div>
             <p className="mb-3 text-[12px] leading-relaxed" style={{ color: "var(--color-ink-2)" }}>
@@ -164,7 +214,7 @@ export default function Insights() {
             />
             <button
               className="btn btn-primary w-full"
-              onClick={generate}
+              onClick={() => void generate("cartera")}
               disabled={loading || config?.aiConfigured === false}
             >
               {loading ? "Analizando… puede tardar un minuto" : "Generar análisis"}
@@ -193,6 +243,87 @@ export default function Insights() {
             </div>
           )}
         </>
+      )}
+
+      {/* --- Informes agendados ---------------------------------------------- */}
+      {p.positions.length > 0 && (
+        <section className="mb-5">
+          <SectionTitle>Informes que se repiten</SectionTitle>
+          <ul className="card divide-hairline">
+            {agenda.map((a) => (
+              <li key={a.kind} className="p-3">
+                <div className="flex items-start gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13px] font-medium">{KIND_LABEL[a.kind]}</div>
+                    <div className="label mt-0.5 leading-snug">{KIND_DETAIL[a.kind]}</div>
+                  </div>
+                  <button
+                    className="chip shrink-0"
+                    style={{
+                      height: 26,
+                      color: a.enabled ? "var(--color-pos)" : undefined,
+                      borderColor: a.enabled ? "var(--color-pos)" : undefined,
+                    }}
+                    aria-pressed={a.enabled}
+                    onClick={() =>
+                      void updateSettings({
+                        schedules: agenda.map((x) =>
+                          x.kind === a.kind ? { ...x, enabled: !x.enabled } : x,
+                        ),
+                      })
+                    }
+                  >
+                    {a.enabled ? "activo" : "activar"}
+                  </button>
+                </div>
+
+                {a.enabled && (
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <select
+                      className="input"
+                      value={String(a.weekday)}
+                      onChange={(e) =>
+                        void updateSettings({
+                          schedules: agenda.map((x) =>
+                            x.kind === a.kind ? { ...x, weekday: Number(e.target.value) } : x,
+                          ),
+                        })
+                      }
+                    >
+                      {DIA_OPCIONES.map((d) => (
+                        <option key={d.value} value={d.value}>
+                          {d.label}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      className="input"
+                      value={String(a.hour)}
+                      onChange={(e) =>
+                        void updateSettings({
+                          schedules: agenda.map((x) =>
+                            x.kind === a.kind ? { ...x, hour: Number(e.target.value) } : x,
+                          ),
+                        })
+                      }
+                    >
+                      {Array.from({ length: 24 }, (_, h) => (
+                        <option key={h} value={h}>
+                          {String(h).padStart(2, "0")}:00
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="label mt-2 leading-relaxed">
+            {ON_DEVICE
+              ? "A la hora elegida llega una notificación y el informe queda acá esperando. No se genera solo: cada análisis gasta créditos de tu cuenta y hacerlo sin que estés mirando es la clase de cosa que se descubre a fin de mes."
+              : "El recordatorio con notificación solo existe en el APK. Acá el informe aparece pendiente cuando abrís la app después de la hora elegida."}
+          </p>
+        </section>
       )}
 
       {insights.length > 1 && (

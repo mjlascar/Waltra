@@ -140,6 +140,19 @@ Para revisar cómo se ve un informe sin gastar créditos:
 Interfaz y mensajes al usuario en castellano rioplatense, con acentos.
 Comentarios y commits en castellano. Identificadores en inglés.
 
+## Al tocar los informes programados
+
+La app no tiene servidor, así que nadie puede generar un informe mientras el
+teléfono duerme: lo que se agenda es el **recordatorio**. A la hora elegida el
+vigía manda una notificación y, al abrir, el informe aparece esperando con un
+botón. Generarlo solo gastaría créditos de la cuenta del usuario sin que esté
+mirando, que es la clase de cosa que se descubre a fin de mes.
+
+`lastOccurrence` está escrita dos veces —en `src/lib/insights/schedule.ts` y
+en el vigía, que no puede importar módulos— y hay un test que carga las dos y
+compara. Si se separan, el aviso llega un día antes o un día después y nadie
+entiende por qué.
+
 ## Al tocar las alertas
 
 El vigía (`public/runners/alerts.js`) no es la app: corre en un motor chico de

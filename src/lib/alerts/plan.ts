@@ -1,5 +1,6 @@
 import type { Asset, Currency, QuoteSource, Settings } from "@/lib/types";
 import type { Portfolio } from "@/lib/engine/portfolio";
+import { schedules } from "@/lib/insights/schedule";
 
 /**
  * El plan de alertas: lo unico que el vigia de precios sabe de tu cartera.
@@ -53,6 +54,13 @@ export interface AlertPlanAsset {
   pct: number;
 }
 
+/** Un informe agendado, tal como lo ve el vigia. */
+export interface AlertPlanAgenda {
+  kind: string;
+  wd: number;
+  h: number;
+}
+
 export interface AlertPlan {
   v: 1;
   at: string;
@@ -63,6 +71,8 @@ export interface AlertPlan {
   cashUsd: number;
   arsPerUsd: number;
   assets: AlertPlanAsset[];
+  /** Informes recurrentes. El vigia solo recuerda; generar lo hace la app. */
+  agenda: AlertPlanAgenda[];
 }
 
 export function alertRules(settings: Settings): AlertRules {
@@ -89,28 +99,40 @@ export function buildAlertPlan(
   arsPerUsd: number,
 ): AlertPlan | null {
   const rules = alertRules(settings);
-  if (!rules.enabled) return null;
+
+  // Los informes agendados no dependen de las alertas de precio: se pueden
+  // querer los lunes a la manana sin querer que nada suene el resto de la
+  // semana.
+  const agenda: AlertPlanAgenda[] = schedules(settings)
+    .filter((s) => s.enabled)
+    .map((s) => ({ kind: s.kind, wd: s.weekday, h: s.hour }));
 
   const byId = new Map(assets.map((a) => [a.id, a]));
   const planAssets: AlertPlanAsset[] = [];
 
-  for (const pos of portfolio.positions) {
-    const asset = byId.get(pos.assetId);
-    if (!asset || asset.source === "manual" || asset.archived) continue;
-    if (pos.quantity <= 0) continue;
-    planAssets.push({
-      sym: pos.symbol,
-      src: asset.source,
-      ss: asset.sourceSymbol,
-      cur: asset.currency,
-      qty: pos.quantity,
-      pct: thresholdFor(rules, pos.assetId),
-    });
+  if (rules.enabled) {
+    for (const pos of portfolio.positions) {
+      const asset = byId.get(pos.assetId);
+      if (!asset || asset.source === "manual" || asset.archived) continue;
+      if (pos.quantity <= 0) continue;
+      planAssets.push({
+        sym: pos.symbol,
+        src: asset.source,
+        ss: asset.sourceSymbol,
+        cur: asset.currency,
+        qty: pos.quantity,
+        pct: thresholdFor(rules, pos.assetId),
+      });
+    }
   }
 
-  const vigilaAlgo =
-    planAssets.some((a) => a.pct > 0) || rules.portfolioPct > 0 || rules.digestHour !== null;
-  if (!vigilaAlgo || planAssets.length === 0) return null;
+  const vigilaPrecios =
+    planAssets.length > 0 &&
+    (planAssets.some((a) => a.pct > 0) || rules.portfolioPct > 0 || rules.digestHour !== null);
+
+  // Sin nada que vigilar ni nada que recordar, no se deja plan: un plan vacio
+  // solo lograria que el telefono se despierte cada media hora al pedo.
+  if (!vigilaPrecios && agenda.length === 0) return null;
 
   return {
     v: 1,
@@ -120,6 +142,7 @@ export function buildAlertPlan(
     portfolioPct: rules.portfolioPct,
     cashUsd: portfolio.cashUsd,
     arsPerUsd: arsPerUsd > 0 ? arsPerUsd : 0,
-    assets: planAssets,
+    assets: vigilaPrecios ? planAssets : [],
+    agenda,
   };
 }

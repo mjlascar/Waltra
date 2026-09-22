@@ -158,6 +158,8 @@ export interface Settings {
    * mire los precios con la pantalla apagada.
    */
   alerts?: import("@/lib/alerts/plan").AlertRules;
+  /** Informes que se recuerdan solos. Ver `src/lib/insights/schedule.ts`. */
+  schedules?: import("@/lib/insights/schedule").Schedule[];
 }
 
 export interface InsightSource {

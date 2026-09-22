@@ -1,7 +1,7 @@
 import { BACKEND } from "@/lib/platform";
 import type { Diagnostics } from "@/lib/market/diagnostics";
 import type { SyncRequest, SyncResult } from "@/lib/market/sync";
-import type { InsightRequest } from "@/lib/insights/digest";
+import type { InsightRequestInput } from "@/lib/insights/digest";
 import type { GeneratedReport } from "@/lib/insights/generate";
 import type { ParsedEntry, ParseRequest } from "@/lib/insights/parse-entry";
 
@@ -127,11 +127,17 @@ export async function parseEntry(req: ParseRequest, ctx: BackendContext): Promis
   });
 }
 
-export async function insights(req: InsightRequest, ctx: BackendContext): Promise<GeneratedReport> {
+export async function insights(
+  req: InsightRequestInput,
+  ctx: BackendContext,
+): Promise<GeneratedReport> {
   if (!ON_DEVICE) return post<GeneratedReport>("/api/insights", req, ctx);
   return wrap(async () => {
+    // El esquema completa lo que la pantalla no mando, igual que hace la ruta
+    // /api cuando el trabajo corre en el servidor.
+    const { InsightRequestSchema } = await import("@/lib/insights/digest");
     const { generateReport } = await import("@/lib/insights/generate");
-    return generateReport(await client(ctx), req);
+    return generateReport(await client(ctx), InsightRequestSchema.parse(req));
   });
 }
 

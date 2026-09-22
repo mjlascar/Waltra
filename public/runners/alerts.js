@@ -266,6 +266,9 @@ function traerPrecios(assets) {
 function decidir(plan, precios, estado, ahora) {
   var hora = ahora.getHours();
   var dia = localDay(ahora);
+  // Los recordatorios no miran precios ni respetan el silencio: la hora la
+  // eligio el usuario a proposito.
+  var recordados = recordatorios(plan, estado, ahora);
   var silencio = enSilencio(plan.quiet, hora);
   var avisos = [];
   var notificados = estado.day === dia && estado.notified ? estado.notified : {};
@@ -372,32 +375,96 @@ function decidir(plan, precios, estado, ahora) {
   }
 
   return {
-    avisos: avisos,
+    avisos: recordados.avisos.concat(avisos),
     estado: {
       day: dia,
       notified: siguiente,
       portfolio: estado.portfolio,
       digestDay: estado.digestDay,
+      agenda: recordados.agenda,
     },
   };
+}
+
+/* --- informes agendados -------------------------------------------------- */
+
+var NOMBRE_INFORME = {
+  cartera: "Análisis de tu cartera",
+  mercado: "Resumen de mercado",
+};
+
+/** Dia de la semana en ISO (1 = lunes … 7 = domingo) del reloj local. */
+function isoWeekday(date) {
+  var d = date.getDay();
+  return d === 0 ? 7 : d;
+}
+
+/**
+ * Cuando le tocaba por ultima vez, como fecha local YYYY-MM-DD.
+ *
+ * Misma logica que `lastOccurrence` en src/lib/insights/schedule.ts, escrita
+ * de nuevo porque aca no se pueden importar modulos. El test carga los dos y
+ * compara, asi que no pueden separarse sin que salte.
+ */
+function ultimaVez(item, ahora) {
+  var c = new Date(ahora);
+  c.setHours(item.h, 0, 0, 0);
+  for (var i = 0; i < 8; i++) {
+    if (isoWeekday(c) === item.wd && c <= ahora) return localDay(c);
+    c.setDate(c.getDate() - 1);
+    c.setHours(item.h, 0, 0, 0);
+  }
+  return null;
+}
+
+/**
+ * Recordatorios de informe. El vigia no los genera: eso gasta creditos de la
+ * cuenta del usuario y se hace con el usuario mirando. Solo avisa.
+ */
+function recordatorios(plan, estado, ahora) {
+  var avisos = [];
+  var hechos = estado.agenda || {};
+  var siguiente = {};
+  var agenda = plan.agenda || [];
+
+  for (var i = 0; i < agenda.length; i++) {
+    var item = agenda[i];
+    var toco = ultimaVez(item, ahora);
+    siguiente[item.kind] = hechos[item.kind];
+    if (!toco || hechos[item.kind] === toco) continue;
+    siguiente[item.kind] = toco;
+    avisos.push({
+      id: notifId("informe", item.kind),
+      title: NOMBRE_INFORME[item.kind] || "Informe de Waltra",
+      body: "Te toca. Abrí Waltra y generalo cuando quieras.",
+      group: "waltra-informes",
+    });
+  }
+
+  return { avisos: avisos, agenda: siguiente };
 }
 
 /* --- corrida ------------------------------------------------------------ */
 
 function correr() {
   var plan = kvRead(PLAN_KEY);
-  if (!plan || plan.v !== 1 || !plan.assets || plan.assets.length === 0) {
-    return Promise.resolve("sin plan");
-  }
+  if (!plan || plan.v !== 1) return Promise.resolve("sin plan");
+  var activos = plan.assets || [];
+  var agenda = plan.agenda || [];
+  if (activos.length === 0 && agenda.length === 0) return Promise.resolve("sin plan");
 
+  var hayRed = true;
   try {
     var red = CapacitorDevice.getNetworkStatus();
-    if (red && red.connected === false) return Promise.resolve("sin red");
+    if (red && red.connected === false) hayRed = false;
   } catch (err) {
     // Si no se puede consultar la red, se intenta igual.
   }
 
-  return traerPrecios(plan.assets).then(function (precios) {
+  // Un recordatorio de informe no necesita precios: sin red se manda igual.
+  var precios = activos.length > 0 && hayRed ? traerPrecios(activos) : Promise.resolve({});
+
+  return precios.then(function (precios) {
     var estado = kvRead(STATE_KEY) || {};
     var salida = decidir(plan, precios, estado, new Date());
     kvWrite(STATE_KEY, salida.estado);

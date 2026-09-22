@@ -9,6 +9,7 @@ import {
 } from "@/lib/insights/digest";
 
 const base: InsightRequest = {
+  kind: "cartera",
   holdings: [
     {
       symbol: "QQQ",

@@ -26,6 +26,12 @@ interface Estado {
 }
 
 interface Runner {
+  ultimaVez: (item: { wd: number; h: number }, ahora: Date) => string | null;
+  recordatorios: (
+    plan: unknown,
+    estado: Record<string, unknown>,
+    ahora: Date,
+  ) => { avisos: Aviso[]; agenda: Record<string, string | undefined> };
   decidir: (
     plan: unknown,
     precios: unknown,
@@ -75,6 +81,7 @@ function plan(over: Record<string, unknown> = {}) {
     cashUsd: 0,
     arsPerUsd: 1000,
     assets: [{ sym: "BTC", src: "binance", ss: "BTCUSDT", cur: "USD", qty: 1, pct: 5 }],
+    agenda: [],
     ...over,
   };
 }
@@ -477,5 +484,62 @@ describe("la corrida completa", () => {
     });
     await correr(env);
     expect(env.pedidos).toHaveLength(0);
+  });
+});
+
+
+describe("recordatorios de informe", () => {
+  // 2026-09-21 es lunes.
+  const el = (dia: number, hora: number) => new Date(2026, 8, dia, hora, 0, 0);
+  const lunes9 = { kind: "mercado", wd: 1, h: 9 };
+
+  it("coincide con el cálculo de la app", async () => {
+    // Si el vigía y la app no calculan lo mismo, el aviso llega un día antes
+    // o un día después y nadie entiende por qué.
+    const { lastOccurrence } = await import("@/lib/insights/schedule");
+    const casos = [el(21, 10), el(21, 8), el(24, 15), el(27, 12), el(28, 0)];
+    for (const ahora of casos) {
+      const delRunner = runner.ultimaVez(lunes9, ahora);
+      const deLaApp = lastOccurrence(
+        { kind: "mercado", enabled: true, weekday: 1, hour: 9 },
+        ahora,
+      );
+      expect(delRunner).toBe(runner.localDay(deLaApp));
+    }
+  });
+
+  it("avisa cuando ya pasó la hora", () => {
+    const { avisos } = runner.recordatorios(plan({ agenda: [lunes9] }), {}, el(21, 10));
+    expect(avisos).toHaveLength(1);
+    expect(avisos[0].title).toBe("Resumen de mercado");
+  });
+
+  it("no repite el mismo aviso", () => {
+    const reglas = plan({ agenda: [lunes9] });
+    const primera = runner.recordatorios(reglas, {}, el(21, 10));
+    const segunda = runner.recordatorios(reglas, { agenda: primera.agenda }, el(24, 15));
+    expect(segunda.avisos).toHaveLength(0);
+  });
+
+  it("vuelve a avisar a la semana siguiente", () => {
+    const reglas = plan({ agenda: [lunes9] });
+    const primera = runner.recordatorios(reglas, {}, el(21, 10));
+    const otra = runner.recordatorios(reglas, { agenda: primera.agenda }, el(28, 9));
+    expect(otra.avisos).toHaveLength(1);
+  });
+
+  it("sin agenda no hay recordatorios", () => {
+    expect(runner.recordatorios(plan(), {}, el(21, 10)).avisos).toHaveLength(0);
+  });
+
+  it("el recordatorio no respeta el silencio: la hora la eligió el usuario", () => {
+    const { avisos } = runner.decidir(
+      plan({ agenda: [{ kind: "mercado", wd: 1, h: 3 }], quiet: [23, 8] }),
+      {},
+      {},
+      el(21, 4),
+    );
+    expect(avisos).toHaveLength(1);
+    expect(avisos[0].group).toBe("waltra-informes");
   });
 });
