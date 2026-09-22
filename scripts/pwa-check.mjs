@@ -78,7 +78,9 @@ check("los datos siguen ahí", /US\$/.test(offline), offline.slice(0, 160));
 
 // Y se puede seguir cargando movimientos sin red.
 await page.getByRole("button", { name: /agregar movimiento/i }).click();
-await page.waitForTimeout(600);
+await page.waitForTimeout(500);
+await page.getByRole("button", { name: /escribirlo en una línea/i }).click();
+await page.waitForTimeout(400);
 await page.locator('input[placeholder*="QQQ"]').first().fill("pasé 50 dólares a cocos");
 await page.waitForTimeout(800);
 await page.getByRole("button", { name: /^Agregar$/ }).click();
