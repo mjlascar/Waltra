@@ -1,5 +1,6 @@
 import { BACKEND } from "@/lib/platform";
 import type { Diagnostics } from "@/lib/market/diagnostics";
+import type { SymbolHit } from "@/lib/market/search";
 import type { SyncRequest, SyncResult } from "@/lib/market/sync";
 import type { InsightRequestInput } from "@/lib/insights/digest";
 import type { GeneratedReport } from "@/lib/insights/generate";
@@ -138,6 +139,24 @@ export async function insights(
     const { InsightRequestSchema } = await import("@/lib/insights/digest");
     const { generateReport } = await import("@/lib/insights/generate");
     return generateReport(await client(ctx), InsightRequestSchema.parse(req));
+  });
+}
+
+/**
+ * Buscar un activo por nombre.
+ *
+ * Es el unico camino de la app que traduce "nike" a "NKE". El catalogo local
+ * sigue resolviendo al instante lo que ya conoce; esto entra cuando no lo
+ * conoce, que es la mayoria de las veces.
+ */
+export async function searchSymbols(q: string, ctx: BackendContext): Promise<SymbolHit[]> {
+  if (!ON_DEVICE) {
+    const { hits } = await post<{ hits: SymbolHit[] }>("/api/search", { q }, ctx);
+    return hits ?? [];
+  }
+  return wrap(async () => {
+    const { searchSymbols: run } = await import("@/lib/market/search");
+    return run(q);
   });
 }
 

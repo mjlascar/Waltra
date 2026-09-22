@@ -5,7 +5,7 @@ import { Sheet } from "@/components/ui/Sheet";
 import { Field, Segmented } from "@/components/ui/Field";
 import { IconWarning } from "@/components/icons";
 import { newId, useStore } from "@/lib/store";
-import { describeBackendError, parseEntry } from "@/lib/backend";
+import { describeBackendError, parseEntry, searchSymbols } from "@/lib/backend";
 import { parseQuickEntry } from "@/lib/parse/quick-add";
 import { parseLooseNumber } from "@/lib/parse/number";
 import { lookupCatalog, searchCatalog, type CatalogEntry } from "@/lib/catalog";
@@ -13,6 +13,7 @@ import { assetFromSymbol, findAssetBySymbol, lastUsedAccountId } from "@/lib/ass
 import { longDate, money, quantity as fmtQty, TX_LABEL } from "@/lib/format";
 import { txColor } from "@/lib/tx-style";
 import { today } from "@/lib/date";
+import type { SymbolHit } from "@/lib/market/search";
 import type { Currency, Transaction, TxType } from "@/lib/types";
 
 /**
@@ -120,11 +121,15 @@ export function AddTransaction({
   // Las posiciones se leen por referencia para que su recalculo no dispare el
   // efecto que interpreta la frase.
   const positionsRef = useRef(portfolio.positions);
+  /** El resultado de busqueda elegido, para crear el activo al guardar. */
+  const encontrado = useRef<SymbolHit | null>(null);
   useEffect(() => {
     positionsRef.current = portfolio.positions;
   }, [portfolio.positions]);
   const [asking, setAsking] = useState(false);
   const [aiNote, setAiNote] = useState<string | null>(null);
+  const [buscando, setBuscando] = useState(false);
+  const [hallados, setHallados] = useState<SymbolHit[] | null>(null);
 
   // Al abrir: o cargamos el movimiento que se esta editando, o empezamos limpio.
   useEffect(() => {
@@ -157,6 +162,7 @@ export function AddTransaction({
     } else {
       setPaso("tipo");
       setAvanzado(false);
+      setHallados(null);
       setText("");
       setDraft(emptyDraft(defaultAccount, defaultCurrency));
       setCatalogHit(null);
@@ -331,8 +337,16 @@ export function AddTransaction({
     const existing = findAssetBySymbol(assets, symbol);
     if (existing) return existing.id;
 
+    // Un hallazgo del buscador trae ya resuelto proveedor, moneda y precision;
+    // tiene la misma forma que una entrada del catalogo salvo los alias.
+    const hallado = encontrado.current;
+    const desdeBusqueda =
+      hallado && hallado.symbol.toUpperCase() === symbol
+        ? { ...hallado, aliases: [] }
+        : undefined;
+
     const asset = assetFromSymbol(symbol, newId(), {
-      catalog: catalogHit ?? undefined,
+      catalog: desdeBusqueda ?? catalogHit ?? undefined,
       currency: draft.currency,
     });
     await saveAsset(asset);
@@ -438,6 +452,40 @@ export function AddTransaction({
   );
 
   const tipoActual = TODOS.find((t) => t.value === draft.type);
+
+  /**
+   * Busca el nombre escrito contra el proveedor.
+   *
+   * El catalogo local es una lista a mano: escribir "Nike" no encontraba nada
+   * porque Nike no estaba, y agregar nombres de a uno es una carrera que no se
+   * gana. Esto le pregunta al proveedor, que conoce todo lo que cotiza.
+   */
+  async function buscarActivo() {
+    const q = draft.symbol.trim();
+    if (q.length < 2 || buscando) return;
+    setBuscando(true);
+    setError(null);
+    try {
+      const hits = await searchSymbols(q, backend());
+      setHallados(hits);
+      if (hits.length === 0) {
+        setError(`No encontré ningún activo que se llame «${q}». Probá con el ticker.`);
+      }
+    } catch (err) {
+      setError(describeBackendError(err));
+    } finally {
+      setBuscando(false);
+    }
+  }
+
+  function elegirHallado(hit: SymbolHit) {
+    setCatalogHit(null);
+    setHallados(null);
+    set({ symbol: hit.symbol, assetId: "", currency: hit.currency });
+    // El activo se crea al guardar; `resolveAsset` mira el catalogo y, si no
+    // esta, arma uno con lo que le pasemos. Guardamos el hallazgo para eso.
+    encontrado.current = hit;
+  }
 
   function elegirTipo(value: TxType) {
     set({ type: value });
@@ -625,10 +673,46 @@ export function AddTransaction({
                       (a) => a.symbol.toUpperCase() === value.toUpperCase(),
                     );
                     setCatalogHit(lookupCatalog(value) ?? null);
+                    setHallados(null);
+                    encontrado.current = null;
                     set({ symbol: value, assetId: match?.id ?? "" });
                   }}
                 />
               </Field>
+              {/* Cuando ni el catálogo ni tu cartera lo conocen, se le
+                  pregunta al proveedor. Es lo que hace que «Nike» funcione
+                  sin que nadie lo haya escrito en una lista. */}
+              {draft.symbol.trim().length >= 2 &&
+                !draft.assetId &&
+                !catalogHit &&
+                suggestions.length === 0 &&
+                hallados === null && (
+                  <button
+                    className="btn btn-sm mt-2 w-full"
+                    onClick={() => void buscarActivo()}
+                    disabled={buscando}
+                  >
+                    {buscando ? "Buscando…" : `Buscar «${draft.symbol.trim()}»`}
+                  </button>
+                )}
+
+              {hallados !== null && hallados.length > 0 && (
+                <ul className="card divide-hairline mt-2">
+                  {hallados.map((hit) => (
+                    <li key={hit.symbol}>
+                      <button
+                        className="flex w-full items-center gap-2 p-2.5 text-left"
+                        onClick={() => elegirHallado(hit)}
+                      >
+                        <span className="num shrink-0 text-[13px]">{hit.symbol}</span>
+                        <span className="label min-w-0 flex-1 truncate">{hit.name}</span>
+                        <span className="label shrink-0">{hit.exchange ?? hit.currency}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
               {/* Lo que ya tenés, primero: en una cartera real el 90% de las
                   operaciones son sobre un activo que ya está adentro. */}
               {!draft.symbol && enCartera.length > 0 && (
