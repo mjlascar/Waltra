@@ -158,8 +158,16 @@ export default function Overview() {
       )}
       {sync.status === "error" && (
         <Notice>
-          No pude actualizar los precios: {sync.message}. Lo que ves es el último dato
-          guardado.
+          No se pudieron actualizar los precios: {sync.message}. Lo que ves es el último
+          dato guardado.
+        </Notice>
+      )}
+      {sync.status === "ok" && sync.down.length > 0 && (
+        <Notice>
+          {sync.down.length === 1 ? "No responde " : "No responden "}
+          <strong>{sync.down.join(" ni ")}</strong>. Son fuentes públicas y gratuitas:
+          suelen volver solas. Mientras tanto, esas posiciones se valúan con el último
+          precio guardado.
         </Notice>
       )}
       {p.fxMissing && (

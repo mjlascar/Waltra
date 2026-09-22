@@ -25,12 +25,14 @@ import { DEFAULT_SETTINGS, ensureSeeded, getDb, type WaltraDB } from "@/lib/db";
 import { computePortfolio, type Portfolio } from "@/lib/engine/portfolio";
 import { addDays, today, toDay } from "@/lib/date";
 import { syncMarket, type BackendContext } from "@/lib/backend";
+import { proveedoresCaidos } from "@/lib/market/down";
 import { BENCHMARK_ASSET_ID, benchmarkRef } from "@/lib/benchmark";
 
 export type SyncState =
   | { status: "idle" }
   | { status: "syncing" }
-  | { status: "ok"; at: string; mock: boolean }
+  /** `down`: proveedores que no contestaron nada en esta pasada. */
+  | { status: "ok"; at: string; mock: boolean; down: string[] }
   | { status: "error"; message: string };
 
 interface StoreValue {
@@ -162,6 +164,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           })
           .map((a) => a.id);
 
+        const hadArs = live.some((a) => a.currency === "ARS") || txs.some((t) => t.currency === "ARS");
         const data = await syncMarket(
           {
             refs: [
@@ -204,7 +207,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // la copia vieja le borraria el cambio.
         const current = (await db.settings.get("settings")) ?? settings;
         await db.settings.put({ ...current, lastQuoteSync: at });
-        setSync({ status: "ok", at, mock: Boolean(data.mock) });
+
+        const down = proveedoresCaidos(data.quotes);
+        // El dolar tiene su propio proveedor y su propio silencio.
+        if (hadArs && data.fx.length === 0 && !data.fxLatest) down.push("el dólar MEP");
+        setSync({ status: "ok", at, mock: Boolean(data.mock), down });
       } catch (err) {
         setSync({ status: "error", message: err instanceof Error ? err.message : String(err) });
       } finally {
