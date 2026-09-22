@@ -18,9 +18,16 @@ import { Field } from "@/components/ui/Field";
 export function ApiKeyField({
   value,
   onChange,
+  label,
+  keyUrl,
+  placeholder,
 }: {
   value?: string;
   onChange: (key: string | undefined) => void;
+  /** Nombre del proveedor, para que los textos digan cual es. */
+  label: string;
+  keyUrl: string;
+  placeholder: string;
 }) {
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState(false);
@@ -34,8 +41,8 @@ export function ApiKeyField({
           <span className="chip shrink-0 pos">activa</span>
         </div>
         <p className="label mb-3 leading-relaxed">
-          Los insights y la lectura asistida de frases salen de tu cuenta de Anthropic.
-          Lo que gastan lo ves en tu consola.
+          Los insights salen de tu cuenta de {label}. Lo que gastan lo ves en tu
+          consola.
         </p>
         <div className="flex gap-2">
           <button
@@ -69,7 +76,7 @@ export function ApiKeyField({
           spellCheck={false}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="sk-ant-…"
+          placeholder={placeholder}
         />
       </Field>
       <div className="mt-3 flex gap-2">
@@ -91,8 +98,8 @@ export function ApiKeyField({
         </button>
       </div>
       <p className="label mt-3 leading-relaxed">
-        Se saca de console.anthropic.com, en API keys. Es tuya: la app no la comparte
-        con nadie y cada uno paga lo suyo.
+        Se saca de {keyUrl}. Es tuya: la app no la comparte con nadie y cada uno
+        paga lo suyo.
       </p>
     </div>
   );

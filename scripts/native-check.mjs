@@ -117,8 +117,16 @@ check("es un índice de secciones", await has("Cuentas y activos"));
 check("ofrece las alertas de precio", await has("Alertas de precio"));
 
 await goto("/ajustes/insights");
-check("pide la clave de Anthropic del usuario", await has("Tu clave de Anthropic"));
+check("pide la clave del proveedor elegido", await has("Tu clave de Claude"));
 check("no habla de la clave del servidor", !(await has("WALTRA_ACCESS_KEY")));
+check("deja elegir proveedor", (await page.getByRole("button", { name: /^Gemini$/ }).count()) === 1);
+await page.getByRole("button", { name: /^Gemini$/ }).click();
+await page.waitForTimeout(500);
+check("al cambiar de proveedor cambia la clave que pide", await has("Tu clave de Gemini"));
+check("y cambian los modelos", await has("Gemini Pro"));
+await page.getByRole("button", { name: /^Claude$/ }).click();
+await page.waitForTimeout(400);
+check("se puede volver", await has("Tu clave de Claude"));
 
 console.log("\n4. Las alertas se pueden configurar");
 await goto("/ajustes/alertas");

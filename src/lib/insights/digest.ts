@@ -51,6 +51,8 @@ export const InsightRequestSchema = z.object({
   kind: z.enum(["cartera", "mercado"]).default("cartera"),
   /** Modelo elegido por el usuario. Se valida contra una lista blanca. */
   model: z.string().max(60).optional(),
+  /** Proveedor elegido. Tambien se valida: decide que clave se gasta. */
+  provider: z.string().max(20).optional(),
 });
 
 export type InsightRequest = z.output<typeof InsightRequestSchema>;

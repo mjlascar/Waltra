@@ -145,7 +145,11 @@ export interface Settings {
    * viaja unicamente a api.anthropic.com. Nunca entra en un backup.
    */
   apiKey?: string;
-  /** Modelo de Claude a usar en insights. */
+  /** Lo mismo para Gemini. Se guardan las dos: cambiar de proveedor no borra. */
+  geminiKey?: string;
+  /** Que proveedor de modelo usar. Ver `src/lib/insights/providers.ts`. */
+  provider?: import("@/lib/insights/providers").Provider;
+  /** Modelo a usar en insights, del proveedor elegido. */
   model?: string;
   /**
    * Indice contra el cual compararse en el grafico de rendimiento.

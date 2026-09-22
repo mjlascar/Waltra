@@ -20,7 +20,7 @@ import type { ParsedEntry, ParseRequest } from "@/lib/insights/parse-entry";
 export interface BackendContext {
   /** Clave de acceso a /api, si el deploy la exige. Solo modo servidor. */
   accessKey?: string;
-  /** Clave de Anthropic del usuario. Solo modo telefono. */
+  /** Clave del proveedor elegido. Solo modo telefono. */
   apiKey?: string;
 }
 
@@ -77,8 +77,8 @@ function requireKey(ctx: BackendContext): string {
  */
 async function client(ctx: BackendContext) {
   const key = requireKey(ctx);
-  const { anthropicFor } = await import("@/lib/insights/generate");
-  return anthropicFor(key, true);
+  const { anthropicClient } = await import("@/lib/insights/anthropic");
+  return anthropicClient(key, true);
 }
 
 async function wrap<T>(run: () => Promise<T>): Promise<T> {
@@ -108,11 +108,12 @@ export async function diagnostics(light: boolean, ctx: BackendContext): Promise<
   }
   return wrap(async () => {
     const { MOCK_ENABLED, probeProviders } = await import("@/lib/market/diagnostics");
-    const { resolveModel } = await import("@/lib/insights/models");
     const base = {
       mock: MOCK_ENABLED,
       aiConfigured: Boolean(ctx.apiKey?.trim()),
-      model: resolveModel(undefined),
+      // En el telefono el modelo lo elige la pantalla; el diagnostico solo
+      // necesita saber si hay con que llamar.
+      model: "—",
     };
     if (light) return { ...base, providers: [], at: new Date().toISOString() };
     const { providers, totalMs } = await probeProviders();
@@ -137,8 +138,11 @@ export async function insights(
     // El esquema completa lo que la pantalla no mando, igual que hace la ruta
     // /api cuando el trabajo corre en el servidor.
     const { InsightRequestSchema } = await import("@/lib/insights/digest");
-    const { generateReport } = await import("@/lib/insights/generate");
-    return generateReport(await client(ctx), InsightRequestSchema.parse(req));
+    const { generate } = await import("@/lib/insights/generate");
+    const pedido = InsightRequestSchema.parse(req);
+    // `apiKey` es la del proveedor elegido: la pantalla manda la que
+    // corresponde, porque cada proveedor tiene la suya en los ajustes.
+    return generate(pedido.provider, requireKey(ctx), true, pedido);
   });
 }
 

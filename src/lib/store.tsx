@@ -26,6 +26,7 @@ import { computePortfolio, type Portfolio } from "@/lib/engine/portfolio";
 import { addDays, today, toDay } from "@/lib/date";
 import { syncMarket, type BackendContext } from "@/lib/backend";
 import { proveedoresCaidos } from "@/lib/market/down";
+import { keyFor, resolveProvider } from "@/lib/insights/providers";
 import { BENCHMARK_ASSET_ID, benchmarkRef } from "@/lib/benchmark";
 
 export type SyncState =
@@ -120,8 +121,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   );
 
   const backend = useCallback(
-    (): BackendContext => ({ accessKey: settings.accessKey, apiKey: settings.apiKey }),
-    [settings.accessKey, settings.apiKey],
+    (): BackendContext => ({
+      accessKey: settings.accessKey,
+      // La del proveedor elegido: la capa de backend no tiene por que saber
+      // que hay mas de una guardada.
+      apiKey: keyFor(resolveProvider(settings.provider), settings),
+    }),
+    [settings],
   );
 
   /** Trae cotizaciones, historia faltante y tipo de cambio. */

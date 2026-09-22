@@ -65,13 +65,16 @@ describe("backup", () => {
       id: "settings", baseCurrency: "USD", riskProfile: "moderado",
       horizonYears: 5, goals: "", accessKey: "una-clave-secreta",
       apiKey: "la-clave-de-anthropic-del-usuario",
+      geminiKey: "la-clave-de-gemini-del-usuario",
     });
     const backup = await exportBackup(db);
     expect(backup.settings.accessKey).toBeUndefined();
     expect(backup.settings.apiKey).toBeUndefined();
+    expect(backup.settings.geminiKey).toBeUndefined();
     const texto = JSON.stringify(backup);
     expect(texto).not.toContain("una-clave-secreta");
     expect(texto).not.toContain("la-clave-de-anthropic-del-usuario");
+    expect(texto).not.toContain("la-clave-de-gemini-del-usuario");
   });
 
   it("importar en modo combinar conserva lo que ya estaba", async () => {

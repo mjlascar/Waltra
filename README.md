@@ -57,8 +57,9 @@ cartel amarillo. Con precios reales ese aviso no aparece.</sub>
   con cómo venís operando y devuelve una lectura con fuentes citadas. Hay dos
   informes: el de tu cartera y un resumen de mercado que además sale a buscar
   afuera qué podría interesarte. Se pueden agendar —«resumen de mercado los
-  lunes a las 9»— y a esa hora llega un recordatorio. Requiere tu propia clave
-  de Anthropic; sin ella el resto de la app funciona igual.
+  lunes a las 9»— y a esa hora llega un recordatorio. Funciona con **Claude o
+  con Gemini**, a elección: Gemini tiene nivel gratuito. Requiere tu propia
+  clave; sin ella el resto de la app funciona igual.
 - **Todo vive en tu teléfono.** IndexedDB, sin cuenta ni servidor propio. Backup
   y restauración a un archivo JSON que es tuyo.
 - **Instalable y offline.** Es una PWA: se agrega a la pantalla de inicio y abre
@@ -191,8 +192,9 @@ Copiá `.env.example` a `.env.local`. Todo es opcional.
 
 | Variable | Para qué |
 |---|---|
-| `ANTHROPIC_API_KEY` | Habilita la sección de Insights. Se lee **solo en el servidor**: nunca viaja al navegador. La sacás de [console.anthropic.com](https://console.anthropic.com/) y se paga por uso: cada análisis son unas cuantas búsquedas web y dos llamadas al modelo. Sin esta variable, el resto de la app funciona igual. |
-| `WALTRA_MODEL` | Modelo por defecto del servidor. Si no la definís, es `claude-opus-5`. Desde Ajustes podés elegir entre Opus 5, Sonnet 5 y Haiku 4.5 sin redesplegar; cualquier otro valor que llegue del navegador se ignora. |
+| `ANTHROPIC_API_KEY` | Habilita Insights con Claude. Se lee **solo en el servidor**: nunca viaja al navegador. La sacás de [console.anthropic.com](https://console.anthropic.com/) y se paga por uso. Sin esta variable, el resto de la app funciona igual. |
+| `GEMINI_API_KEY` | Lo mismo con Gemini, que **tiene nivel gratuito** con cupo diario. La sacás de [aistudio.google.com](https://aistudio.google.com/). Alcanza con una de las dos. |
+| `WALTRA_MODEL` | Modelo por defecto del servidor. Desde Ajustes se elige proveedor y modelo sin redesplegar; cualquier valor fuera de la lista blanca se ignora. |
 | `WALTRA_ACCESS_KEY` | Si publicás la app en internet, exige esta clave en las rutas `/api`. La cargás una vez en Ajustes y queda en el teléfono. |
 | `WALTRA_MOCK` | `1` usa precios simulados para probar la interfaz. La app lo avisa en pantalla con un cartel. |
 
@@ -297,7 +299,7 @@ signo, etiqueta o ícono al lado.
 npm run check   # tipos + lint + tests + escaneo de credenciales
 ```
 
-- **219 tests** del motor de cálculo, el parser, la base local, el formato, los
+- **229 tests** del motor de cálculo, el parser, la base local, el formato, los
   proveedores de precios, la ruta de insights y el vigía de precios. Los
   proveedores y el SDK corren simulados: son servicios externos que no se
   pueden alcanzar desde CI, y son justamente los que más conviene tener

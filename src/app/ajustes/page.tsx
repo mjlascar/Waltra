@@ -6,7 +6,7 @@ import { IconChevron } from "@/components/icons";
 import { useStore } from "@/lib/store";
 import { ON_DEVICE } from "@/lib/backend";
 import { alertRules } from "@/lib/alerts/plan";
-import { DEFAULT_MODEL, MODELS } from "@/lib/insights/models";
+import { keyFor, providerInfo, resolveModel, resolveProvider } from "@/lib/insights/providers";
 import { relativeTime } from "@/lib/format";
 
 /**
@@ -25,8 +25,11 @@ export default function Ajustes() {
   const { accounts, assets, transactions, settings, portfolio } = useStore();
 
   const reglas = alertRules(settings);
-  const modelo = MODELS.find((m) => m.id === (settings.model ?? DEFAULT_MODEL))?.label ?? "—";
-  const clave = ON_DEVICE ? Boolean(settings.apiKey) : true;
+  const provider = resolveProvider(settings.provider);
+  const info = providerInfo(provider);
+  const modeloId = resolveModel(provider, settings.model);
+  const modelo = info.models.find((m) => m.id === modeloId)?.label ?? info.label;
+  const clave = ON_DEVICE ? Boolean(keyFor(provider, settings)) : true;
 
   const secciones = [
     {
@@ -46,7 +49,7 @@ export default function Ajustes() {
     {
       href: "/ajustes/insights",
       titulo: "Insights",
-      detalle: "Modelo y clave de Anthropic",
+      detalle: "Proveedor, modelo y clave",
       estado: clave ? modelo : "sin clave",
       alerta: clave ? null : "falta la clave",
     },

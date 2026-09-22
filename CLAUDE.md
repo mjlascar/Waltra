@@ -126,11 +126,27 @@ unidades ("3 acciones de AAPL") y los sustantivos que funcionan como verbo
 
 ## Al tocar los insights
 
-No todos los modelos aceptan el mismo pedido: `modelShape()` decide la
-variante de búsqueda web y si va pensamiento adaptativo. La elección de
-modelo llega del navegador, así que se valida contra la lista blanca de
-`src/lib/insights/models.ts` — aceptar cualquier cadena sería dejar que un
+Hay **dos proveedores**, Claude y Gemini, detrás de un contrato chico
+(`src/lib/insights/engine.ts`). El informe se arma en dos pasos —investigar con
+búsqueda web, después estructurar sin ella— y eso no es una preferencia: en
+Gemini la búsqueda de Google y el formato JSON estricto **no se pueden pedir en
+el mismo turno**, y en Anthropic pedirlos juntos sale mal. Si el segundo paso
+falla, el informe se devuelve en prosa (`degraded`) en vez de perderse: la
+búsqueda ya se pagó.
+
+Las fuentes salen distinto en cada uno: Claude las cita dentro del texto y hay
+que extraerlas, Gemini las devuelve en `groundingChunks`. Cuando el proveedor
+las da aparte, esas mandan: son las que realmente se consultaron.
+
+No todos los modelos de Anthropic aceptan el mismo pedido: `modelShape()`
+decide la variante de búsqueda web y si va pensamiento adaptativo. Proveedor y
+modelo llegan del navegador, así que se validan contra la lista blanca de
+`src/lib/insights/providers.ts` — aceptar cualquier cadena sería dejar que un
 pedido cualquiera elija qué se factura.
+
+Las claves de los dos proveedores se guardan por separado (`apiKey` y
+`geminiKey`): cambiar de proveedor para probar no tiene que borrar la del otro.
+Las dos quedan fuera del backup.
 
 Para revisar cómo se ve un informe sin gastar créditos:
 `node scripts/insights-preview.mjs` inyecta uno de muestra en la base local.

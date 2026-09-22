@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { checkAccess } from "@/lib/api-auth";
-import { anthropicFor, InsightError } from "@/lib/insights/generate";
+import { InsightError } from "@/lib/insights/generate";
+import { anthropicClient } from "@/lib/insights/anthropic";
 import { ParseRequestSchema, parseEntry } from "@/lib/insights/parse-entry";
 
 export const runtime = "nodejs";
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: "Pedido inválido." }, { status: 400 });
 
   try {
-    return NextResponse.json(await parseEntry(anthropicFor(apiKey, false), parsed.data));
+    return NextResponse.json(await parseEntry(anthropicClient(apiKey, false), parsed.data));
   } catch (err) {
     if (err instanceof InsightError) {
       return NextResponse.json({ error: err.message, code: err.code }, { status: err.status });

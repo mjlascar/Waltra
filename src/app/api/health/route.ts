@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { checkAccess } from "@/lib/api-auth";
 import { MOCK_ENABLED, probeProviders } from "@/lib/market/diagnostics";
-import { resolveModel } from "@/lib/insights/models";
+import { DEFAULT_PROVIDER, resolveModel } from "@/lib/insights/providers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,8 +12,8 @@ export async function GET(request: Request) {
 
   const base = {
     mock: MOCK_ENABLED,
-    aiConfigured: Boolean(process.env.ANTHROPIC_API_KEY),
-    model: resolveModel(undefined),
+    aiConfigured: Boolean(process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY),
+    model: resolveModel(DEFAULT_PROVIDER, undefined),
   };
 
   // ?light=1 responde solo la configuracion, sin golpear a los proveedores.

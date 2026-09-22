@@ -1,11 +1,11 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { ReportSchema, buildDigest, degradedReport } from "@/lib/insights/digest";
+import { buildDigest, degradedReport } from "@/lib/insights/digest";
 import type { InsightRequest, Report } from "@/lib/insights/digest";
-import { modelShape, resolveModel } from "@/lib/insights/models";
+import { resolveModel, resolveProvider, type Provider } from "@/lib/insights/providers";
+import { engineFor, ModelError, type Engine } from "@/lib/insights/engine";
 
 /**
- * El informe con busqueda web, en dos pasos.
+ * El informe con busqueda web, en dos pasos y sin saber que proveedor hay
+ * detras.
  *
  * Vive fuera de la ruta /api porque corre en dos lugares: en el servidor
  * cuando la app es web, y en el propio telefono cuando es APK, con la clave
@@ -35,22 +35,6 @@ export class InsightError extends Error {
     super(message);
     this.name = "InsightError";
   }
-}
-
-/**
- * Como se construye el cliente.
- *
- * En el telefono hay que habilitar el uso desde el navegador y mandar la
- * cabecera de acceso directo: la clave es del usuario y viaja de su WebView a
- * api.anthropic.com sin escalas. En el servidor nada de eso corresponde.
- */
-export function anthropicFor(apiKey: string, onDevice: boolean): Anthropic {
-  if (!onDevice) return new Anthropic({ apiKey });
-  return new Anthropic({
-    apiKey,
-    dangerouslyAllowBrowser: true,
-    defaultHeaders: { "anthropic-dangerous-direct-browser-access": "true" },
-  });
 }
 
 /**
@@ -99,51 +83,43 @@ export interface GeneratedReport extends Report {
   /** El paso de estructurado fallo y esto es el informe en prosa. */
   degraded: boolean;
   model: string;
+  provider: Provider;
   createdAt: string;
   portfolioDigest: string;
 }
 
+/**
+ * El informe, en dos pasos y sin saber que proveedor hay detras.
+ *
+ * Si el segundo paso falla NO se tira el informe: la busqueda ya se pago y el
+ * texto en prosa sirve igual. Se devuelve degradado y la app lo avisa.
+ */
 export async function generateReport(
-  client: Anthropic,
+  engine: Engine,
+  provider: Provider,
   body: InsightRequest,
 ): Promise<GeneratedReport> {
   if (body.holdings.length === 0) {
     throw new InsightError("Todavía no hay posiciones que analizar.", "empty_portfolio", 400);
   }
 
-  const model = resolveModel(body.model);
-  const shape = modelShape(model);
+  const model = resolveModel(provider, body.model);
   const portfolio = buildDigest(body);
   const hoy = new Date().toISOString().slice(0, 10);
 
   let brief = "";
+  let fuentes: { title: string; url: string }[] = [];
   try {
-    // Paso 1: investigacion con busqueda web. Va en streaming porque puede
-    // encadenar varias busquedas y tardar bastante.
-    const research = await client.messages
-      .stream({
-        model,
-        max_tokens: 16000,
-        system: SYSTEM,
-        ...(shape.adaptiveThinking ? { thinking: { type: "adaptive" as const } } : {}),
-        tools: [{ type: shape.webSearchType, name: "web_search", max_uses: 8 }],
-        messages: [
-          {
-            role: "user",
-            content: pedido(body, portfolio, hoy),
-          },
-        ],
-      })
-      .finalMessage();
-
-    brief = research.content
-      .filter((block): block is Anthropic.TextBlock => block.type === "text")
-      .map((block) => block.text)
-      .join("\n\n");
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const status = err instanceof Anthropic.APIError ? (err.status ?? 502) : 502;
-    throw new InsightError(message, "api_error", status);
+    const research = await engine.investigar({
+      model,
+      system: SYSTEM,
+      user: pedido(body, portfolio, hoy),
+    });
+    brief = research.texto;
+    fuentes = research.fuentes;
+  } catch (err: unknown) {
+    if (err instanceof ModelError) throw new InsightError(err.message, err.code, err.status);
+    throw new InsightError(err instanceof Error ? err.message : String(err), "api_error", 502);
   }
 
   if (!brief.trim()) {
@@ -154,42 +130,47 @@ export async function generateReport(
     );
   }
 
-  // Paso 2: estructurar. Se hace en una llamada aparte porque las citas de la
-  // busqueda web y el formato JSON estricto no conviven bien en un mismo turno.
-  //
-  // Si este paso falla, NO tiramos el informe: la busqueda ya se pago y el
-  // texto en prosa sirve igual. Se devuelve degradado y la app lo avisa.
-  let report = null;
-  let degraded = false;
+  let report: Report | null = null;
   try {
-    const structured = await client.messages.parse({
+    report = await engine.estructurar({
       model,
-      max_tokens: 8000,
       system:
         "Convertis un informe de analisis en datos estructurados. No inventes nada que no este en el informe: si un campo no tiene respaldo, dejalo corto o vacio.",
-      messages: [
-        {
-          role: "user",
-          content: `Informe:\n\n${brief}\n\n---\n\nCartera analizada:\n${portfolio}\n\nEstructuralo. Las senales tienen que referirse a tickers que aparecen en la cartera, salvo que el informe recomiende explicitamente incorporar algo nuevo.`,
-        },
-      ],
-      output_config: { format: zodOutputFormat(ReportSchema) },
+      user: `Informe:\n\n${brief}\n\n---\n\nCartera analizada:\n${portfolio}\n\nEstructuralo. Las senales tienen que referirse a tickers que aparecen en la cartera, salvo que el informe recomiende explicitamente incorporar algo nuevo.`,
     });
-    report = structured.parsed_output;
   } catch {
     report = null;
   }
 
+  let degraded = false;
   if (!report) {
     report = degradedReport(brief);
     degraded = true;
   }
 
+  // Las fuentes que el proveedor entrego aparte tienen prioridad: son las que
+  // realmente se consultaron, no las que el modelo dijo que consulto.
+  const sources = fuentes.length > 0 ? fuentes : report.sources;
+
   return {
     ...report,
+    sources,
     degraded,
     model,
+    provider,
     createdAt: new Date().toISOString(),
     portfolioDigest: portfolio,
   };
+}
+
+/** Arma el motor del proveedor que corresponda y genera. */
+export async function generate(
+  provider: string | undefined,
+  apiKey: string,
+  onDevice: boolean,
+  body: InsightRequest,
+): Promise<GeneratedReport> {
+  const elegido = resolveProvider(provider);
+  const engine = await engineFor(elegido, apiKey, onDevice);
+  return generateReport(engine, elegido, body);
 }

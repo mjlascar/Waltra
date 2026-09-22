@@ -103,7 +103,12 @@ export async function exportBackup(db: WaltraDB): Promise<BackupFile> {
     transactions,
     // Ninguna credencial viaja en el backup: el archivo puede terminar en
     // cualquier lado (Drive, WhatsApp, un mail a uno mismo).
-    settings: { ...(settings ?? DEFAULT_SETTINGS), accessKey: undefined, apiKey: undefined },
+    settings: {
+      ...(settings ?? DEFAULT_SETTINGS),
+      accessKey: undefined,
+      apiKey: undefined,
+      geminiKey: undefined,
+    },
   };
 }
 

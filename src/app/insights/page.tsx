@@ -126,6 +126,7 @@ export default function Insights() {
         },
         question: question.trim() || undefined,
         model: settings.model,
+        provider: settings.provider,
         kind,
       };
 

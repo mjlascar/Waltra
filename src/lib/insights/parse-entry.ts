@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import { resolveModel } from "@/lib/insights/models";
+import { resolveModel } from "@/lib/insights/providers";
 import { InsightError } from "@/lib/insights/generate";
 
 /**
@@ -56,7 +56,7 @@ export async function parseEntry(
   const { text, accounts, symbols, today } = body;
   try {
     const result = await client.messages.parse({
-      model: resolveModel(undefined),
+      model: resolveModel("anthropic", undefined),
       max_tokens: 2000,
       system: SYSTEM,
       messages: [
