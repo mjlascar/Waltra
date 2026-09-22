@@ -56,7 +56,7 @@ export function Nav() {
             onClick={() => setAdding(true)}
             aria-label="Agregar movimiento"
             className="flex flex-1 items-center justify-center"
-            style={{ height: 60 }}
+            style={{ height: 56 }}
           >
             <span
               className="flex items-center justify-center"
@@ -91,11 +91,15 @@ function NavItem({
   return (
     <Link
       href={href}
-      className="relative flex flex-1 flex-col items-center justify-center gap-1"
-      style={{ height: 60, color: active ? "var(--color-ink)" : "var(--color-ink-3)" }}
+      // Sin rotulo visible, el nombre de la pestana tiene que viajar igual: es
+      // lo unico que anuncia un lector de pantalla, y `aria-current` dice cual
+      // es la actual sin depender de la barrita ni del color.
+      aria-label={label}
+      aria-current={active ? "page" : undefined}
+      className="relative flex flex-1 items-center justify-center"
+      style={{ height: 56, color: active ? "var(--color-ink)" : "var(--color-ink-3)" }}
     >
-      <Icon size={19} />
-      <span style={{ fontSize: 9, letterSpacing: "0.04em" }}>{label}</span>
+      <Icon size={22} />
       {/* Marca de seleccion que no depende solo del color. */}
       <span
         aria-hidden

@@ -103,6 +103,13 @@ export function ValueChart({ data, height = 210 }: { data: ValuePoint[]; height?
             <div className={`num text-[11px] leading-tight ${gain >= 0 ? "pos" : "neg"}`}>
               {money(gain, "USD", { compact: true, sign: true })}
             </div>
+            {/* Este numero es la distancia entre las dos lineas, o sea la
+                ganancia acumulada al dia que se mira. Las metricas de abajo
+                son las del periodo elegido: sin el rotulo, dos numeros
+                distintos a diez pixeles de distancia parecen un error. */}
+            <div className="label leading-tight" style={{ fontSize: 9 }}>
+              acumulado
+            </div>
           </div>
         )}
       </div>

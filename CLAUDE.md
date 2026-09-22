@@ -69,6 +69,18 @@ sin convertir y la app lo dice (`fxMissing`); el fallback de la tabla de
 cambio es 0 y no 1 justamente para eso. Los precios simulados (`WALTRA_MOCK=1`)
 siempre viajan marcados y se avisan en pantalla.
 
+**Las métricas siguen la ventana del gráfico.** Las cuatro de la pantalla
+principal (capital, ganancia, TWR, TIR) y el número grande de arriba se
+recalculan con el rango elegido: `periodView()` en `src/lib/engine/period.ts`.
+Antes eran siempre las de toda la historia y cambiar de ventana movía el
+gráfico dejándolas quietas, que se lee como un bug. El corte respeta la
+convención del TWR —el flujo se asienta al cierre—, así que el valor inicial
+de la ventana es el del cierre de su primer día y los aportes que se restan
+son los de los días siguientes; restarlos dos veces haría aparecer un aporte
+como pérdida. Con la ventana completa tiene que dar **exactamente** los
+números de siempre, y hay un test que lo fija. Una TIR anualizada sobre menos
+de 90 días es ruido de tres cifras: no se muestra.
+
 **Las fechas son del teléfono, no de UTC.** `today()` usa el reloj local: en
 Argentina, `toISOString()` después de las 21 devuelve mañana. Los tests corren
 en `America/Argentina/Buenos_Aires` (fijado en `vitest.config.ts`) para que
@@ -99,6 +111,11 @@ ni se reordena. Más de 5 series se pliegan a "Otros".
 Ninguna información depende del color solo: siempre hay signo, etiqueta o
 ícono al lado. Con dos o más series hay leyenda; con una, no.
 
+La barra de abajo es solo íconos. El nombre de cada pestaña viaja en
+`aria-label` y la actual se marca con `aria-current` además de la barrita:
+sacar el rótulo visible no puede dejar la navegación muda para un lector de
+pantalla.
+
 Los gráficos son SVG escritos a mano en `src/components/charts/`. Las
 etiquetas del eje se dibujan **después** de las líneas de datos, sobre un
 recorte del color de la superficie: al revés, la línea las cruza.
@@ -107,7 +124,7 @@ recorte del color de la superficie: al revés, la línea las cruza.
 
 | Dónde | Qué |
 |---|---|
-| `src/lib/engine/` | Ledger, valuación diaria, TWR, XIRR, riesgo. Funciones puras, bien cubiertas por tests. Si tocás esto, corré los tests. |
+| `src/lib/engine/` | Ledger, valuación diaria, TWR, XIRR, riesgo y el recorte por ventana (`period.ts`). Funciones puras, bien cubiertas por tests. Si tocás esto, corré los tests. |
 | `src/lib/parse/` | Frases sueltas en castellano rioplatense (`quick-add.ts`), pegado de varias líneas (`bulk.ts`) y la exportación de Binance (`binance.ts`). |
 | `src/lib/market/` | Proveedores de precios. Cada uno aislado: si uno se cae, devuelve el error en el resultado, nunca lanza. `mock.ts` solo se activa con `WALTRA_MOCK=1`. |
 | `src/lib/store.tsx` | Estado de la app, consultas en vivo a IndexedDB y sincronización de mercado. |

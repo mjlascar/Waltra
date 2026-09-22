@@ -55,6 +55,10 @@ check("muestra la pantalla inicial", await has("Waltra"));
 await page.getByRole("button", { name: /datos de ejemplo/i }).click();
 await page.waitForTimeout(4500);
 check("carga la cartera de ejemplo", await has("Valor total"));
+// Las metricas siguen la ventana del grafico, y el default es un mes: el
+// capital de toda la historia esta en «Todo».
+await page.getByRole("button", { name: /^Todo$/ }).click();
+await page.waitForTimeout(600);
 check("el capital aportado no es cero", !(await has("Capital aportado\nUS$ 0,00")));
 
 /** Abre la hoja y va al campo de texto libre. */
@@ -296,6 +300,31 @@ for (const label of ["1M", "3M", "1A", "Todo"]) {
   await page.waitForTimeout(400);
 }
 check("los rangos no rompen el gráfico", (await page.locator("svg path").count()) > 0);
+
+/** La ganancia que muestra el bloque de métricas, tal cual se lee. */
+async function gananciaVisible() {
+  return page.evaluate(() => {
+    const celdas = [...document.querySelectorAll("button .eyebrow")];
+    const celda = celdas.find((e) => e.textContent.trim().toLowerCase() === "ganancia");
+    return celda?.nextElementSibling?.textContent?.trim() ?? "";
+  });
+}
+
+// Antes, cambiar de ventana movia el grafico y dejaba las cuatro metricas
+// quietas: la ganancia del mes era la de siempre.
+await page.getByRole("button", { name: /^Todo$/ }).click();
+await page.waitForTimeout(500);
+check("las métricas dicen de qué período hablan", await has("Cómo te fue desde el primer movimiento"));
+const totalGan = await gananciaVisible();
+await page.getByRole("button", { name: /^7D$/ }).click();
+await page.waitForTimeout(600);
+check("el rótulo sigue la ventana elegida", await has("Cómo te fue en los últimos 7 días"), (await text()).slice(0, 300));
+const semanaGan = await gananciaVisible();
+check("la ganancia cambia con la ventana", semanaGan !== totalGan, `todo: ${totalGan} · 7d: ${semanaGan}`);
+check("no anualiza una semana", await has("hace falta un período más largo"));
+await page.getByRole("button", { name: /^Todo$/ }).click();
+await page.waitForTimeout(500);
+check("volver a «Todo» devuelve el número de siempre", (await gananciaVisible()) === totalGan);
 
 console.log("\n7b. Comparación contra el índice");
 await goto("/");

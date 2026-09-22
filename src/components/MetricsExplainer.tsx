@@ -3,6 +3,7 @@
 import { Sheet } from "@/components/ui/Sheet";
 import { money, percent } from "@/lib/format";
 import type { Portfolio } from "@/lib/engine/portfolio";
+import type { PeriodView } from "@/lib/engine/period";
 
 /**
  * Qué significa cada número, con los números del usuario adentro.
@@ -13,35 +14,57 @@ import type { Portfolio } from "@/lib/engine/portfolio";
  */
 export function MetricsExplainer({
   portfolio: p,
+  periodo,
+  desde,
   open,
   onClose,
 }: {
   portfolio: Portfolio;
+  /** La ventana elegida en el gráfico. Null mientras no hay historia. */
+  periodo: PeriodView | null;
+  /** Cómo se lee esa ventana: "en el último mes". */
+  desde: string;
   open: boolean;
   onClose: () => void;
 }) {
+  // Los numeros que se explican tienen que ser los mismos que el usuario
+  // acaba de tocar: si arriba dice la ganancia del mes y aca la de siempre,
+  // la explicacion confunde mas de lo que aclara.
+  const completo = !periodo || periodo.full;
+  const capital = completo ? p.netContributedUsd : periodo.contributedUsd;
+  const ganancia = completo ? p.totalPnlUsd : periodo.pnlUsd;
+  const rendimiento = completo ? p.metrics.twrCumulative : periodo.twr;
+  const tir = completo ? p.metrics.xirr : periodo.xirr;
+
   const entradas = [
     {
-      titulo: "Capital aportado",
-      valor: money(p.netContributedUsd, "USD"),
-      cuerpo: `Todo lo que ingresaste menos todo lo que retiraste: ${money(p.depositedUsd, "USD")} de ingresos y ${money(p.withdrawnUsd, "USD")} de retiros. Transferir de Cocos a Binance no suma acá: no es capital nuevo, solo cambia de lugar. Comprar tampoco: convertís efectivo en un activo, pero el patrimonio es el mismo.`,
+      titulo: completo ? "Capital aportado" : "Capital que entró",
+      valor: money(capital, "USD"),
+      cuerpo: completo
+        ? `Todo lo que ingresaste menos todo lo que retiraste: ${money(p.depositedUsd, "USD")} de ingresos y ${money(p.withdrawnUsd, "USD")} de retiros. Transferir de Cocos a Binance no suma acá: no es capital nuevo, solo cambia de lugar. Comprar tampoco: convertís efectivo en un activo, pero el patrimonio es el mismo.`
+        : `Lo que ingresaste menos lo que retiraste ${desde}. Transferir de Cocos a Binance no suma acá: no es capital nuevo, solo cambia de lugar. Comprar tampoco: convertís efectivo en un activo, pero el patrimonio es el mismo. En total, desde el primer movimiento, llevás ${money(p.netContributedUsd, "USD")}.`,
     },
     {
       titulo: "Ganancia",
-      valor: money(p.totalPnlUsd, "USD", { sign: true }),
-      cuerpo: `Lo que vale hoy la cartera (${money(p.totalValueUsd, "USD")}) menos el capital aportado (${money(p.netContributedUsd, "USD")}). Incluye lo que subieron tus posiciones${p.realizedUsd !== 0 ? `, lo que ya realizaste al vender (${money(p.realizedUsd, "USD", { sign: true })})` : ""}${p.incomeUsd > 0 ? ` y lo que cobraste en dividendos e intereses (${money(p.incomeUsd, "USD")})` : ""}${p.feesUsd > 0 ? `, descontando ${money(p.feesUsd, "USD")} de comisiones` : ""}.`,
+      valor: money(ganancia, "USD", { sign: true }),
+      cuerpo: completo
+        ? `Lo que vale hoy la cartera (${money(p.totalValueUsd, "USD")}) menos el capital aportado (${money(p.netContributedUsd, "USD")}). Incluye lo que subieron tus posiciones${p.realizedUsd !== 0 ? `, lo que ya realizaste al vender (${money(p.realizedUsd, "USD", { sign: true })})` : ""}${p.incomeUsd > 0 ? ` y lo que cobraste en dividendos e intereses (${money(p.incomeUsd, "USD")})` : ""}${p.feesUsd > 0 ? `, descontando ${money(p.feesUsd, "USD")} de comisiones` : ""}.`
+        : `Lo que vale hoy la cartera (${money(periodo.endValueUsd, "USD")}) menos lo que valía al empezar el período (${money(periodo.startValueUsd, "USD")}), descontando los ${money(periodo.netFlowUsd, "USD")} de capital que entraron en el medio. Esa resta es la razón de ser de la app: sin ella, un ingreso de plata se vería como si lo hubieras ganado.`,
     },
     {
       titulo: "Rendimiento real (TWR)",
-      valor: percent(p.metrics.twrCumulative, { decimals: 1 }),
+      valor: percent(rendimiento, { decimals: 1 }),
       cuerpo:
-        "Qué tan bien elegiste, sin que el momento de los aportes distorsione el número. Se encadenan los retornos de cada día neutralizando las entradas y salidas: si aportás 1.000 dólares nuevos, el valor sube pero el rendimiento no se mueve. Es la métrica que los gráficos de los brokers mezclan, y por la que un depósito parece una ganancia.",
+        "Qué tan bien elegiste, sin que el momento de los aportes distorsione el número. Se encadenan los retornos de cada día neutralizando las entradas y salidas: si aportás 1.000 dólares nuevos, el valor sube pero el rendimiento no se mueve. Es la métrica que los gráficos de los brokers mezclan, y por la que un depósito parece una ganancia." +
+        (completo ? "" : ` Acá se mide solo ${desde}, arrancando de cero el primer día del período.`),
     },
     {
       titulo: "TIR anual (XIRR)",
-      valor: percent(p.metrics.xirr, { decimals: 1 }),
+      valor: percent(tir, { decimals: 1 }),
       cuerpo:
-        "La misma idea, anualizada y desde el punto de vista del aportante: qué tasa anual habría dado el mismo resultado, teniendo en cuenta cuándo entró cada aporte. Si aportaste fuerte justo antes de una subida, va a dar más alta que el rendimiento real. Las dos son correctas; contestan preguntas distintas.",
+        tir === null && periodo && !periodo.full && periodo.days < 90
+          ? `La misma idea, anualizada: qué tasa anual habría dado el mismo resultado, teniendo en cuenta cuándo entró cada aporte. Con ${periodo.days} días de período no se muestra: estirar eso a un año da un número de tres cifras que no dice nada. Elegí una ventana más larga y aparece.`
+          : "La misma idea, anualizada y desde el punto de vista del aportante: qué tasa anual habría dado el mismo resultado, teniendo en cuenta cuándo entró cada aporte. Si aportaste fuerte justo antes de una subida, va a dar más alta que el rendimiento real. Las dos son correctas; contestan preguntas distintas.",
     },
   ];
 
@@ -65,7 +88,9 @@ export function MetricsExplainer({
     <Sheet open={open} onClose={onClose} title="Cómo se calcula">
       <p className="label mb-4 leading-relaxed">
         Todo en dólares. Los números salen únicamente de los movimientos cargados y
-        de los precios de mercado: no hay nada estimado.
+        de los precios de mercado: no hay nada estimado. Los cuatro de arriba son{" "}
+        <strong style={{ color: "var(--color-ink)" }}>{desde}</strong>, la ventana que
+        elegiste en el gráfico.
       </p>
 
       <div className="space-y-3">

@@ -101,14 +101,22 @@ check("la pantalla inicial se dibuja", await has("Waltra"));
 check("hidrató: el botón de ejemplo responde", (await page.getByRole("button").count()) > 0);
 
 console.log("\n2. Navegación entre pantallas, servidas como archivos");
+// Con la base vacia, Cartera y Movimientos muestran la pantalla de arranque y
+// no su contenido: hay que cargar algo para que la marca que se busca sea de
+// la pagina y no de la barra de abajo, que ya no lleva rotulos.
+const ejemploNav = page.getByRole("button", { name: /datos de ejemplo/i });
+if (await ejemploNav.count()) {
+  await ejemploNav.click();
+  await page.waitForTimeout(2500);
+}
 for (const [ruta, marca] of [
-  ["/cartera", "cartera"],
-  ["/movimientos", "movimientos"],
-  ["/insights", "insights"],
-  ["/ajustes", "ajustes"],
+  ["/cartera", "Invertido"],
+  ["/movimientos", "Todas las cuentas"],
+  ["/insights", "Insights"],
+  ["/ajustes", "Cuentas y activos"],
 ]) {
   await goto(ruta);
-  check(`${ruta} abre directo`, await has(marca));
+  check(`${ruta} abre directo`, await has(marca), (await text()).slice(0, 160));
 }
 
 console.log("\n3. Lo que corresponde al modo teléfono");
@@ -140,13 +148,6 @@ check("advierte sobre las suspensiones de Samsung", await has("Apps en suspensi�
 check("deja probar una notificación", (await page.getByRole("button", { name: /probar una notificación/i }).count()) === 1);
 
 console.log("\n4b. El informe externo, para usar un abono sin API");
-// Insights necesita posiciones para tener algo que analizar.
-await goto("/");
-const ejemplo = page.getByRole("button", { name: /datos de ejemplo/i });
-if (await ejemplo.count()) {
-  await ejemplo.click();
-  await page.waitForTimeout(2500);
-}
 await goto("/insights");
 check("ofrece el camino sin clave de API", await has("Sin clave de API"));
 await page.getByRole("button", { name: /copiar el pedido y pegar/i }).click();

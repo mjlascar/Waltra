@@ -14,6 +14,7 @@ import { useStore } from "@/lib/store";
 import { money, percent, shortDate, TX_SHORT } from "@/lib/format";
 import { rangeStart, type RangeKey } from "@/lib/date";
 import type { AccountView } from "@/lib/engine/portfolio";
+import { periodView } from "@/lib/engine/period";
 import { BENCHMARK_ASSET_ID, BENCHMARK_CHOICES, benchmarkReturns } from "@/lib/benchmark";
 import { getDb } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -30,6 +31,21 @@ const RANGES: { value: RangeKey; label: string }[] = [
   { value: "YTD", label: "Año" },
   { value: "MAX", label: "Todo" },
 ];
+
+/**
+ * Como se lee la ventana elegida, para que los numeros de abajo digan de que
+ * periodo hablan. Sin esto, cambiar el rango movia el grafico y dejaba las
+ * metricas quietas, como si la ganancia del mes fuera la de siempre.
+ */
+const RANGE_LABEL: Record<RangeKey, string> = {
+  "7D": "en los últimos 7 días",
+  "1M": "en el último mes",
+  "3M": "en los últimos 3 meses",
+  "6M": "en los últimos 6 meses",
+  "1A": "en el último año",
+  YTD: "en lo que va del año",
+  MAX: "desde el primer movimiento",
+};
 
 type ChartMode = "valor" | "rendimiento";
 
@@ -70,6 +86,16 @@ export default function Overview() {
     if (base <= 0) return [];
     return window.map((point) => ({ day: point.day, value: point.index / base - 1 }));
   }, [p.twr, from]);
+
+  /**
+   * Lo que pasó dentro de la ventana elegida. Es `null` mientras no hay
+   * historia; con la ventana completa devuelve los mismos números de siempre,
+   * y hay un test del motor que lo fija.
+   */
+  const periodo = useMemo(
+    () => (from ? periodView(p.daily, p.twr, from) : null),
+    [p.daily, p.twr, from],
+  );
 
   const benchmarkSeries = useLiveQuery(
     async () => (db ? db.priceSeries.get(BENCHMARK_ASSET_ID) : undefined),
@@ -143,7 +169,18 @@ export default function Overview() {
 
   if (!p.hasData) return <EmptyStart />;
 
-  const pnlTone = p.totalPnlUsd >= 0 ? "pos" : "neg";
+  // Con la ventana completa el periodo y la historia son lo mismo, pero el
+  // encuadre cambia: ahi vale "sobre el capital que pusiste", que es la
+  // pregunta de fondo de la app.
+  const completo = !periodo || periodo.full;
+  const pnl = completo ? p.totalPnlUsd : periodo.pnlUsd;
+  const pnlTone = pnl >= 0 ? "pos" : "neg";
+  const desde = completo ? RANGE_LABEL.MAX : RANGE_LABEL[range];
+  const capitalPeriodo = completo ? p.netContributedUsd : periodo.contributedUsd;
+  const twrPeriodo = completo ? p.metrics.twrCumulative : periodo.twr;
+  // La TIR de siempre esta anualizada sobre toda la historia; la de una
+  // ventana corta se deja sin mostrar antes que estirar una semana a un anio.
+  const xirrPeriodo = completo ? p.metrics.xirr : periodo.xirr;
   // Solo cuentan las cuentas que tienen algo: decir "2 cuentas" cuando una
   // esta vacia es ruido.
   const activas = p.accountViews.filter(
@@ -193,14 +230,16 @@ export default function Overview() {
           Valor total{activas > 1 ? ` · ${activas} cuentas` : ""}
         </div>
         <div className="hero-num">{money(p.totalValueUsd, "USD")}</div>
-        <div className="mt-2 flex items-baseline gap-2">
+        <div className="mt-2 flex flex-wrap items-baseline gap-x-2">
           <span className={`num text-[15px] ${pnlTone}`}>
-            {money(p.totalPnlUsd, "USD", { sign: true })}
+            {money(pnl, "USD", { sign: true })}
           </span>
           <span className={`num text-[13px] ${pnlTone}`}>
-            {percent(p.simpleReturn, { decimals: 1 })}
+            {percent(completo ? p.simpleReturn : periodo.twr, { decimals: 1 })}
           </span>
-          <span className="label">sobre el capital que pusiste</span>
+          <span className="label">
+            {completo ? "sobre el capital que pusiste" : desde}
+          </span>
         </div>
       </section>
 
@@ -243,44 +282,46 @@ export default function Overview() {
         )}
       </section>
 
-      {/* Las cuatro metricas que contestan "como me fue" sin ambiguedad.
-          Todo el bloque abre la explicacion: son numeros que solo sirven si
-          se entiende que mide cada uno. */}
+      {/* Las cuatro metricas que contestan "como me fue" sin ambiguedad, en la
+          ventana que se eligio arriba. Todo el bloque abre la explicacion: son
+          numeros que solo sirven si se entiende que mide cada uno. */}
+      <div className="eyebrow mb-2">Cómo te fue {desde}</div>
       <button
         className="card mb-1 grid w-full grid-cols-2 text-left"
         style={{ gap: 1, background: "var(--color-line)" }}
         onClick={() => setExplaining(true)}
       >
         <div style={{ background: "var(--color-surface)" }}>
-          <Stat label="Capital aportado" value={money(p.netContributedUsd, "USD", { compact: true })} />
+          <Stat
+            label={completo ? "Capital aportado" : "Capital que entró"}
+            value={money(capitalPeriodo, "USD", { compact: true })}
+          />
         </div>
         <div style={{ background: "var(--color-surface)" }}>
           <Stat
             label="Ganancia"
-            value={money(p.totalPnlUsd, "USD", { compact: true, sign: true })}
+            value={money(pnl, "USD", { compact: true, sign: true })}
             tone={pnlTone}
           />
         </div>
         <div style={{ background: "var(--color-surface)" }}>
           <Stat
             label="Rendimiento real"
-            value={percent(p.metrics.twrCumulative, { decimals: 1 })}
-            tone={
-              p.metrics.twrCumulative === null
-                ? "plain"
-                : p.metrics.twrCumulative >= 0
-                  ? "pos"
-                  : "neg"
-            }
+            value={percent(twrPeriodo, { decimals: 1 })}
+            tone={twrPeriodo === null ? "plain" : twrPeriodo >= 0 ? "pos" : "neg"}
             hint="el momento del aporte no lo afecta"
           />
         </div>
         <div style={{ background: "var(--color-surface)" }}>
           <Stat
             label="TIR anual"
-            value={percent(p.metrics.xirr, { decimals: 1 })}
-            tone={p.metrics.xirr === null ? "plain" : p.metrics.xirr >= 0 ? "pos" : "neg"}
-            hint="anualizada, según cuándo aportaste"
+            value={percent(xirrPeriodo, { decimals: 1 })}
+            tone={xirrPeriodo === null ? "plain" : xirrPeriodo >= 0 ? "pos" : "neg"}
+            hint={
+              xirrPeriodo === null && periodo && periodo.days < 90
+                ? "hace falta un período más largo"
+                : "anualizada, según cuándo aportaste"
+            }
           />
         </div>
       </button>
@@ -373,7 +414,13 @@ export default function Overview() {
           </div>
         </section>
       )}
-      <MetricsExplainer portfolio={p} open={explaining} onClose={() => setExplaining(false)} />
+      <MetricsExplainer
+        portfolio={p}
+        periodo={periodo}
+        desde={desde}
+        open={explaining}
+        onClose={() => setExplaining(false)}
+      />
       <AccountSheet account={account} onClose={() => setAccount(null)} />
     </div>
   );
