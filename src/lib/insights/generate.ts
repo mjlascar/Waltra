@@ -2,6 +2,7 @@ import { buildDigest, degradedReport } from "@/lib/insights/digest";
 import type { InsightRequest, Report } from "@/lib/insights/digest";
 import { resolveModel, resolveProvider, type Provider } from "@/lib/insights/providers";
 import { engineFor, ModelError, type Engine } from "@/lib/insights/engine";
+import { anteriorTexto, CONSIGNA, CONSIGNA_TITULO, focoTexto } from "@/lib/insights/prompts";
 
 /**
  * El informe con busqueda web, en dos pasos y sin saber que proveedor hay
@@ -35,48 +36,6 @@ export class InsightError extends Error {
     super(message);
     this.name = "InsightError";
   }
-}
-
-/**
- * Que se le pide al modelo, segun la clase de informe.
- *
- * El de cartera mira para adentro: que paso con lo que tenes. El de mercado
- * ademas sale a buscar afuera, que es lo unico que puede traer algo que el
- * usuario no sabia que queria mirar. Los dos comparten el mismo esquema de
- * salida a proposito: la pantalla no tiene por que aprender dos formatos.
- */
-function pedido(body: InsightRequest, portfolio: string, hoy: string): string {
-  const pregunta = body.question ? `Ademas te pregunto esto en particular: ${body.question}\n\n` : "";
-
-  if (body.kind === "mercado") {
-    return `Hoy es ${hoy}. Esta es mi cartera:
-
-${portfolio}
-
-${pregunta}Busca que paso en los mercados en la ultima semana y que se viene en la proxima: datos macro, tasas, resultados, regulacion, y el contexto argentino (inflacion, dolar MEP, riesgo local) si tengo exposicion en pesos.
-
-Despues escribi un informe con:
-1. Como viene el mercado para lo que YO tengo. No un panorama general: el que le importa a estos tickers.
-2. Que hay en la agenda de esta semana que pueda moverlos.
-3. Oportunidades afuera de mi cartera: activos castigados sin que el negocio se haya roto, o con proyecciones que justifiquen mirarlos. Para cada uno, por que ahora y que tendria que pasar para que la tesis falle. Si no encontras ninguna que valga la pena, decilo: inventar una recomendacion es peor que no dar ninguna.
-4. Que significa todo esto para mi cartera en concreto, dado mi perfil y mi horizonte.
-
-Citá las fuentes con su URL. Distingui siempre entre un hecho con fecha y una lectura tuya.`;
-  }
-
-  return `Hoy es ${hoy}. Esta es mi cartera:
-
-${portfolio}
-
-${pregunta}Busca noticias y datos de mercado de las ultimas dos semanas que afecten especificamente a estas posiciones (resultados, guidance, tasas, regulacion, flujos, y para cripto lo que corresponda). Busca tambien el contexto macro argentino actual si tengo exposicion en pesos.
-
-Despues escribi un informe con:
-1. El contexto de mercado que le importa a ESTA cartera.
-2. Una lectura por posicion: que hacer y por que, con el hecho concreto que lo respalda.
-3. Que revela mi operatoria sobre como invierto en la practica, y en que se contradice con el perfil que declaro.
-4. Riesgos concretos que estoy corriendo ahora mismo.
-
-Citá las fuentes con su URL.`;
 }
 
 export interface GeneratedReport extends Report {
@@ -113,7 +72,17 @@ export async function generateReport(
     const research = await engine.investigar({
       model,
       system: SYSTEM,
-      user: pedido(body, portfolio, hoy),
+      user: `Hoy es ${hoy}. ${CONSIGNA_TITULO[body.kind]}.${focoTexto(body)}
+
+## Cartera
+
+${portfolio}${anteriorTexto(body)}
+
+## Que escribir
+
+${CONSIGNA[body.kind]}
+
+Citá las fuentes con su URL. Distingui siempre entre un hecho con fecha y una lectura tuya.`,
     });
     brief = research.texto;
     fuentes = research.fuentes;

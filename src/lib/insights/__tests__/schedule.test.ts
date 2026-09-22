@@ -72,17 +72,24 @@ describe("si toca generarlo", () => {
 });
 
 describe("la lista que ve el usuario", () => {
-  it("siempre trae las dos, aunque no haya nada guardado", () => {
+  it("siempre trae las agendables, aunque no haya nada guardado", () => {
     const lista = schedules(DEFAULT_SETTINGS);
-    expect(lista.map((s) => s.kind)).toEqual(["mercado", "cartera"]);
+    expect(lista.map((s) => s.kind)).toEqual(["mercado", "cartera", "riesgo"]);
     expect(lista.every((s) => !s.enabled)).toBe(true);
   });
 
   it("lo guardado pisa a la sugerencia, sin perder el orden", () => {
     const guardado: Schedule = { kind: "cartera", enabled: true, weekday: 3, hour: 20 };
     const lista = schedules({ ...DEFAULT_SETTINGS, schedules: [guardado] });
-    expect(lista.map((s) => s.kind)).toEqual(["mercado", "cartera"]);
+    expect(lista.map((s) => s.kind)).toEqual(["mercado", "cartera", "riesgo"]);
     expect(lista[1]).toEqual(guardado);
+  });
+
+  it("los informes de consulta no se agendan: no tiene sentido", async () => {
+    const { AGENDABLES } = await import("@/lib/insights/schedule");
+    // "Tengo plata, ¿qué hago?" cada lunes no significa nada.
+    expect(AGENDABLES).not.toContain("decision");
+    expect(AGENDABLES).not.toContain("posicion");
   });
 });
 

@@ -44,11 +44,26 @@ export const InsightRequestSchema = z.object({
     goals: z.string().max(600),
   }),
   question: z.string().max(400).optional(),
+  /** Que clase de informe se pide. Ver `src/lib/insights/schedule.ts`. */
+  kind: z
+    .enum(["cartera", "mercado", "conducta", "riesgo", "posicion", "decision"])
+    .default("cartera"),
   /**
-   * Que clase de informe se pide. `cartera` mira lo que tenes; `mercado`
-   * ademas sale a buscar afuera lo que podria interesarte.
+   * Sobre que, para los informes que lo necesitan: el ticker en "posicion",
+   * el monto en "decision".
    */
-  kind: z.enum(["cartera", "mercado"]).default("cartera"),
+  focus: z.string().max(80).optional(),
+  /**
+   * Un informe anterior, para que este pueda decir que cambio. Es lo que la
+   * app tiene y un chat cualquiera no.
+   */
+  previous: z
+    .object({
+      createdAt: z.string().max(40),
+      digest: z.string().max(6000),
+      brief: z.string().max(6000),
+    })
+    .optional(),
   /** Modelo elegido por el usuario. Se valida contra una lista blanca. */
   model: z.string().max(60).optional(),
   /** Proveedor elegido. Tambien se valida: decide que clave se gasta. */

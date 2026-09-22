@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Header } from "@/components/ui/Header";
 import { SectionTitle } from "@/components/ui/Stat";
 import { ExternalReport } from "@/components/ExternalReport";
+import { providerInfo, resolveProvider } from "@/lib/insights/providers";
 import { useStore, newId } from "@/lib/store";
 import {
   describeBackendError,
@@ -13,11 +14,12 @@ import {
   ON_DEVICE,
 } from "@/lib/backend";
 import {
+  DIA_OPCIONES,
   describeSchedule,
   isDue,
   KIND_DETAIL,
-  DIA_OPCIONES,
   KIND_LABEL,
+  needsFocus,
   schedules,
   type ReportKind,
 } from "@/lib/insights/schedule";
@@ -49,6 +51,8 @@ export default function Insights() {
   const [question, setQuestion] = useState("");
   const [index, setIndex] = useState(0);
   const [externo, setExterno] = useState(false);
+  const [tipo, setTipo] = useState<ReportKind>("cartera");
+  const [foco, setFoco] = useState("");
   const [config, setConfig] = useState<{ aiConfigured: boolean; model: string } | null>(null);
 
   // Preguntamos una sola vez si hay clave cargada, para no ofrecer un boton
@@ -64,6 +68,22 @@ export default function Insights() {
   }, [backend]);
 
   const report = insights[index] ?? null;
+
+  /**
+   * El ultimo informe del mismo tipo, para que el nuevo diga que cambio.
+   *
+   * Los informes guardados antes de que existieran varias clases no traen
+   * tipo; se los toma como de cartera, que es lo que eran.
+   */
+  function anterior(kind: ReportKind) {
+    const previo = insights.find((r) => (r.kind ?? "cartera") === kind && r.portfolioDigest);
+    if (!previo) return undefined;
+    return {
+      createdAt: previo.createdAt,
+      digest: previo.portfolioDigest.slice(0, 6000),
+      brief: [previo.marketBrief, previo.profileRead?.summary].filter(Boolean).join("\n\n").slice(0, 6000),
+    };
+  }
 
   /** Primer dia con posicion en cada activo, para decir hace cuanto lo tiene. */
   const heldSince = useMemo(() => {
@@ -143,6 +163,11 @@ export default function Insights() {
         model: settings.model,
         provider: settings.provider,
         kind,
+        focus: foco.trim() || undefined,
+        // El informe anterior del mismo tipo, si hay. Es lo que la app tiene
+        // y un chat cualquiera no: puede decir qué cambió en vez de arrancar
+        // de cero cada vez.
+        previous: anterior(kind),
       };
 
       const data = await insightsRequest(body, backend());
@@ -151,6 +176,7 @@ export default function Insights() {
         id: newId(),
         createdAt: data.createdAt ?? new Date().toISOString(),
         model: data.model ?? "—",
+        kind,
         marketBrief: data.marketBrief ?? "",
         signals: data.signals ?? [],
         profileRead: data.profileRead ?? { summary: "", observations: [], risks: [], suggestions: [] },
@@ -216,11 +242,67 @@ export default function Insights() {
           ))}
 
           <div className="card mb-4 p-3">
-            <div className="eyebrow mb-2">Análisis del mercado sobre tu cartera</div>
-            <p className="mb-3 text-[12px] leading-relaxed" style={{ color: "var(--color-ink-2)" }}>
-              Busca noticias de las últimas dos semanas sobre tus {p.positions.length} posiciones,
-              las cruza con cómo venís operando y devuelve una lectura con fuentes.
-            </p>
+            <div className="eyebrow mb-2">Qué querés que analice</div>
+            <ul className="divide-hairline mb-3">
+              {(Object.keys(KIND_LABEL) as ReportKind[]).map((k) => (
+                <li key={k}>
+                  <button
+                    className="flex w-full items-start gap-2 py-2 text-left"
+                    aria-pressed={k === tipo}
+                    onClick={() => setTipo(k)}
+                  >
+                    <span
+                      aria-hidden
+                      className="mt-1 shrink-0"
+                      style={{
+                        width: 8,
+                        height: 8,
+                        border: "1px solid var(--color-line-strong)",
+                        background: k === tipo ? "var(--color-ink)" : "transparent",
+                      }}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span
+                        className="block text-[13px]"
+                        style={{ color: k === tipo ? "var(--color-ink)" : "var(--color-ink-2)" }}
+                      >
+                        {KIND_LABEL[k]}
+                      </span>
+                      {k === tipo && (
+                        <span className="label mt-0.5 block leading-snug">{KIND_DETAIL[k]}</span>
+                      )}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+
+            {needsFocus(tipo) &&
+              (tipo === "posicion" ? (
+                <div className="mb-2">
+                  <select
+                    className="input"
+                    value={foco}
+                    onChange={(e) => setFoco(e.target.value)}
+                  >
+                    <option value="">Elegí la posición…</option>
+                    {p.positions.map((pos) => (
+                      <option key={pos.assetId} value={pos.symbol}>
+                        {pos.symbol}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <input
+                  className="input mb-2 num"
+                  inputMode="decimal"
+                  value={foco}
+                  onChange={(e) => setFoco(e.target.value)}
+                  placeholder="Cuánta plata tenés para poner, en dólares"
+                />
+              ))}
+
             <input
               className="input mb-2"
               value={question}
@@ -230,8 +312,8 @@ export default function Insights() {
             />
             <button
               className="btn btn-primary w-full"
-              onClick={() => void generate("cartera")}
-              disabled={loading || config?.aiConfigured === false}
+              onClick={() => void generate(tipo)}
+              disabled={loading || config?.aiConfigured === false || (needsFocus(tipo) && !foco.trim())}
             >
               {loading ? "Analizando… puede tardar un minuto" : "Generar análisis"}
             </button>
@@ -240,7 +322,7 @@ export default function Insights() {
                 {config.aiConfigured
                   ? `Usa ${config.model}. Cada análisis consume créditos de tu cuenta de Anthropic.`
                   : ON_DEVICE
-                    ? "Falta tu clave de Anthropic: cargala en Ajustes. El resto de la app funciona igual sin ella."
+                    ? `Falta tu clave de ${providerInfo(resolveProvider(settings.provider)).label}: cargala en Ajustes. El resto de la app funciona igual sin ella.`
                     : "Falta configurar ANTHROPIC_API_KEY en el servidor. El resto de la app funciona igual; está explicado en el README."}
               </p>
             )}
@@ -252,7 +334,7 @@ export default function Insights() {
               {error.includes("clave") && (
                 <p className="label mt-2 leading-snug">
                   {ON_DEVICE
-                    ? "Los insights salen de tu propia cuenta de Anthropic. Cargá la clave en Ajustes; el resto de la app funciona igual sin ella."
+                    ? "Los insights salen de tu propia cuenta. Cargá la clave en Ajustes; el resto de la app funciona igual sin ella."
                     : "Los insights necesitan una clave de Anthropic en el servidor. Está explicado en el README; el resto de la app funciona igual sin ella."}
                 </p>
               )}

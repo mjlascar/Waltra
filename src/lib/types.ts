@@ -185,6 +185,11 @@ export interface InsightReport {
   id: string;
   createdAt: string;
   model: string;
+  /**
+   * Que clase de informe es. Los guardados antes de que existieran varias
+   * clases no lo tienen, y ahi se asume "cartera", que es lo que eran.
+   */
+  kind?: import("@/lib/insights/schedule").ReportKind;
   /** Resumen del mercado en 2-3 frases. */
   marketBrief: string;
   signals: InsightSignal[];

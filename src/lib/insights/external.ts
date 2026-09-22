@@ -1,6 +1,7 @@
 import { ReportSchema, buildDigest, degradedReport, extractUrls } from "@/lib/insights/digest";
 import type { InsightRequest, Report } from "@/lib/insights/digest";
 import { KIND_LABEL, type ReportKind } from "@/lib/insights/schedule";
+import { anteriorTexto, CONSIGNA, CONSIGNA_TITULO, focoTexto } from "@/lib/insights/prompts";
 
 /**
  * Informe hecho afuera.
@@ -15,23 +16,6 @@ import { KIND_LABEL, type ReportKind } from "@/lib/insights/schedule";
  * pega es exactamente lo que tendria que escribir. Sin credenciales nuevas y
  * sin que la app dependa de que ese proceso exista.
  */
-
-const CONSIGNA: Record<ReportKind, string> = {
-  cartera: `Analiza esta cartera. Busca noticias y datos de mercado de las ultimas dos semanas que afecten especificamente a estas posiciones (resultados, guidance, tasas, regulacion, flujos, y para cripto lo que corresponda), y el contexto macro argentino si hay exposicion en pesos.
-
-Escribi:
-1. El contexto de mercado que le importa a ESTA cartera.
-2. Una lectura por posicion: que hacer y por que, con el hecho concreto que lo respalda.
-3. Que revela la operatoria sobre como invierte en la practica, y en que se contradice con el perfil declarado.
-4. Riesgos concretos que esta corriendo ahora.`,
-  mercado: `Escribi un resumen de mercado para esta cartera. Busca que paso en la ultima semana y que se viene en la proxima: datos macro, tasas, resultados, regulacion, y el contexto argentino si hay exposicion en pesos.
-
-Escribi:
-1. Como viene el mercado para lo que esta cartera tiene. No un panorama general.
-2. Que hay en la agenda de la semana que pueda moverlo.
-3. Oportunidades afuera de la cartera: activos castigados sin que el negocio se haya roto, o con proyecciones que justifiquen mirarlos. Para cada uno, por que ahora y que tendria que pasar para que la tesis falle. Si no hay ninguna que valga la pena, decilo.
-4. Que significa todo esto para esta cartera en concreto, dado el perfil y el horizonte.`,
-};
 
 const FORMATO = `Al final, y ademas del informe en prosa, devolve un bloque de codigo JSON con esta forma exacta:
 
@@ -63,14 +47,17 @@ Si no podes devolver el JSON, devolve solo la prosa: la app la acepta igual.`;
 /** El texto completo para copiar y pegar donde sea. */
 export function buildExternalRequest(body: InsightRequest, kind: ReportKind): string {
   const hoy = new Date().toISOString().slice(0, 10);
+  const pedido: InsightRequest = { ...body, kind };
   return `# ${KIND_LABEL[kind]} — Waltra
 Fecha: ${hoy}
+
+${CONSIGNA_TITULO[kind]}.${focoTexto(pedido)}
 
 ${CONSIGNA[kind]}
 
 ## Cartera
 
-${buildDigest(body)}
+${buildDigest(pedido)}${anteriorTexto(pedido)}
 
 ## Formato de respuesta
 

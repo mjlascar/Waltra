@@ -12,7 +12,13 @@ import type { Settings } from "@/lib/types";
  * de la cuenta del usuario, y gastarlos sin que este mirando es la clase de
  * cosa que se descubre a fin de mes.
  */
-export type ReportKind = "cartera" | "mercado";
+export type ReportKind =
+  | "cartera"
+  | "mercado"
+  | "conducta"
+  | "riesgo"
+  | "posicion"
+  | "decision";
 
 export interface Schedule {
   kind: ReportKind;
@@ -28,12 +34,33 @@ export interface Schedule {
 export const KIND_LABEL: Record<ReportKind, string> = {
   cartera: "Análisis de tu cartera",
   mercado: "Resumen de mercado",
+  conducta: "Cómo invertís de verdad",
+  riesgo: "Qué te puede doler",
+  posicion: "Una posición a fondo",
+  decision: "Tengo plata, ¿qué hago?",
 };
 
 export const KIND_DETAIL: Record<ReportKind, string> = {
-  cartera: "Qué pasó con tus posiciones y qué revela tu operatoria.",
+  cartera: "Qué pasó con tus posiciones y qué hacer con cada una.",
   mercado: "Cómo viene el mercado para lo que tenés, y qué más podría interesarte.",
+  conducta: "Tu operatoria real contra el perfil que declarás. Sale del historial, no de una encuesta.",
+  riesgo: "Concentración, moneda y cuánto dolería una caída como las que ya pasaron.",
+  posicion: "Un activo solo: la tesis, qué cambió y qué la rompería.",
+  decision: "Un monto concreto y qué conviene hacer con él, dada tu cartera de hoy.",
 };
+
+/**
+ * Las que valen la pena agendar.
+ *
+ * Las otras cuatro son de consulta: uno las pide cuando tiene la pregunta.
+ * Agendar "tengo plata, que hago" cada lunes no tiene sentido.
+ */
+export const AGENDABLES: ReportKind[] = ["mercado", "cartera", "riesgo"];
+
+/** Las que necesitan que el usuario diga sobre que. */
+export function needsFocus(kind: ReportKind): boolean {
+  return kind === "posicion" || kind === "decision";
+}
 
 /**
  * Lo que la app propone cuando todavia no hay nada agendado.
@@ -44,6 +71,7 @@ export const KIND_DETAIL: Record<ReportKind, string> = {
 export const SUGERENCIAS: Schedule[] = [
   { kind: "mercado", enabled: false, weekday: 1, hour: 9 },
   { kind: "cartera", enabled: false, weekday: 5, hour: 18 },
+  { kind: "riesgo", enabled: false, weekday: 6, hour: 11 },
 ];
 
 export function schedules(settings: Settings): Schedule[] {
