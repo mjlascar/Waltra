@@ -57,9 +57,22 @@ await page.waitForTimeout(4500);
 check("carga la cartera de ejemplo", await has("Valor total"));
 check("el capital aportado no es cero", !(await has("Capital aportado\nUS$ 0,00")));
 
+/** Abre la hoja y va al campo de texto libre. */
+async function abrirEscritura() {
+  await page.getByRole("button", { name: /agregar movimiento/i }).click();
+  await page.waitForTimeout(400);
+  await page.getByRole("button", { name: /escribirlo en una línea/i }).click();
+  await page.waitForTimeout(400);
+}
+
+/** Cierra la hoja desde la X, que sirve en cualquier paso. */
+async function cerrarHoja() {
+  await page.locator('[aria-label="Cerrar"]').first().click();
+  await page.waitForTimeout(400);
+}
+
 console.log("\n2. Carga rápida en lenguaje natural");
-await page.getByRole("button", { name: /agregar movimiento/i }).click();
-await page.waitForTimeout(500);
+await abrirEscritura();
 await page.locator('input[placeholder*="QQQ"]').first().fill("compré 25 dólares de SOL a 200 en binance");
 await page.waitForTimeout(900);
 const preview = await text();
@@ -75,8 +88,7 @@ check("el movimiento aparece en la lista", await has("SOL"));
 
 console.log("\n2b. «Vendí todo» completa la tenencia real");
 await goto("/");
-await page.getByRole("button", { name: /agregar movimiento/i }).click();
-await page.waitForTimeout(500);
+await abrirEscritura();
 await page.locator('input[placeholder*="QQQ"]').first().fill("vendí todo el QQQ");
 await page.waitForTimeout(900);
 const vendeTodo = await text();
@@ -84,21 +96,41 @@ check("lee la venta total", await has("Venta"), vendeTodo.slice(0, 160));
 // La cartera de ejemplo tiene 2,95 unidades de QQQ.
 check("completa la cantidad desde la posición", /2,95|2\.95/.test(vendeTodo), vendeTodo.slice(0, 200));
 check("no reclama un monto que puede deducir", !(await has("No encontré ningún monto")));
-await page.getByRole("button", { name: /Cancelar/ }).click();
-await page.waitForTimeout(500);
+await cerrarHoja();
 
 console.log("\n2c. Avisos de datos");
 await goto("/");
-await page.getByRole("button", { name: /agregar movimiento/i }).click();
-await page.waitForTimeout(500);
+await abrirEscritura();
 await page.locator('input[placeholder*="QQQ"]').first().fill("vendí 999 QQQ a 500");
 await page.waitForTimeout(900);
 check("avisa si vendés más de lo que tenés", await has("estás vendiendo"), (await text()).slice(0, 250));
 await page.locator('input[placeholder*="QQQ"]').first().fill("compré 100 de XYZNOEXISTE a 10");
 await page.waitForTimeout(700);
 check("no avisa de más en una compra normal", !(await has("estás vendiendo")));
-await page.getByRole("button", { name: /Cancelar/ }).click();
+await cerrarHoja();
+
+console.log("\n2d. El recorrido guiado, sin escribir una palabra");
+await goto("/");
+await page.getByRole("button", { name: /agregar movimiento/i }).click();
 await page.waitForTimeout(400);
+check("pregunta primero qué hiciste", await has("¿Qué hiciste?"));
+check("ofrece los cuatro movimientos frecuentes", await has("Ingresé dinero"));
+check("los menos frecuentes no compiten", await has("Menos frecuentes"));
+await page.getByRole("button", { name: /^Compré/ }).click();
+await page.waitForTimeout(500);
+check("pasa al paso de datos", await has("Activo"));
+check("ofrece lo que ya tenés en cartera", (await page.getByRole("button", { name: /^QQQ$/ }).count()) > 0);
+await page.getByRole("button", { name: /^QQQ$/ }).first().click();
+await page.waitForTimeout(300);
+await page.locator('input[placeholder="50"]').first().fill("200");
+await page.locator('input[placeholder="480"]').first().fill("500");
+await page.waitForTimeout(500);
+check("deriva las unidades del monto", await has("0,4"), (await text()).slice(0, 300));
+check("los detalles finos quedan guardados", await has("Comisión, tipo de cambio y nota"));
+await page.getByRole("button", { name: /^Agregar$/ }).click();
+await page.waitForTimeout(2200);
+await goto("/movimientos");
+check("la compra guiada quedó cargada", await has("QQQ"));
 
 console.log("\n3. La posición nueva llega a la cartera");
 await goto("/cartera");
@@ -112,6 +144,8 @@ check("abre el detalle", await has("Precio unitario"));
 check("guarda la frase original", await has("compré 25 dólares de SOL"));
 await page.getByRole("button", { name: /Editar/ }).click();
 await page.waitForTimeout(700);
+await page.getByRole("button", { name: /Comisión, tipo de cambio y nota/ }).click();
+await page.waitForTimeout(300);
 const notaInput = page.locator('input[placeholder="Opcional"]').first();
 await notaInput.fill("probando la edición");
 await page.getByRole("button", { name: /Guardar cambios/ }).click();
@@ -171,7 +205,7 @@ await page.getByRole("button", { name: /¿Cómo se calcula\?/ }).click();
 await page.waitForTimeout(700);
 const explica = await text();
 check("explica el capital aportado", await has("no es capital nuevo"), explica.slice(0, 200));
-check("explica el rendimiento real", await has("neutralizando los aportes"));
+check("explica el rendimiento real", await has("neutralizando las entradas y salidas"));
 check("usa los números de la cartera", /\d+ días/.test(explica));
 await page.keyboard.press("Escape");
 await page.waitForTimeout(400);
@@ -186,7 +220,7 @@ check("muestra el efectivo que conoce la app", Boolean(antes), antes?.[0]);
 await page.locator('[role="dialog"] input[inputmode="decimal"]').first().fill("999");
 await page.waitForTimeout(500);
 check("calcula la diferencia", await has("Diferencia"), (await text()).slice(0, 300));
-await page.getByRole("button", { name: /Cargar el ajuste/ }).click();
+await page.getByRole("button", { name: /Registrar el ajuste/ }).click();
 await page.waitForTimeout(1500);
 check("confirma el ajuste", await has("El saldo ya coincide"), (await text()).slice(0, 200));
 await page.keyboard.press("Escape");
@@ -336,6 +370,8 @@ await virgen.goto(BASE, { waitUntil: "networkidle" });
 await virgen.waitForTimeout(1500);
 await virgen.getByRole("button", { name: /Cargar mi primer movimiento/ }).click();
 await virgen.waitForTimeout(500);
+await virgen.getByRole("button", { name: /escribirlo en una línea/i }).click();
+await virgen.waitForTimeout(400);
 await virgen.locator('input[placeholder*="QQQ"]').first().fill("pasé 300 dólares a cocos");
 await virgen.waitForTimeout(800);
 await virgen.getByRole("button", { name: /^Agregar$/ }).click();
@@ -355,7 +391,9 @@ check(
 // componente pasa de su estado vacio al SVG, y con el cambia el nodo que
 // mide el ancho.
 await virgen.getByRole("button", { name: /agregar movimiento/i }).click();
-await virgen.waitForTimeout(500);
+await virgen.waitForTimeout(400);
+await virgen.getByRole("button", { name: /escribirlo en una línea/i }).click();
+await virgen.waitForTimeout(400);
 await virgen.locator('input[placeholder*="QQQ"]').first().fill("pasé 200 dólares a cocos hace 5 días");
 await virgen.waitForTimeout(800);
 await virgen.getByRole("button", { name: /^Agregar$/ }).click();

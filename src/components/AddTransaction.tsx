@@ -11,19 +11,32 @@ import { parseLooseNumber } from "@/lib/parse/number";
 import { lookupCatalog, searchCatalog, type CatalogEntry } from "@/lib/catalog";
 import { assetFromSymbol, findAssetBySymbol, lastUsedAccountId } from "@/lib/assets";
 import { longDate, money, quantity as fmtQty, TX_LABEL } from "@/lib/format";
+import { txColor } from "@/lib/tx-style";
 import { today } from "@/lib/date";
 import type { Currency, Transaction, TxType } from "@/lib/types";
 
-const TYPES: { value: TxType; label: string }[] = [
-  { value: "deposit", label: "Ingreso" },
-  { value: "buy", label: "Compra" },
-  { value: "sell", label: "Venta" },
-  { value: "withdraw", label: "Retiro" },
-  { value: "transfer", label: "Transfer." },
-  { value: "dividend", label: "Dividendo" },
-  { value: "interest", label: "Interés" },
-  { value: "fee", label: "Comisión" },
+/**
+ * Lo que se carga casi siempre, en el orden en que se usa.
+ *
+ * El resto de los tipos existe pero no compite por la atencion: quien carga un
+ * dividendo sabe que lo esta buscando, quien carga una compra no tiene por que
+ * leer ocho opciones para encontrarla.
+ */
+const PRINCIPALES: { value: TxType; label: string; detalle: string }[] = [
+  { value: "buy", label: "Compré", detalle: "Acciones, ETF, CEDEAR o cripto" },
+  { value: "sell", label: "Vendí", detalle: "Salir de una posición" },
+  { value: "deposit", label: "Ingresé dinero", detalle: "Capital nuevo a una cuenta" },
+  { value: "withdraw", label: "Retiré dinero", detalle: "Capital que sale" },
 ];
+
+const SECUNDARIOS: { value: TxType; label: string; detalle: string }[] = [
+  { value: "transfer", label: "Transferencia", detalle: "Entre cuentas propias" },
+  { value: "dividend", label: "Dividendo", detalle: "Renta de un activo" },
+  { value: "interest", label: "Interés", detalle: "Renta de una cuenta" },
+  { value: "fee", label: "Comisión", detalle: "Un costo" },
+];
+
+const TODOS = [...PRINCIPALES, ...SECUNDARIOS];
 
 interface Draft {
   type: TxType;
@@ -87,7 +100,16 @@ export function AddTransaction({
   const defaultCurrency =
     accounts.find((a) => a.id === defaultAccount)?.currency ?? accounts[0]?.currency ?? "USD";
 
-  const [mode, setMode] = useState<"quick" | "form">("quick");
+  /**
+   * En que paso esta la carga.
+   *
+   * - `tipo`: que hiciste. Es lo primero que se pregunta y lo unico que se ve.
+   * - `datos`: solo los campos que ese tipo necesita.
+   * - `escribir`: la frase suelta de siempre, que sigue siendo el camino mas
+   *   rapido para quien ya sabe lo que quiere cargar.
+   */
+  const [paso, setPaso] = useState<"tipo" | "datos" | "escribir">("tipo");
+  const [avanzado, setAvanzado] = useState(false);
   const [text, setText] = useState("");
   const [draft, setDraft] = useState<Draft>(() => emptyDraft(defaultAccount, defaultCurrency));
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -114,7 +136,7 @@ export function AddTransaction({
     setWarnings([]);
     if (editing) {
       const asset = assets.find((a) => a.id === editing.assetId);
-      setMode("form");
+      setPaso("datos");
       setText("");
       setDraft({
         type: editing.type,
@@ -133,7 +155,8 @@ export function AddTransaction({
         basis: editing.quantity ? "quantity" : "amount",
       });
     } else {
-      setMode("quick");
+      setPaso("tipo");
+      setAvanzado(false);
       setText("");
       setDraft(emptyDraft(defaultAccount, defaultCurrency));
       setCatalogHit(null);
@@ -149,7 +172,7 @@ export function AddTransaction({
   // cada lectura el usuario puede editar cualquier campo a mano, asi que el
   // borrador tiene que vivir en estado y no calcularse en cada render.
   useEffect(() => {
-    if (mode !== "quick" || !open) return;
+    if (paso !== "escribir" || !open) return;
     if (!text.trim()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setWarnings([]);
@@ -200,7 +223,7 @@ export function AddTransaction({
     // Sin `portfolio` en las dependencias a proposito: un refresco de precios
     // no tiene que volver a parsear la frase y pisar lo que el usuario acaba
     // de retocar a mano.
-  }, [text, mode, open, accounts, assets, defaultAccount]);
+  }, [text, paso, open, accounts, assets, defaultAccount]);
 
   const needsAsset = draft.type === "buy" || draft.type === "sell" || draft.type === "dividend";
   const isTrade = draft.type === "buy" || draft.type === "sell";
@@ -362,7 +385,7 @@ export function AddTransaction({
       setAiNote(data.reasoning ?? null);
       // A partir de acá el usuario retoca sobre el formulario: si seguimos en
       // modo texto, la próxima tecla pisaría lo que el modelo interpretó.
-      setMode("form");
+      setPaso("datos");
     } catch (err) {
       setError(describeBackendError(err));
     } finally {
@@ -391,7 +414,7 @@ export function AddTransaction({
         fee: num(draft.feeText),
         fxRate: draft.currency === "ARS" ? num(draft.fxText) : undefined,
         note: draft.note.trim() || undefined,
-        raw: mode === "quick" && text.trim() ? text.trim() : editing?.raw,
+        raw: paso === "escribir" && text.trim() ? text.trim() : editing?.raw,
         createdAt: editing?.createdAt ?? now,
         updatedAt: now,
       };
@@ -408,177 +431,227 @@ export function AddTransaction({
 
   const set = (patch: Partial<Draft>) => setDraft((prev) => ({ ...prev, ...patch }));
 
+  /** Activos que ya tenés: elegir de una lista es mejor que tipear un ticker. */
+  const enCartera = useMemo(
+    () => portfolio.positions.filter((pos) => pos.quantity > 0).slice(0, 8),
+    [portfolio.positions],
+  );
+
+  const tipoActual = TODOS.find((t) => t.value === draft.type);
+
+  function elegirTipo(value: TxType) {
+    set({ type: value });
+    setPaso("datos");
+  }
+
+  const resumen = (
+    <div className="card mb-4 p-3">
+      <div className="eyebrow mb-1.5">Se va a guardar</div>
+      <p className="text-[13px] leading-snug">{summary}</p>
+      {aiNote && (
+        <p className="mt-2 text-[11px] leading-snug" style={{ color: "var(--color-s1)" }}>
+          {aiNote}
+        </p>
+      )}
+      {[...warnings, ...checks].length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {[...warnings, ...checks].map((w) => (
+            <li
+              key={w}
+              className="flex items-start gap-1.5 text-[11px]"
+              style={{ color: "var(--color-warn)" }}
+            >
+              <IconWarning size={13} className="mt-px shrink-0" />
+              <span>{w}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+
+  const guardar = (
+    <button
+      className="btn btn-primary flex-[2]"
+      disabled={!canSave || saving}
+      onClick={handleSave}
+    >
+      {saving ? "Guardando…" : editing ? "Guardar cambios" : "Agregar"}
+    </button>
+  );
+
   return (
     <Sheet
       open={open}
       onClose={onClose}
-      title={editing ? "Editar movimiento" : "Nuevo movimiento"}
+      title={
+        editing
+          ? "Editar movimiento"
+          : paso === "tipo"
+            ? "¿Qué hiciste?"
+            : paso === "escribir"
+              ? "Escribir el movimiento"
+              : (tipoActual?.label ?? "Nuevo movimiento")
+      }
       footer={
-        <div className="flex gap-2">
-          <button className="btn btn-ghost flex-1" onClick={onClose}>
-            Cancelar
-          </button>
-          <button className="btn btn-primary flex-[2]" disabled={!canSave || saving} onClick={handleSave}>
-            {saving ? "Guardando…" : editing ? "Guardar cambios" : "Agregar"}
-          </button>
-        </div>
+        paso === "tipo" ? undefined : (
+          <div className="flex gap-2">
+            <button
+              className="btn btn-ghost flex-1"
+              onClick={() => (editing ? onClose() : setPaso("tipo"))}
+            >
+              {editing ? "Cancelar" : "Atrás"}
+            </button>
+            {guardar}
+          </div>
+        )
       }
     >
-      {!editing && (
-        <div className="mb-4">
-          <Segmented
-            value={mode}
-            onChange={(v) => setMode(v)}
-            options={[
-              { value: "quick", label: "Escribir" },
-              { value: "form", label: "Formulario" },
-            ]}
-          />
-        </div>
-      )}
-
-      {mode === "quick" && !editing && (
-        <div className="mb-4">
-          <input
-            className="input"
-            autoFocus
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="compré 50 de QQQ a 480"
-            enterKeyHint="done"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && canSave) void handleSave();
-            }}
-          />
-          {confidence < 0.65 && text.trim().length > 3 && (
-            <button
-              className="btn btn-sm mt-2 w-full"
-              onClick={askAi}
-              disabled={asking}
-            >
-              {asking ? "Interpretando…" : "No quedó claro — que lo lea la IA"}
-            </button>
-          )}
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {[
-              "pasé 100 dólares a cocos",
-              "compré 0.01 BTC a 95000",
-              "vendí 2 QQQ a 520 ayer",
-              "retiré 200 de binance",
-            ].map((example) => (
+      {/* --- Paso 1: que clase de movimiento es ------------------------------ */}
+      {paso === "tipo" && (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            {PRINCIPALES.map((t) => (
               <button
-                key={example}
-                type="button"
-                className="chip"
-                style={{ textTransform: "none", letterSpacing: 0 }}
-                onClick={() => setText(example)}
+                key={t.value}
+                className="card p-3 text-left"
+                style={{ borderLeft: `3px solid ${txColor(t.value)}` }}
+                onClick={() => elegirTipo(t.value)}
               >
-                {example}
+                <div className="text-[15px] font-medium">{t.label}</div>
+                <div className="label mt-1 leading-snug">{t.detalle}</div>
               </button>
             ))}
           </div>
-        </div>
+
+          <div className="eyebrow mb-2 mt-5">Menos frecuentes</div>
+          <ul className="card divide-hairline">
+            {SECUNDARIOS.map((t) => (
+              <li key={t.value}>
+                <button
+                  className="flex w-full items-center gap-3 p-3 text-left"
+                  onClick={() => elegirTipo(t.value)}
+                >
+                  <span
+                    aria-hidden
+                    style={{ width: 3, height: 26, background: txColor(t.value) }}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px]">{t.label}</span>
+                    <span className="label">{t.detalle}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          <button
+            className="btn btn-sm mt-5 w-full"
+            onClick={() => {
+              setPaso("escribir");
+              setText("");
+            }}
+          >
+            Escribirlo en una línea
+          </button>
+          <p className="label mt-2 text-center leading-snug">
+            «compré 50 de QQQ a 480», «pasé 100 dólares a cocos»
+          </p>
+        </>
       )}
 
-      {/* Lectura de lo entendido: siempre visible, siempre editable. */}
-      {(text.trim() || mode === "form" || editing) && (
-        <div className="card mb-4 p-3">
-          <div className="eyebrow mb-1.5">Se va a guardar</div>
-          <p className="text-[13px] leading-snug">{summary}</p>
-          {aiNote && (
-            <p className="mt-2 text-[11px] leading-snug" style={{ color: "var(--color-s1)" }}>
-              {aiNote}
-            </p>
-          )}
-          {[...warnings, ...checks].length > 0 && (
-            <ul className="mt-2 space-y-1">
-              {[...warnings, ...checks].map((w) => (
-                <li key={w} className="flex items-start gap-1.5 text-[11px]" style={{ color: "var(--color-warn)" }}>
-                  <IconWarning size={13} className="mt-px shrink-0" />
-                  <span>{w}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {(mode === "form" || text.trim() || editing) && (
-        <div className="space-y-3">
-          <Field label="Tipo">
-            <select
+      {/* --- La frase suelta de siempre -------------------------------------- */}
+      {paso === "escribir" && (
+        <>
+          <div className="mb-4">
+            <input
               className="input"
-              value={draft.type}
-              onChange={(e) => set({ type: e.target.value as TxType })}
-            >
-              {TYPES.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
+              autoFocus
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="compré 50 de QQQ a 480"
+              enterKeyHint="done"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && canSave) void handleSave();
+              }}
+            />
+            {confidence < 0.65 && text.trim().length > 3 && (
+              <button className="btn btn-sm mt-2 w-full" onClick={askAi} disabled={asking}>
+                {asking ? "Interpretando…" : "No quedó claro — que lo lea la IA"}
+              </button>
+            )}
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {[
+                "pasé 100 dólares a cocos",
+                "compré 0.01 BTC a 95000",
+                "vendí 2 QQQ a 520 ayer",
+                "retiré 200 de binance",
+              ].map((example) => (
+                <button
+                  key={example}
+                  type="button"
+                  className="chip"
+                  style={{ textTransform: "none", letterSpacing: 0 }}
+                  onClick={() => setText(example)}
+                >
+                  {example}
+                </button>
               ))}
-            </select>
-          </Field>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Fecha">
-              <input
-                type="date"
-                className="input"
-                value={draft.date}
-                max={today()}
-                onChange={(e) => set({ date: e.target.value })}
-              />
-            </Field>
-            <Field label={draft.type === "transfer" ? "Desde" : "Cuenta"}>
-              <select
-                className="input"
-                value={draft.accountId}
-                onChange={(e) => set({ accountId: e.target.value })}
-              >
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
+            </div>
           </div>
 
-          {draft.type === "transfer" && (
-            <Field label="Hacia">
-              <select
-                className="input"
-                value={draft.counterAccountId}
-                onChange={(e) => set({ counterAccountId: e.target.value })}
-              >
-                <option value="">Elegí una cuenta…</option>
-                {accounts
-                  .filter((a) => a.id !== draft.accountId)
-                  .map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-              </select>
-            </Field>
-          )}
+          {text.trim() && resumen}
 
+          {text.trim() && (
+            <button className="btn btn-sm w-full" onClick={() => setPaso("datos")}>
+              Revisar los campos
+            </button>
+          )}
+        </>
+      )}
+
+      {/* --- Paso 2: solo lo que este tipo necesita -------------------------- */}
+      {paso === "datos" && (
+        <div className="space-y-4">
           {needsAsset && (
-            <Field label="Activo" hint={catalogHit ? `Reconocido: ${catalogHit.name}` : undefined}>
-              <input
-                className="input"
-                value={draft.symbol}
-                placeholder="QQQ, BTC, GGAL…"
-                autoCapitalize="characters"
-                onChange={(e) => {
-                  const value = e.target.value;
-                  const match = assets.find((a) => a.symbol.toUpperCase() === value.toUpperCase());
-                  setCatalogHit(lookupCatalog(value) ?? null);
-                  set({ symbol: value, assetId: match?.id ?? "" });
-                }}
-              />
+            <div>
+              <Field
+                label="Activo"
+                hint={catalogHit ? `Reconocido: ${catalogHit.name}` : undefined}
+              >
+                <input
+                  className="input"
+                  value={draft.symbol}
+                  placeholder="QQQ, BTC, GGAL…"
+                  autoCapitalize="characters"
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    const match = assets.find(
+                      (a) => a.symbol.toUpperCase() === value.toUpperCase(),
+                    );
+                    setCatalogHit(lookupCatalog(value) ?? null);
+                    set({ symbol: value, assetId: match?.id ?? "" });
+                  }}
+                />
+              </Field>
+              {/* Lo que ya tenés, primero: en una cartera real el 90% de las
+                  operaciones son sobre un activo que ya está adentro. */}
+              {!draft.symbol && enCartera.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {enCartera.map((pos) => (
+                    <button
+                      key={pos.assetId}
+                      type="button"
+                      className="chip"
+                      onClick={() => set({ symbol: pos.symbol, assetId: pos.assetId })}
+                    >
+                      {pos.symbol}
+                    </button>
+                  ))}
+                </div>
+              )}
               {suggestions.length > 0 && (
-                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                <div className="mt-2 flex flex-wrap gap-1.5">
                   {suggestions.map((s) => (
                     <button
                       key={s.symbol}
@@ -594,10 +667,33 @@ export function AddTransaction({
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Con una sola cuenta no hay nada que elegir. */}
+          {accounts.length > 1 && (
+            <Field label={draft.type === "transfer" ? "Desde" : "En qué cuenta"}>
+              <Segmented
+                value={draft.accountId}
+                onChange={(v) => set({ accountId: v })}
+                options={accounts.map((a) => ({ value: a.id, label: a.name }))}
+              />
             </Field>
           )}
 
-          {isTrade && (
+          {draft.type === "transfer" && (
+            <Field label="Hacia">
+              <Segmented
+                value={draft.counterAccountId}
+                onChange={(v) => set({ counterAccountId: v })}
+                options={accounts
+                  .filter((a) => a.id !== draft.accountId)
+                  .map((a) => ({ value: a.id, label: a.name }))}
+              />
+            </Field>
+          )}
+
+          {isTrade ? (
             <>
               <div>
                 <span className="eyebrow mb-1.5 block">Cómo lo cargás</span>
@@ -611,9 +707,7 @@ export function AddTransaction({
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Field
-                  label={draft.basis === "amount" ? "Monto invertido" : "Unidades"}
-                >
+                <Field label={draft.basis === "amount" ? "Monto invertido" : "Unidades"}>
                   <input
                     className="input num"
                     inputMode="decimal"
@@ -642,9 +736,7 @@ export function AddTransaction({
                   : `Total: ${computed.amount !== undefined ? money(computed.amount, draft.currency) : "—"}.`}
               </p>
             </>
-          )}
-
-          {!isTrade && (
+          ) : (
             <Field label="Monto">
               <input
                 className="input num"
@@ -657,6 +749,15 @@ export function AddTransaction({
           )}
 
           <div className="grid grid-cols-2 gap-3">
+            <Field label="Fecha">
+              <input
+                type="date"
+                className="input"
+                value={draft.date}
+                max={today()}
+                onChange={(e) => set({ date: e.target.value })}
+              />
+            </Field>
             <Field label="Moneda">
               <Segmented
                 value={draft.currency}
@@ -667,40 +768,72 @@ export function AddTransaction({
                 ]}
               />
             </Field>
-            <Field label="Comisión">
-              <input
-                className="input num"
-                inputMode="decimal"
-                value={draft.feeText}
-                onChange={(e) => set({ feeText: e.target.value })}
-                placeholder="0"
-              />
-            </Field>
           </div>
 
-          {draft.currency === "ARS" && (
-            <Field
-              label="Dólar de la operación"
-              hint="Opcional. Sin esto se usa el MEP del día que traiga la app."
-            >
-              <input
-                className="input num"
-                inputMode="decimal"
-                value={draft.fxText}
-                onChange={(e) => set({ fxText: e.target.value })}
-                placeholder="1250"
-              />
-            </Field>
-          )}
+          {resumen}
 
-          <Field label="Nota">
-            <input
-              className="input"
-              value={draft.note}
-              onChange={(e) => set({ note: e.target.value })}
-              placeholder="Opcional"
-            />
-          </Field>
+          {/* Lo que casi nunca se toca, detrás de un toque. */}
+          <button
+            className="btn btn-sm w-full"
+            onClick={() => setAvanzado((v) => !v)}
+            aria-expanded={avanzado}
+          >
+            {avanzado ? "Ocultar detalles" : "Comisión, tipo de cambio y nota"}
+          </button>
+
+          {avanzado && (
+            <div className="space-y-3">
+              <Field label="Comisión">
+                <input
+                  className="input num"
+                  inputMode="decimal"
+                  value={draft.feeText}
+                  onChange={(e) => set({ feeText: e.target.value })}
+                  placeholder="0"
+                />
+              </Field>
+
+              {draft.currency === "ARS" && (
+                <Field
+                  label="Dólar de la operación"
+                  hint="Opcional. Sin esto se usa el MEP del día que traiga la app."
+                >
+                  <input
+                    className="input num"
+                    inputMode="decimal"
+                    value={draft.fxText}
+                    onChange={(e) => set({ fxText: e.target.value })}
+                    placeholder="1250"
+                  />
+                </Field>
+              )}
+
+              <Field label="Nota">
+                <input
+                  className="input"
+                  value={draft.note}
+                  onChange={(e) => set({ note: e.target.value })}
+                  placeholder="Opcional"
+                />
+              </Field>
+
+              {editing && (
+                <Field label="Tipo">
+                  <select
+                    className="input"
+                    value={draft.type}
+                    onChange={(e) => set({ type: e.target.value as TxType })}
+                  >
+                    {TODOS.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
+            </div>
+          )}
 
           {settings.baseCurrency === "USD" && draft.currency === "ARS" && (
             <p className="text-[11px]" style={{ color: "var(--color-ink-3)" }}>
@@ -710,9 +843,7 @@ export function AddTransaction({
         </div>
       )}
 
-      {error && (
-        <p className="mt-3 text-[12px] neg">{error}</p>
-      )}
+      {error && <p className="mt-3 text-[12px] neg">{error}</p>}
     </Sheet>
   );
 }

@@ -66,8 +66,8 @@ body {
 }
 
 ::selection {
-  background: var(--color-s1);
-  color: #fff;
+  background: var(--color-surface-3);
+  color: var(--color-ink);
 }
 
 /* Foco visible para quien navega con teclado. Solo :focus-visible, asi el
@@ -191,8 +191,11 @@ body {
     font-size: 15px;
     outline: none;
   }
+  /* El campo activo se marca con el mismo gris claro de la tipografia, no
+     con el azul de las series: ese azul quiere decir "primera serie de datos"
+     en toda la app y usarlo tambien para el foco lo vuelve ruido. */
   .input:focus {
-    border-color: var(--color-s1);
+    border-color: var(--color-ink-2);
   }
   .input::placeholder {
     color: var(--color-ink-3);
