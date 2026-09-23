@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { Sheet } from "@/components/ui/Sheet";
-import { ReturnChart } from "@/components/charts/ReturnChart";
+import { ReturnChart, type ReturnMark } from "@/components/charts/ReturnChart";
 import { useStore } from "@/lib/store";
 import { money, percent, quantity as fmtQty, shortDate, KIND_LABEL, TX_SHORT } from "@/lib/format";
 import type { PositionView } from "@/lib/engine/portfolio";
@@ -32,6 +32,68 @@ export function PositionSheet({
     if (!base) return [];
     return series.points.map((p) => ({ day: p.date, value: p.close / base - 1 }));
   }, [series]);
+
+  /**
+   * El costo promedio, en las mismas unidades que la curva.
+   *
+   * La serie esta indexada al primer cierre, asi que el costo tambien: arriba
+   * de esa linea la posicion esta en ganancia y abajo en perdida. Sin esto, el
+   * grafico dice como se movio el precio y no dice nada sobre vos.
+   */
+  const avgCost = position?.avgCost;
+  const moneda = position?.currency;
+  const nivelCosto = useMemo(() => {
+    const base = series?.points[0]?.close;
+    if (!base || !avgCost || !moneda) return undefined;
+    return {
+      value: avgCost / base - 1,
+      label: `costo ${money(avgCost, moneda, { compact: true })}`,
+    };
+  }, [series, avgCost, moneda]);
+
+  /**
+   * Cada compra y cada venta, ubicadas en el dia que pasaron.
+   *
+   * Si operaste un dia sin cotizacion —un feriado, un fin de semana en una
+   * accion— la marca se corre al dia habil mas cercano en vez de perderse:
+   * descartarla en silencio dejaria el grafico diciendo que compraste menos
+   * veces de las que compraste.
+   */
+  const marcas = useMemo((): ReturnMark[] => {
+    const puntos = series?.points;
+    if (!puntos?.length || !assetId) return [];
+    const dias = puntos.map((p) => p.date);
+    const cercano = (day: string) => {
+      if (day < dias[0] || day > dias[dias.length - 1]) return null;
+      let lo = 0;
+      let hi = dias.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (dias[mid] < day) lo = mid + 1;
+        else hi = mid;
+      }
+      // `lo` es el primer dia >= al buscado; el anterior puede estar mas cerca.
+      if (lo > 0 && dias[lo] !== day) {
+        const anterior = Math.abs(Date.parse(dias[lo - 1]) - Date.parse(day));
+        const siguiente = Math.abs(Date.parse(dias[lo]) - Date.parse(day));
+        if (anterior <= siguiente) return lo - 1;
+      }
+      return lo;
+    };
+    return transactions
+      .filter((t) => t.assetId === assetId && (t.type === "buy" || t.type === "sell"))
+      .map((t) => {
+        const day = t.date.slice(0, 10);
+        const i = cercano(day);
+        if (i === null) return null;
+        return {
+          index: i,
+          kind: t.type as "buy" | "sell",
+          label: `${t.type === "buy" ? "Compra" : "Venta"} ${shortDate(day, true)}`,
+        };
+      })
+      .filter((m): m is ReturnMark => m !== null);
+  }, [series, transactions, assetId]);
 
   const moves = useMemo(
     () =>
@@ -84,7 +146,13 @@ export function PositionSheet({
       {history.length > 2 && (
         <div className="card mb-4 p-3">
           <div className="eyebrow mb-2">Variación del precio</div>
-          <ReturnChart data={history} height={120} />
+          <ReturnChart data={history} height={120} level={nivelCosto} marks={marcas} />
+          {nivelCosto && (
+            <p className="label mt-2 leading-snug">
+              La punteada es tu costo promedio: arriba de esa línea estás ganando.
+              {marcas.length > 0 && " Los puntos son tus movimientos, llenos las compras y huecos las ventas."}
+            </p>
+          )}
         </div>
       )}
 

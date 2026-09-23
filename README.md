@@ -139,24 +139,30 @@ O sea: el APK que baja de Actions sirve para probar, pero no para actualizar
 algo que ya venías usando. El artefacto se llama `waltra-apk-firma-descartable`
 justamente para que se note, y el log deja una advertencia.
 
-Se arregla una sola vez. Generás una clave:
+Se arregla una sola vez, con un comando:
 
 ```bash
-keytool -genkeypair -v -keystore waltra.keystore -alias waltra \
-  -keyalg RSA -keysize 2048 -validity 10000
-base64 -w0 waltra.keystore        # en macOS: base64 -i waltra.keystore
+./scripts/firma.sh
 ```
 
-Y en *Settings → Secrets and variables → Actions* del repo cargás cuatro
-secretos: `ANDROID_KEYSTORE_BASE64` (lo que imprimió el comando anterior),
-`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` (`waltra`) y
+Genera la clave en `~/waltra-firma/` y deja los cuatro valores listos para
+pegar en *Settings → Secrets and variables → Actions* del repo:
+`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` y
 `ANDROID_KEY_PASSWORD`. A partir de ahí CI firma con esa clave, el artefacto
 pasa a llamarse `waltra-apk` a secas y las actualizaciones se instalan encima,
 conservando los datos.
 
-**Guardá el `waltra.keystore` fuera del repo y no lo pierdas.** Si se pierde,
-la única salida es desinstalar y volver a empezar. Y no lo commitees: este
-repositorio es público.
+El script se niega a escribir adentro del repositorio y se niega a pisar una
+clave que ya exista: las dos cosas terminan igual de mal, una publicando la
+clave y la otra perdiéndola.
+
+**Guardá el `waltra.keystore` en otro lado también y no lo pierdas.** Si se
+pierde, la única salida es desinstalar y volver a empezar.
+
+**La primera actualización después de configurar esto todavía pide
+desinstalar**, porque la versión instalada está firmada con la clave
+descartable de su compilación. Exportá el backup antes (Ajustes → Tus datos →
+Exportar) e importalo después. De ahí en adelante, nunca más.
 
 El `versionCode` sale del número de corrida de CI, así que cada build es más
 nuevo que el anterior y Android lo acepta como actualización.

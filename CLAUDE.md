@@ -63,6 +63,22 @@ movimiento se dividen en capital externo (`deposit` / `withdraw`) e internos
 primeros mueven "capital aportado". Si un cambio hace que una transferencia
 entre cuentas propias aparezca como capital nuevo, el cambio está mal.
 
+**El modelo contable cierra, y hay tests que lo prueban.**
+`src/lib/engine/__tests__/invariantes.test.ts` recorre los flujos reales
+—comprar, vender, transferir, cobrar, pagar comisión, retirar, pesos— y fija
+dos identidades que no pueden fallar nunca: `valor = efectivo + invertido` y
+`ganancia = valor − capital aportado`. Más una tercera que es la que de verdad
+audita: la ganancia se descompone en no realizado + realizado + cobrado −
+comisiones sueltas (las de compra y venta ya están adentro del costo y del
+realizado; restarlas otra vez es contarlas dos veces). Si un cambio rompe
+alguna, la plata está saliendo de algún lado que no corresponde.
+
+Caso que se pregunta solo: comprar 300 teniendo 100. **No genera ganancia
+fantasma**: el efectivo se va a −200 y ese negativo cancela exactamente el
+activo de más. Pero describe algo que no pudo pasar, así que la app lo dice
+—al cargar el movimiento, en el inicio y en el detalle de cuenta— en vez de
+taparlo. Casi siempre significa que falta cargar el ingreso que lo financió.
+
 **Nunca inventar un número.** Sin cotización, una posición se valúa al costo y
 la app lo dice (`missingPrices`). Sin dólar MEP, los montos en pesos quedan
 sin convertir y la app lo dice (`fxMissing`); el fallback de la tabla de
@@ -118,7 +134,21 @@ pantalla.
 
 Los gráficos son SVG escritos a mano en `src/components/charts/`. Las
 etiquetas del eje se dibujan **después** de las líneas de datos, sobre un
-recorte del color de la superficie: al revés, la línea las cruza.
+recorte del color de la superficie: al revés, la línea las cruza. La excepción
+son las marcas de movimientos del `ReturnChart`, que van después de las
+etiquetas: el recorte de una etiqueta tapaba entera la marca que cayera cerca
+del borde derecho, y entre perder un dato y pisar un rótulo del eje se pisa el
+rótulo. Llevan un halo del color de la superficie para separarse de lo que
+haya abajo.
+
+En el gráfico principal, **la banda entre el valor y el capital aportado es la
+ganancia** (`bandRuns` en `scale.ts`). Se corta en cada cruce para que un tramo
+en pérdida no quede pintado de verde; tiene tests. El relleno anterior iba de
+la línea al piso del eje, que no significaba nada.
+
+El último punto de la serie se pisa con el valor en vivo: la serie diaria usa
+el cierre guardado y el total de arriba la cotización del momento, y ver dos
+números distintos a diez píxeles se lee como un error.
 
 ## Mapa del código
 
@@ -263,6 +293,10 @@ la base local. La clave de depuración cambia en cada corrida de CI, así que el
 APK de Actions sirve para probar y no para actualizar. La firma estable se
 configura con cuatro secretos del repositorio (ver README); sin ellos el build
 igual sale, con un aviso en el log.
+
+`./scripts/firma.sh` genera la clave estable e imprime los cuatro secretos. Se
+niega a escribir adentro del repositorio (es público) y a pisar una clave que
+ya exista (perderla obliga a desinstalar, y eso borra la base).
 
 El `versionCode` viene del número de corrida y tiene que crecer siempre.
 

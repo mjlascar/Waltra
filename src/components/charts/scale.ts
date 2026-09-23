@@ -105,3 +105,67 @@ export function downsample<T extends { value: number }>(points: T[], max: number
   }
   return out;
 }
+
+export interface BandRun {
+  /** La serie principal va por encima de la de referencia. */
+  gain: boolean;
+  path: string;
+}
+
+/**
+ * La banda entre dos series, partida donde se cruzan.
+ *
+ * En el grafico principal esa banda es, literalmente, la ganancia: el valor de
+ * la cartera contra el capital que entro. Pintarla de un color solo la haria
+ * mentir cuando el valor cae por debajo del capital, asi que se corta en cada
+ * cruce y cada tramo sabe de que lado esta.
+ *
+ * El borde de abajo se une con rectas aunque la linea de capital se dibuje en
+ * escalones: entre dos dias consecutivos la diferencia es de un pixel, y las
+ * lineas se dibujan encima de la banda igual.
+ */
+export function bandRuns(
+  top: { x: number; y: number }[],
+  bottom: { x: number; y: number }[],
+): BandRun[] {
+  const n = Math.min(top.length, bottom.length);
+  if (n < 2) return [];
+
+  const runs: BandRun[] = [];
+  // En coordenadas de pantalla la y crece hacia abajo: la serie principal esta
+  // arriba (ganancia) cuando su y es MENOR que la de la referencia.
+  const d = (i: number) => bottom[i].y - top[i].y;
+
+  let pts: { x: number; ty: number; by: number }[] = [];
+  let gain = d(0) >= 0;
+
+  const cerrar = () => {
+    if (pts.length < 2) return;
+    const ida = pts.map((p) => `${p.x.toFixed(2)} ${p.ty.toFixed(2)}`).join(" L");
+    const vuelta = [...pts]
+      .reverse()
+      .map((p) => `${p.x.toFixed(2)} ${p.by.toFixed(2)}`)
+      .join(" L");
+    runs.push({ gain, path: `M${ida} L${vuelta} Z` });
+  };
+
+  pts.push({ x: top[0].x, ty: top[0].y, by: bottom[0].y });
+  for (let i = 1; i < n; i++) {
+    const anterior = d(i - 1);
+    const actual = d(i);
+    if (anterior !== 0 && actual !== 0 && anterior > 0 !== actual > 0) {
+      // Se cruzan entre los dos dias: el punto de cruce cierra un tramo y
+      // abre el siguiente, asi ninguno de los dos se pinta del color del otro.
+      const t = anterior / (anterior - actual);
+      const x = top[i - 1].x + (top[i].x - top[i - 1].x) * t;
+      const y = top[i - 1].y + (top[i].y - top[i - 1].y) * t;
+      pts.push({ x, ty: y, by: y });
+      cerrar();
+      gain = actual > 0;
+      pts = [{ x, ty: y, by: y }];
+    }
+    pts.push({ x: top[i].x, ty: top[i].y, by: bottom[i].y });
+  }
+  cerrar();
+  return runs;
+}

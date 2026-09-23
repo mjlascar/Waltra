@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Sheet } from "@/components/ui/Sheet";
 import { Field, Segmented } from "@/components/ui/Field";
+import { IconWarning } from "@/components/icons";
 import { newId, useStore } from "@/lib/store";
 import { parseLooseNumber } from "@/lib/parse/number";
 import { money, percent, quantity as fmtQty } from "@/lib/format";
@@ -96,17 +97,35 @@ export function AccountSheet({
 
       <div className="card mb-4 grid grid-cols-2" style={{ gap: 1, background: "var(--color-line)" }}>
         {[
-          ["Invertido", money(account.investedUsd, "USD")],
-          ["Efectivo", money(account.cashUsd, "USD")],
-          ["Capital aportado", money(account.netContributedUsd, "USD")],
-          ["Peso en la cartera", percent(account.weight, { decimals: 0, sign: false })],
-        ].map(([label, value]) => (
-          <div key={label} style={{ background: "var(--color-surface)" }} className="p-3">
+          ["Invertido", money(account.investedUsd, "USD"), false],
+          // Un efectivo negativo es plata que se gastó sin haber entrado:
+          // no rompe los totales, pero significa que falta un movimiento.
+          ["Efectivo", money(account.cashUsd, "USD"), account.cashUsd < -0.01],
+          ["Capital aportado", money(account.netContributedUsd, "USD"), false],
+          ["Peso en la cartera", percent(account.weight, { decimals: 0, sign: false }), false],
+        ].map(([label, value, alerta]) => (
+          <div key={String(label)} style={{ background: "var(--color-surface)" }} className="p-3">
             <div className="eyebrow mb-1.5">{label}</div>
-            <div className="num text-[13px]">{value}</div>
+            <div className="num text-[13px]" style={alerta ? { color: "var(--color-warn)" } : undefined}>
+              {value}
+            </div>
           </div>
         ))}
       </div>
+
+      {account.cashUsd < -0.01 && (
+        <div
+          className="card mb-4 flex items-start gap-2 p-3 text-[12px] leading-snug"
+          style={{ color: "var(--color-warn)", borderColor: "var(--color-warn)" }}
+        >
+          <IconWarning size={14} className="shrink-0" />
+          <span>
+            El efectivo quedó en negativo: hay compras por más plata de la que figura
+            ingresada acá. La ganancia no se infla por esto, pero falta cargar un
+            ingreso o una transferencia desde otra cuenta.
+          </span>
+        </div>
+      )}
 
       {held.length > 0 && (
         <>

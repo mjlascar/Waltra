@@ -68,9 +68,16 @@ export default function Overview() {
   const chartData = useMemo(() => {
     if (!p.hasData || !from) return [];
     const contributions = new Map(p.contributions.map((c) => [c.day, c.value]));
-    return p.daily
+    const puntos = p.daily
       .filter((d) => d.day >= from)
       .map((d) => ({ day: d.day, value: d.nav, contributed: contributions.get(d.day) ?? 0 }));
+    // El último punto de la serie se valúa con el cierre guardado, pero el
+    // total de arriba usa la cotización en vivo. Con las dos cosas en la misma
+    // pantalla, la diferencia se lee como un error: el gráfico termina donde
+    // termina el número grande.
+    const ultimo = puntos[puntos.length - 1];
+    if (ultimo && ultimo.day === p.asOf) ultimo.value = p.totalValueUsd;
+    return puntos;
   }, [p, from]);
 
   /**
@@ -183,6 +190,15 @@ export default function Overview() {
   const xirrPeriodo = completo ? p.metrics.xirr : periodo.xirr;
   // Solo cuentan las cuentas que tienen algo: decir "2 cuentas" cuando una
   // esta vacia es ruido.
+  /**
+   * Cuentas con el efectivo en negativo.
+   *
+   * No rompe ningun numero —el saldo negativo cancela el activo de mas y la
+   * ganancia sigue siendo la correcta— pero describe algo que no pudo pasar,
+   * asi que la app lo dice en vez de dejarlo escondido en un renglon.
+   */
+  const enDescubierto = p.accountViews.filter((a) => a.cashUsd < -0.01);
+
   const activas = p.accountViews.filter(
     (a) => a.valueUsd > 0.01 || a.netContributedUsd !== 0,
   ).length;
@@ -215,6 +231,15 @@ export default function Overview() {
         <Notice>
           No pude traer el dólar MEP, así que los montos en pesos todavía no están
           contados en los totales. Tocá actualizar cuando tengas señal.
+        </Notice>
+      )}
+      {enDescubierto.length > 0 && (
+        <Notice>
+          {enDescubierto.length === 1 ? "La cuenta " : "Las cuentas "}
+          <strong>{enDescubierto.map((v) => v.name).join(" y ")}</strong>{" "}
+          {enDescubierto.length === 1 ? "queda" : "quedan"} con efectivo en negativo:
+          hay compras por más plata de la que figura ingresada. Los totales no se
+          inflan por eso, pero falta cargar algún ingreso o transferencia.
         </Notice>
       )}
       {p.missingPrices.length > 0 && (
@@ -347,7 +372,11 @@ export default function Overview() {
                   <div className="truncate text-[14px] font-medium">{view.name}</div>
                   <div className="label mt-0.5">
                     {money(view.investedUsd, "USD", { compact: true })} invertido ·{" "}
-                    {money(view.cashUsd, "USD", { compact: true })} líquido
+                    {/* Un saldo negativo se marca donde se lee, no solo en el
+                        aviso de arriba: es el renglon que lo explica. */}
+                    <span style={view.cashUsd < -0.01 ? { color: "var(--color-warn)" } : undefined}>
+                      {money(view.cashUsd, "USD", { compact: true })} líquido
+                    </span>
                   </div>
                 </div>
                 <div className="shrink-0 text-right">

@@ -278,6 +278,42 @@ export function AddTransaction({
       }
     }
 
+    // Gastar mas efectivo del que hay en la cuenta.
+    //
+    // La cuenta cierra igual: el saldo se va a negativo y ese negativo
+    // cancela exactamente el activo de mas, asi que NO aparece ganancia
+    // fantasma (hay un test del motor que lo fija). Pero la cartera queda
+    // describiendo algo que no pudo pasar, y en la practica casi siempre
+    // significa que falta cargar el ingreso que financio la compra.
+    const gastaEfectivo =
+      draft.type === "buy" ||
+      draft.type === "withdraw" ||
+      draft.type === "transfer" ||
+      draft.type === "fee";
+    if (gastaEfectivo && computed.amount !== undefined && computed.amount > 0) {
+      const cuenta = portfolio.accountViews.find((v) => v.accountId === draft.accountId);
+      // En pesos hace falta el dolar para comparar contra un saldo en dolares.
+      // Sin cotizacion no se avisa, antes que avisar con un numero inventado.
+      const fx = portfolio.fxLatest;
+      const montoUsd =
+        draft.currency === "ARS" ? (fx > 0 ? computed.amount / fx : null) : computed.amount;
+      // Al editar, el movimiento que se esta tocando ya esta contado en el
+      // saldo: si no se devuelve, cualquier edicion se veria en descubierto.
+      const devuelto =
+        editing && editing.accountId === draft.accountId && editing.currency === "USD"
+          ? editing.amount
+          : 0;
+      const disponible = (cuenta?.cashUsd ?? 0) + devuelto;
+      // Un centavo de diferencia por redondeo no es un descubierto.
+      if (cuenta && montoUsd !== null && montoUsd > disponible + 0.01) {
+        out.push(
+          disponible > 0
+            ? `En ${cuenta.name} figuran ${money(disponible, "USD")} y esto usa ${money(montoUsd, "USD")}. ¿Falta cargar el ingreso?`
+            : `En ${cuenta.name} no figura efectivo disponible. ¿Falta cargar el ingreso?`,
+        );
+      }
+    }
+
     // Duplicado exacto: pasa al cargar dos veces lo mismo sin darse cuenta.
     if (!editing && computed.amount !== undefined) {
       const dup = transactions.find(
@@ -296,7 +332,7 @@ export function AddTransaction({
     }
 
     return out;
-  }, [draft, computed, portfolio.positions, transactions, editing]);
+  }, [draft, computed, portfolio.positions, portfolio.accountViews, portfolio.fxLatest, transactions, editing]);
 
   /** Resumen en una linea de lo que se va a guardar. */
   const summary = useMemo(() => {

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { money, shortDate } from "@/lib/format";
-import { areaPath, linear, linePath, niceTicks, padDomain, plotArea, stepPath } from "./scale";
+import { bandRuns, linear, linePath, niceTicks, padDomain, plotArea, stepPath } from "./scale";
 import { useMeasure } from "./useMeasure";
 
 export interface ValuePoint {
@@ -43,6 +43,12 @@ export function ValueChart({ data, height = 210 }: { data: ValuePoint[]; height?
       ticks: niceTicks(lo, hi, 3).filter((t) => t >= lo && t <= hi),
       valuePts: data.map((p, i) => ({ x: x(i), y: y(p.value) })),
       capitalPts: data.map((p, i) => ({ x: x(i), y: y(p.contributed) })),
+      // La banda entre las dos lineas es la ganancia, y se parte en cada
+      // cruce para que un tramo en rojo no quede pintado de verde.
+      banda: bandRuns(
+        data.map((p, i) => ({ x: x(i), y: y(p.value) })),
+        data.map((p, i) => ({ x: x(i), y: y(p.contributed) })),
+      ),
     };
   }, [data, width, area.x0, area.x1, area.y0, area.y1]);
 
@@ -153,11 +159,19 @@ export function ValueChart({ data, height = 210 }: { data: ValuePoint[]; height?
             />
           ))}
 
-          <path
-            d={areaPath(model.valuePts, area.y1)}
-            fill="var(--color-s1)"
-            opacity={0.1}
-          />
+          {/* La distancia entre las dos lineas ES lo que ganaste o perdiste:
+              pintarla es decir en un golpe de vista lo que el numero de
+              arriba dice en plata. Verde arriba del capital, rojo abajo; el
+              relleno anterior iba de la linea al piso del eje, que no
+              significaba nada. */}
+          {model.banda.map((run, i) => (
+            <path
+              key={i}
+              d={run.path}
+              fill={run.gain ? "var(--color-pos)" : "var(--color-neg)"}
+              opacity={0.16}
+            />
+          ))}
           <path
             d={stepPath(model.capitalPts)}
             fill="none"

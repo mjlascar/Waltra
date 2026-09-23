@@ -136,6 +136,24 @@ await page.waitForTimeout(2200);
 await goto("/movimientos");
 check("la compra guiada quedó cargada", await has("QQQ"));
 
+console.log("\n2e. Comprar más de lo que hay en la cuenta");
+// La cuenta cierra igual (el efectivo va a negativo y cancela el activo de
+// mas), pero describe algo que no pudo pasar y hay que decirlo.
+await goto("/");
+await abrirEscritura();
+await page.locator('input[placeholder*="QQQ"]').first().fill("compré 99000 dólares de QQQ en cocos");
+await page.waitForTimeout(1000);
+const descubierto = await text();
+check(
+  "avisa que no alcanza el efectivo",
+  /falta cargar el ingreso/i.test(descubierto),
+  descubierto.slice(0, 400),
+);
+await page.locator('input[placeholder*="QQQ"]').first().fill("compré 20 dólares de QQQ en cocos");
+await page.waitForTimeout(900);
+check("no avisa cuando el efectivo alcanza", !/falta cargar el ingreso/i.test(await text()));
+await cerrarHoja();
+
 console.log("\n3. La posición nueva llega a la cartera");
 await goto("/cartera");
 check("la posición figura en la cartera", await has("SOL"));
@@ -335,6 +353,43 @@ check("muestra la leyenda con las dos series", await has("Tu cartera"), rend.sli
 check("da el veredicto en palabras", /ganaste al|te ganó por|empataste/i.test(rend), rend.slice(0, 300));
 await page.getByRole("button", { name: /^Valor$/ }).click();
 await page.waitForTimeout(500);
+
+console.log("\n7c. Lo que los gráficos dicen sin que los toques");
+await goto("/");
+await page.getByRole("button", { name: /^Todo$/ }).click();
+await page.waitForTimeout(700);
+// La banda entre las dos lineas es la ganancia: verde arriba del capital,
+// roja abajo. Si no se dibuja, el grafico vuelve a ser dos lineas sueltas.
+const banda = await page.evaluate(() =>
+  [...document.querySelectorAll("svg path")]
+    .map((el) => el.getAttribute("fill") ?? "")
+    .filter((f) => f.includes("--color-pos") || f.includes("--color-neg")).length,
+);
+check("el gráfico pinta la ganancia entre las dos líneas", banda > 0, `tramos: ${banda}`);
+await page.getByRole("button", { name: /^Rendimiento$/ }).click();
+await page.waitForTimeout(900);
+const leyenda = await text();
+check(
+  "cada serie lleva su número al lado del nombre",
+  /tu cartera\s*[+-]?[\d.,]+%/i.test(leyenda.replace(/\n/g, " ")),
+  leyenda.slice(0, 300),
+);
+await page.getByRole("button", { name: /^Valor$/ }).click();
+await page.waitForTimeout(500);
+
+await goto("/cartera");
+await page.locator("button").filter({ hasText: "QQQ" }).first().click();
+await page.waitForTimeout(1000);
+check("la posición explica la línea de costo", await has("arriba de esa línea estás ganando"));
+const marcas = await page.evaluate(
+  () => document.querySelectorAll('[role="dialog"] svg circle').length,
+);
+// Tres compras de QQQ en la cartera de ejemplo, cada una con su halo.
+check("marca cada movimiento sobre la curva", marcas >= 6, `círculos: ${marcas}`);
+await page.locator('[aria-label="Cerrar"]').first().click();
+await page.waitForTimeout(400);
+// Lo que sigue mide sobre el gráfico del inicio: hay que volver ahí.
+await goto("/");
 
 console.log("\n8. Cruceta del gráfico");
 const svg = page.locator("svg").nth(2);

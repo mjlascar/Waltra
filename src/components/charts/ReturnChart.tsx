@@ -10,6 +10,20 @@ export interface ReturnPoint {
   value: number;
 }
 
+/** Un movimiento marcado sobre la curva: donde compraste o vendiste. */
+export interface ReturnMark {
+  /** Indice del dia dentro de la serie. */
+  index: number;
+  kind: "buy" | "sell";
+  label: string;
+}
+
+/** Una horizontal con nombre, como el costo promedio de una posicion. */
+export interface ReturnLevel {
+  value: number;
+  label: string;
+}
+
 export interface ReturnSeries {
   label: string;
   color: string;
@@ -30,11 +44,17 @@ export function ReturnChart({
   compare,
   height = 150,
   tone,
+  level,
+  marks,
 }: {
   data: ReturnPoint[];
   compare?: ReturnSeries;
   height?: number;
   tone?: string;
+  /** Referencia horizontal, en las mismas unidades que la serie. */
+  level?: ReturnLevel;
+  /** Movimientos a marcar sobre la curva. */
+  marks?: ReturnMark[];
 }) {
   const { ref, width } = useMeasure<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
@@ -51,6 +71,9 @@ export function ReturnChart({
     if (data.length < 2 || width === 0) return null;
     const values = data.map((p) => p.value);
     if (compare) values.push(...compare.points.map((p) => p.value));
+    // El nivel entra al dominio: si queda afuera, la linea se dibuja fuera
+    // del area y el usuario no entiende por que no aparece.
+    if (level) values.push(level.value);
     const [lo, hi] = padDomain(Math.min(0, ...values), Math.max(0, ...values), 0.12);
     const x = linear([0, Math.max(1, data.length - 1)], [area.x0, area.x1]);
     const y = linear([lo, hi], [area.y1, area.y0]);
@@ -62,7 +85,7 @@ export function ReturnChart({
       pts: data.map((p, i) => ({ x: x(i), y: y(p.value) })),
       comparePts: compare?.points.map((p, i) => ({ x: x(i), y: y(p.value) })) ?? null,
     };
-  }, [data, compare, width, area.x0, area.x1, area.y0, area.y1]);
+  }, [data, compare, level, width, area.x0, area.x1, area.y0, area.y1]);
 
   const active = hover !== null ? data[hover] : null;
   const activeCompare = hover !== null ? compare?.points[hover] : null;
@@ -75,14 +98,22 @@ export function ReturnChart({
   return (
     <div ref={ref} className="w-full select-none">
       {compare && (
-        <div className="mb-2 flex items-center gap-4">
-          <span className="flex items-center gap-1.5">
+        // Cada serie lleva su numero al lado del nombre. Al final de la linea
+        // chocarian con las etiquetas del eje, que viven en ese borde; aca se
+        // leen de un golpe y dejan de depender del color para saber cual es
+        // cual. El veredicto de abajo da la diferencia; esto da los dos lados.
+        <div className="mb-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <span className="flex items-baseline gap-1.5">
             <span className="swatch" style={{ background: mainColor }} />
             <span className="label">Tu cartera</span>
+            <span className="num text-[11px]">{percent(last, { decimals: 1 })}</span>
           </span>
-          <span className="flex items-center gap-1.5">
+          <span className="flex items-baseline gap-1.5">
             <span className="swatch" style={{ background: compare.color }} />
             <span className="label">{compare.label}</span>
+            <span className="num text-[11px]">
+              {percent(compare.points[compare.points.length - 1]?.value, { decimals: 1 })}
+            </span>
           </span>
         </div>
       )}
@@ -115,7 +146,7 @@ export function ReturnChart({
               x2={area.x1}
               y1={model.y(t)}
               y2={model.y(t)}
-              stroke={Math.abs(t) < 1e-9 ? "var(--color-line-strong)" : "var(--color-line)"}
+              stroke={Math.abs(t) < 1e-9 ? "var(--color-ink-3)" : "var(--color-line)"}
               strokeWidth={1}
             />
           ))}
@@ -137,6 +168,39 @@ export function ReturnChart({
             strokeWidth={2}
             strokeLinejoin="round"
           />
+
+          {/* El costo promedio: arriba de esta linea estas ganando. Es lo que
+              convierte un grafico de precio en uno que habla de vos. Va
+              punteada para no competir con las series, que son datos. */}
+          {level && (
+            <g>
+              <line
+                x1={area.x0}
+                x2={area.x1}
+                y1={model.y(level.value)}
+                y2={model.y(level.value)}
+                stroke="var(--color-ink-3)"
+                strokeWidth={1}
+                strokeDasharray="3 3"
+              />
+              <rect
+                x={area.x0}
+                y={model.y(level.value) - 11}
+                width={level.label.length * 5.4 + 6}
+                height={11}
+                fill="var(--color-surface)"
+              />
+              <text
+                x={area.x0 + 3}
+                y={model.y(level.value) - 2}
+                className="num"
+                fontSize={9}
+                fill="var(--color-ink-3)"
+              >
+                {level.label}
+              </text>
+            </g>
+          )}
 
           {/* Etiquetas al final, sobre un recorte de la superficie. */}
           {model.ticks.map((t) => {
@@ -164,6 +228,42 @@ export function ReturnChart({
               </g>
             );
           })}
+
+          {/* Cada compra y cada venta, en el dia y al precio en que pasaron.
+              El relleno distingue una de otra sin depender del color: la
+              compra va llena, la venta hueca.
+
+              Van DESPUES de las etiquetas del eje, al reves que todo lo
+              demas: esas etiquetas se dibujan sobre un recorte del color de
+              la superficie y tapaban entera la marca que cayera cerca del
+              borde derecho. Entre perder un dato y pisar un rotulo del eje,
+              se pisa el rotulo. */}
+          {marks?.map((m) =>
+            m.index >= 0 && m.index < data.length ? (
+              <g key={`${m.kind}-${m.index}-${m.label}`}>
+                {/* Halo del color de la superficie: separa la marca de lo que
+                    haya abajo, sea la linea de datos o un rotulo del eje. */}
+                <circle
+                  cx={model.x(m.index)}
+                  cy={model.y(data[m.index].value)}
+                  r={5}
+                  fill="none"
+                  stroke="var(--color-surface)"
+                  strokeWidth={2.5}
+                />
+                <circle
+                  cx={model.x(m.index)}
+                  cy={model.y(data[m.index].value)}
+                  r={3.5}
+                  fill={m.kind === "buy" ? "var(--color-ink-2)" : "var(--color-surface)"}
+                  stroke="var(--color-ink-2)"
+                  strokeWidth={1.5}
+                >
+                  <title>{m.label}</title>
+                </circle>
+              </g>
+            ) : null,
+          )}
 
           {hover !== null && data[hover] && (
             <g>
