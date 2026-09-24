@@ -1,7 +1,7 @@
 # Waltra — notas para trabajar en este repo
 
-App de seguimiento de inversiones (Cocos Capital + Binance) para un solo
-usuario, en su teléfono. Next.js 16, React 19, TypeScript, Tailwind v4.
+App de seguimiento de inversiones (Cocos Capital + Binance) para diferentes
+usuarios, en sus teléfonos. Next.js 16, React 19, TypeScript, Tailwind v4.
 Se empaqueta como APK con Capacitor; la versión web sigue andando igual.
 
 ## Cómo verificar un cambio
@@ -39,12 +39,12 @@ decide cuál, **en tiempo de compilación** (`NEXT_PUBLIC_WALTRA_NATIVE`), no en
 tiempo de ejecución: así el empaquetador borra el camino que no corresponde y
 no hay ventana en la que el primer refresco salga por el transporte equivocado.
 
-| | Web / desarrollo | APK |
-|---|---|---|
-| Mercado e insights | las rutas `/api` | el mismo código, en el teléfono |
+|                    | Web / desarrollo          | APK                                |
+| ------------------ | ------------------------- | ---------------------------------- |
+| Mercado e insights | las rutas `/api`          | el mismo código, en el teléfono    |
 | HTTP a proveedores | `fetch` desde el servidor | `CapacitorHttp`, que no tiene CORS |
-| Clave de Anthropic | del entorno del servidor | la carga el usuario en Ajustes |
-| Notificaciones | no hay | el vigía de `public/runners/` |
+| Clave de Anthropic | del entorno del servidor  | la carga el usuario en Ajustes     |
+| Notificaciones     | no hay                    | el vigía de `public/runners/`      |
 
 Las pantallas hablan con `src/lib/backend/` y no saben cuál de los dos es. Si
 agregás una llamada nueva, va ahí: `fetch("/api/...")` directo desde un
@@ -152,16 +152,16 @@ números distintos a diez píxeles se lee como un error.
 
 ## Mapa del código
 
-| Dónde | Qué |
-|---|---|
-| `src/lib/engine/` | Ledger, valuación diaria, TWR, XIRR, riesgo y el recorte por ventana (`period.ts`). Funciones puras, bien cubiertas por tests. Si tocás esto, corré los tests. |
-| `src/lib/parse/` | Frases sueltas en castellano rioplatense (`quick-add.ts`), pegado de varias líneas (`bulk.ts`) y la exportación de Binance (`binance.ts`). |
-| `src/lib/market/` | Proveedores de precios. Cada uno aislado: si uno se cae, devuelve el error en el resultado, nunca lanza. `mock.ts` solo se activa con `WALTRA_MOCK=1`. |
-| `src/lib/store.tsx` | Estado de la app, consultas en vivo a IndexedDB y sincronización de mercado. |
-| `src/app/api/` | Envoltorio fino sobre lo de arriba, para el modo web. La lógica no vive acá. |
-| `src/lib/backend/` | Elige entre las rutas `/api` y correr todo en el teléfono. Es con quien hablan las pantallas. |
-| `src/lib/alerts/` | El plan que lee el vigía de precios, y el puente a las preferencias de Android. |
-| `public/runners/alerts.js` | El vigía. JavaScript plano, sin módulos: corre fuera del WebView. |
+| Dónde                      | Qué                                                                                                                                                            |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/lib/engine/`          | Ledger, valuación diaria, TWR, XIRR, riesgo y el recorte por ventana (`period.ts`). Funciones puras, bien cubiertas por tests. Si tocás esto, corré los tests. |
+| `src/lib/parse/`           | Frases sueltas en castellano rioplatense (`quick-add.ts`), pegado de varias líneas (`bulk.ts`) y la exportación de Binance (`binance.ts`).                     |
+| `src/lib/market/`          | Proveedores de precios. Cada uno aislado: si uno se cae, devuelve el error en el resultado, nunca lanza. `mock.ts` solo se activa con `WALTRA_MOCK=1`.         |
+| `src/lib/store.tsx`        | Estado de la app, consultas en vivo a IndexedDB y sincronización de mercado.                                                                                   |
+| `src/app/api/`             | Envoltorio fino sobre lo de arriba, para el modo web. La lógica no vive acá.                                                                                   |
+| `src/lib/backend/`         | Elige entre las rutas `/api` y correr todo en el teléfono. Es con quien hablan las pantallas.                                                                  |
+| `src/lib/alerts/`          | El plan que lee el vigía de precios, y el puente a las preferencias de Android.                                                                                |
+| `public/runners/alerts.js` | El vigía. JavaScript plano, sin módulos: corre fuera del WebView.                                                                                              |
 
 ## Al tocar el parser
 
