@@ -97,8 +97,15 @@ export default function ActualizarAjustes() {
         disabled={u.checking}
         onClick={u.check}
       >
-        {u.checking ? "Buscando…" : "Buscar de nuevo"}
+        {u.checking ? "Buscando…" : u.available ? "Buscar de nuevo" : "Buscar actualizaciones"}
       </button>
+      {/* El vigia revisa solo cada unas seis horas: esto dice cuando fue la
+          ultima vez que se miro desde aca, para saber si vale tocar el boton. */}
+      {u.checkedAt && !u.checking && (
+        <p className="label mt-1.5 text-center">
+          Última búsqueda: {relativeTime(new Date(u.checkedAt).toISOString())}
+        </p>
+      )}
 
       <label className="card mt-4 flex items-start gap-2.5 p-3">
         <input
