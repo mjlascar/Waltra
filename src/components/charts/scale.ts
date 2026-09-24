@@ -54,6 +54,27 @@ export function padDomain(min: number, max: number, pad = 0.08): [number, number
   return [min - span * pad, max + span * pad];
 }
 
+/**
+ * Un eje ajustado a los datos, sin anclarlo en cero.
+ *
+ * Una cartera de US$ 10.000 que en un mes se movio US$ 300 dibujada desde
+ * cero son dos lineas planas pegadas arriba: el 97% del alto del grafico
+ * muestra plata que no se movio. La distancia entre valor y capital es la
+ * ganancia y se lee igual sin el cero; lo que importa es la forma.
+ *
+ * `minSpan` es el rango minimo, relativo al numero mas grande: sin piso, un
+ * mes en que la cartera se movio dos dolares se veria como una montaña rusa.
+ */
+export function fitDomain(min: number, max: number, pad = 0.1, minSpan = 0.005): [number, number] {
+  const piso = Math.max(Math.abs(min), Math.abs(max)) * minSpan;
+  if (max - min < piso) {
+    const medio = (min + max) / 2;
+    min = medio - piso / 2;
+    max = medio + piso / 2;
+  }
+  return padDomain(min, max, pad);
+}
+
 export function linePath(points: { x: number; y: number }[]): string {
   if (points.length === 0) return "";
   return points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ");

@@ -35,6 +35,25 @@ export function money(
   })}`;
 }
 
+/**
+ * Etiqueta de un eje de montos: todas las marcas en la misma unidad (k, M o
+ * nada), con los decimales que pide el paso entre ellas. Con el eje ajustado
+ * a los datos las marcas pueden estar a US$ 50 una de otra, y el compacto de
+ * siempre las escribiria iguales: "10,1k", "10,1k".
+ */
+export function axisMoney(value: number, step: number, largest: number, currency: Currency = "USD"): string {
+  const symbol = currency === "USD" ? "US$" : "$";
+  const [unit, suffix] =
+    Math.abs(largest) >= 1_000_000 ? [1_000_000, "M"] : Math.abs(largest) >= 10_000 ? [1_000, "k"] : [1, ""];
+  const paso = Math.abs(step) / unit;
+  const decimals = paso > 0 ? Math.min(4, Math.max(0, Math.ceil(-Math.log10(paso) - 1e-9))) : 0;
+  const sign = value < 0 ? "-" : "";
+  return `${sign}${symbol}${NBSP}${(Math.abs(value) / unit).toLocaleString("es-AR", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  })}${suffix}`;
+}
+
 /** Porcentaje a partir de un tanto por uno (0.1234 -> "+12,3%"). */
 export function percent(
   value: number | null | undefined,

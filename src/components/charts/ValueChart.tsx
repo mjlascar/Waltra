@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { money, shortDate } from "@/lib/format";
-import { bandRuns, linear, linePath, niceTicks, padDomain, plotArea, stepPath } from "./scale";
+import { axisMoney, money, shortDate } from "@/lib/format";
+import { bandRuns, fitDomain, linear, linePath, niceTicks, plotArea, stepPath } from "./scale";
 import { useMeasure } from "./useMeasure";
 
 export interface ValuePoint {
@@ -33,14 +33,18 @@ export function ValueChart({ data, height = 210 }: { data: ValuePoint[]; height?
       max = Math.max(max, p.value, p.contributed);
     }
     if (min === Infinity) return null;
-    // El eje arranca en cero salvo que la cartera haya sido negativa.
-    const [lo, hi] = padDomain(Math.min(0, min), max, 0.1);
+    // El eje se ajusta a los datos, no arranca en cero: desde cero, un mes
+    // de una cartera de diez mil son dos lineas planas pegadas arriba.
+    const [lo, hi] = fitDomain(min, max, 0.1);
+    const ticks = niceTicks(lo, hi, 3).filter((t) => t >= lo && t <= hi);
     const x = linear([0, Math.max(1, data.length - 1)], [area.x0, area.x1]);
     const y = linear([lo, hi], [area.y1, area.y0]);
     return {
       x,
       y,
-      ticks: niceTicks(lo, hi, 3).filter((t) => t >= lo && t <= hi),
+      ticks,
+      step: ticks.length > 1 ? ticks[1] - ticks[0] : Math.abs(hi - lo),
+      largest: Math.max(...ticks.map(Math.abs)),
       valuePts: data.map((p, i) => ({ x: x(i), y: y(p.value) })),
       capitalPts: data.map((p, i) => ({ x: x(i), y: y(p.contributed) })),
       // La banda entre las dos lineas es la ganancia, y se parte en cada
@@ -192,7 +196,7 @@ export function ValueChart({ data, height = 210 }: { data: ValuePoint[]; height?
               superficie: dibujadas antes, la linea de datos las cruza y no se
               lee ninguna de las dos. */}
           {model.ticks.map((t) => {
-            const text = money(t, "USD", { compact: true, decimals: 0 });
+            const text = axisMoney(t, model.step, model.largest);
             const w = text.length * 5.4 + 6;
             return (
               <g key={`label-${t}`}>

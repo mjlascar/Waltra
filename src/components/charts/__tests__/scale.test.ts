@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { bandRuns } from "@/components/charts/scale";
+import { bandRuns, fitDomain, niceTicks } from "@/components/charts/scale";
+import { axisMoney } from "@/lib/format";
 
 /**
  * La banda entre el valor y el capital es la ganancia dibujada, así que
@@ -53,5 +54,44 @@ describe("bandRuns", () => {
 
   it("no se cuelga si las series tienen distinto largo", () => {
     expect(bandRuns(pts([10, 10, 10]), pts([20, 20]))).toHaveLength(1);
+  });
+});
+
+describe("el eje del gráfico principal", () => {
+  it("se ajusta a los datos y no arranca en cero", () => {
+    // Un mes de una cartera de diez mil que se movió 300.
+    const [lo, hi] = fitDomain(9_800, 10_100);
+    expect(lo).toBeGreaterThan(9_700);
+    expect(hi).toBeLessThan(10_200);
+  });
+
+  it("un rango mínimo evita que dos dólares parezcan una montaña rusa", () => {
+    const [lo, hi] = fitDomain(10_000, 10_002);
+    expect(hi - lo).toBeGreaterThanOrEqual(50);
+  });
+
+  it("una serie plana tiene alto", () => {
+    const [lo, hi] = fitDomain(0, 0);
+    expect(hi).toBeGreaterThan(lo);
+  });
+
+  it("marcas cercanas no se escriben iguales", () => {
+    const [lo, hi] = fitDomain(10_020, 10_180);
+    const ticks = niceTicks(lo, hi, 3).filter((t) => t >= lo && t <= hi);
+    const step = ticks[1] - ticks[0];
+    const largest = Math.max(...ticks);
+    const labels = ticks.map((t) => axisMoney(t, step, largest));
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it("todas las marcas en la misma unidad", () => {
+    // El espacio despues del simbolo es uno que no parte la linea.
+    const label = (v: number, step: number, largest: number) =>
+      axisMoney(v, step, largest).replace(/\u00a0/g, " ");
+    expect(label(9_800, 200, 10_200)).toBe("US$ 9,8k");
+    expect(label(10_000, 200, 10_200)).toBe("US$ 10,0k");
+    expect(label(10_050, 50, 10_100)).toBe("US$ 10,05k");
+    expect(label(2_000, 1_000, 3_000)).toBe("US$ 2.000");
+    expect(label(150_000, 50_000, 200_000)).toBe("US$ 150k");
   });
 });

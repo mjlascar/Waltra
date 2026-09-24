@@ -210,6 +210,14 @@ ganancia** (`bandRuns` en `scale.ts`). Se corta en cada cruce para que un tramo
 en pérdida no quede pintado de verde; tiene tests. El relleno anterior iba de
 la línea al piso del eje, que no significaba nada.
 
+El eje del gráfico principal **no arranca en cero**: se ajusta a los datos
+(`fitDomain`), con un rango mínimo del 0,5% para que un mes quieto no parezca
+una montaña rusa. Desde cero, un mes de una cartera de diez mil eran dos
+líneas planas pegadas arriba. Las etiquetas usan `axisMoney`, que pone todas
+las marcas en la misma unidad y saca los decimales del paso: si no, marcas a
+US$ 50 de distancia se escribían iguales. El de rendimiento sí incluye el
+cero, pero porque la ventana arranca ahí por construcción.
+
 El último punto de la serie se pisa con el valor en vivo: la serie diaria usa
 el cierre guardado y el total de arriba la cotización del momento, y ver dos
 números distintos a diez píxeles se lee como un error.
