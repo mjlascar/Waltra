@@ -11,6 +11,7 @@ import { ReturnChart } from "@/components/charts/ReturnChart";
 import { Allocation } from "@/components/charts/Allocation";
 import { IconChevron } from "@/components/icons";
 import { useStore } from "@/lib/store";
+import { useUpdate } from "@/lib/use-update";
 import { money, percent, shortDate, TX_SHORT } from "@/lib/format";
 import { rangeStart, type RangeKey } from "@/lib/date";
 import type { AccountView } from "@/lib/engine/portfolio";
@@ -54,6 +55,7 @@ type ChartMode = "valor" | "rendimiento";
 
 export default function Overview() {
   const { portfolio: p, transactions, accounts, assets, settings, sync, ready, refresh } = useStore();
+  const update = useUpdate();
   const [arreglando, setArreglando] = useState<string | null>(null);
   const [ratioDe, setRatioDe] = useState<{ assetId: string; suggested: number } | null>(null);
   // Un mes por defecto y no todo el historial: al abrir la app lo que se
@@ -231,6 +233,22 @@ export default function Overview() {
   return (
     <div className="pb-6">
       <Header title="Resumen" />
+
+      {update.available && update.release && (
+        <Link
+          href="/ajustes/actualizar"
+          className="mb-3 flex items-center justify-between gap-2 p-2.5 text-[12px]"
+          style={{ border: "1px solid var(--color-line-strong)", background: "var(--color-surface)" }}
+        >
+          <span>
+            Hay una versión nueva de Waltra, la <span className="num">{update.release.version}</span>.
+          </span>
+          <span className="flex shrink-0 items-center gap-1" style={{ color: "var(--color-ink-2)" }}>
+            Actualizar
+            <IconChevron size={11} />
+          </span>
+        </Link>
+      )}
 
       {sync.status === "ok" && sync.mock && (
         <Notice>

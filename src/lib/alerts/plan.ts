@@ -1,6 +1,7 @@
 import type { Asset, Currency, QuoteSource, Settings } from "@/lib/types";
 import type { Portfolio } from "@/lib/engine/portfolio";
 import { schedules } from "@/lib/insights/schedule";
+import { RELEASE_API } from "@/lib/update";
 
 /**
  * El plan de alertas: lo unico que el vigia de precios sabe de tu cartera.
@@ -73,6 +74,11 @@ export interface AlertPlan {
   assets: AlertPlanAsset[];
   /** Informes recurrentes. El vigia solo recuerda; generar lo hace la app. */
   agenda: AlertPlanAgenda[];
+  /**
+   * Buscar versiones nuevas del APK: la instalada y donde preguntar. El vigia
+   * no puede saber que version es, asi que se la dice la app.
+   */
+  update?: { build: number; api: string };
 }
 
 export function alertRules(settings: Settings): AlertRules {
@@ -97,8 +103,14 @@ export function buildAlertPlan(
   assets: Asset[],
   settings: Settings,
   arsPerUsd: number,
+  /** El `versionCode` instalado, si se sabe. Sin el no se buscan versiones. */
+  installedBuild: number | null = null,
 ): AlertPlan | null {
   const rules = alertRules(settings);
+  const update =
+    installedBuild && installedBuild > 0 && settings.updateNotify !== false
+      ? { build: installedBuild, api: RELEASE_API }
+      : undefined;
 
   // Los informes agendados no dependen de las alertas de precio: se pueden
   // querer los lunes a la manana sin querer que nada suene el resto de la
@@ -132,7 +144,7 @@ export function buildAlertPlan(
 
   // Sin nada que vigilar ni nada que recordar, no se deja plan: un plan vacio
   // solo lograria que el telefono se despierte cada media hora al pedo.
-  if (!vigilaPrecios && agenda.length === 0) return null;
+  if (!vigilaPrecios && agenda.length === 0 && !update) return null;
 
   return {
     v: 1,
@@ -144,5 +156,6 @@ export function buildAlertPlan(
     arsPerUsd: arsPerUsd > 0 ? arsPerUsd : 0,
     assets: vigilaPrecios ? planAssets : [],
     agenda,
+    ...(update ? { update } : {}),
   };
 }

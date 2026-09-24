@@ -444,6 +444,62 @@ function recordatorios(plan, estado, ahora) {
   return { avisos: avisos, agenda: siguiente };
 }
 
+/* --- versiones nuevas ---------------------------------------------------- */
+
+/*
+ * La app no esta en Play: nadie le avisa al telefono que salio un APK nuevo.
+ * El vigia ya se despierta cada tanto, asi que de paso mira el release de
+ * GitHub. No en cada corrida: GitHub deja 60 pedidos por hora sin
+ * credenciales y una version nueva no es urgente.
+ */
+var VERSION_CADA_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * El numero de version de un release, "1.0.<n>" en el titulo o en las notas.
+ * Misma logica que `releaseBuild` en src/lib/update.ts; el test compara las
+ * dos.
+ */
+function versionPublicada(release) {
+  if (!release) return null;
+  var textos = [release.name, release.body];
+  for (var i = 0; i < textos.length; i++) {
+    if (typeof textos[i] !== "string") continue;
+    var m = textos[i].match(/\b1\.0\.(\d+)\b/);
+    if (m) return Number(m[1]);
+  }
+  return null;
+}
+
+/** Si toca preguntar: hay que saber la version instalada, y no en silencio. */
+function tocaRevisarVersion(plan, estado, ahora) {
+  if (!plan.update || !(plan.update.build > 0) || !plan.update.api) return false;
+  if (enSilencio(plan.quiet, ahora.getHours())) return false;
+  var ultima = estado.upd && estado.upd.at;
+  return !(typeof ultima === "number" && ahora.getTime() - ultima < VERSION_CADA_MS);
+}
+
+/**
+ * Que hacer con la version publicada. Se avisa una sola vez por version: si
+ * el usuario no actualiza, no se lo recuerda cada seis horas.
+ */
+function decidirVersion(plan, publicada, estado, ahora) {
+  var avisada = estado.upd ? estado.upd.notified : undefined;
+  var upd = { at: ahora.getTime(), notified: avisada };
+  if (typeof publicada !== "number" || !(publicada > plan.update.build) || avisada === publicada) {
+    return { aviso: null, upd: upd };
+  }
+  upd.notified = publicada;
+  return {
+    aviso: {
+      id: notifId("version", "apk"),
+      title: "Hay una versión nueva de Waltra",
+      body: "La 1.0." + publicada + " está lista. Abrí la app y actualizala desde Ajustes.",
+      group: "waltra-version",
+    },
+    upd: upd,
+  };
+}
+
 /* --- corrida ------------------------------------------------------------ */
 
 function correr() {
@@ -451,7 +507,7 @@ function correr() {
   if (!plan || plan.v !== 1) return Promise.resolve("sin plan");
   var activos = plan.assets || [];
   var agenda = plan.agenda || [];
-  if (activos.length === 0 && agenda.length === 0) return Promise.resolve("sin plan");
+  if (activos.length === 0 && agenda.length === 0 && !plan.update) return Promise.resolve("sin plan");
 
   var hayRed = true;
   try {
@@ -464,14 +520,33 @@ function correr() {
   // Un recordatorio de informe no necesita precios: sin red se manda igual.
   var precios = activos.length > 0 && hayRed ? traerPrecios(activos) : Promise.resolve({});
 
-  return precios.then(function (precios) {
+  // undefined: no se pregunto, o GitHub no contesto. Se vuelve a intentar en
+  // la proxima corrida sin anotar nada.
+  var estadoPrevio = kvRead(STATE_KEY) || {};
+  var version =
+    hayRed && tocaRevisarVersion(plan, estadoPrevio, new Date())
+      ? traerJson(plan.update.api).then(versionPublicada, function () {
+          return undefined;
+        })
+      : Promise.resolve(undefined);
+
+  return Promise.all([precios, version]).then(function (res) {
+    var precios = res[0];
+    var publicada = res[1];
+    var ahora = new Date();
     var estado = kvRead(STATE_KEY) || {};
-    var salida = decidir(plan, precios, estado, new Date());
+    var salida = decidir(plan, precios, estado, ahora);
+    salida.estado.upd = estado.upd;
+    if (publicada !== undefined) {
+      var v = decidirVersion(plan, publicada, estado, ahora);
+      salida.estado.upd = v.upd;
+      if (v.aviso) salida.avisos.push(v.aviso);
+    }
     kvWrite(STATE_KEY, salida.estado);
 
     if (salida.avisos.length === 0) return "sin novedades";
 
-    var ahora = Date.now();
+    var ya = Date.now();
     var programadas = salida.avisos.map(function (aviso, i) {
       return {
         id: aviso.id,
@@ -479,7 +554,7 @@ function correr() {
         body: aviso.body,
         // Un segundo de aire: el motor pide una fecha y "ya" a veces llega
         // tarde a la cola del sistema.
-        scheduleAt: new Date(ahora + 1000 + i * 200),
+        scheduleAt: new Date(ya + 1000 + i * 200),
         group: aviso.group,
         autoCancel: true,
         // El `smallIcon` de capacitor.config es del plugin de notificaciones

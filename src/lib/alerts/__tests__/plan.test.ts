@@ -135,3 +135,22 @@ describe("armado del plan", () => {
     expect(plan?.arsPerUsd).toBe(0);
   });
 });
+
+describe("buscar versiones nuevas", () => {
+  it("con la versión instalada hay plan aunque las alertas estén apagadas", () => {
+    const plan = buildAlertPlan(cartera(), [btc, qqq], ajustes({ enabled: false }), 1000, 40);
+    expect(plan?.update).toMatchObject({ build: 40 });
+    expect(plan?.update?.api).toContain("api.github.com");
+    // Y no se ponen a vigilar precios por eso.
+    expect(plan?.assets).toEqual([]);
+  });
+
+  it("apagado en ajustes, no se busca", () => {
+    const s = { ...ajustes({ enabled: false }), updateNotify: false };
+    expect(buildAlertPlan(cartera(), [btc, qqq], s, 1000, 40)).toBeNull();
+  });
+
+  it("sin saber la versión instalada, no se busca", () => {
+    expect(buildAlertPlan(cartera(), [btc, qqq], ajustes({ enabled: false }), 1000, null)).toBeNull();
+  });
+});

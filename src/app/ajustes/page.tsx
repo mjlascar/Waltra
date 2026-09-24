@@ -8,6 +8,7 @@ import { ON_DEVICE } from "@/lib/backend";
 import { alertRules } from "@/lib/alerts/plan";
 import { keyFor, providerInfo, resolveModel, resolveProvider } from "@/lib/insights/providers";
 import { relativeTime } from "@/lib/format";
+import { useUpdate } from "@/lib/use-update";
 
 /**
  * Indice de ajustes.
@@ -30,6 +31,7 @@ export default function Ajustes() {
   const modeloId = resolveModel(provider, settings.model);
   const modelo = info.models.find((m) => m.id === modeloId)?.label ?? info.label;
   const clave = ON_DEVICE ? Boolean(keyFor(provider, settings)) : true;
+  const update = useUpdate();
 
   const secciones = [
     {
@@ -71,6 +73,17 @@ export default function Ajustes() {
       estado: `${transactions.length} ${transactions.length === 1 ? "movimiento" : "movimientos"}`,
       alerta: null,
     },
+    ...(ON_DEVICE
+      ? [
+          {
+            href: "/ajustes/actualizar",
+            titulo: "Actualizaciones",
+            detalle: "Bajar la última versión de la app",
+            estado: update.installed?.version ?? "—",
+            alerta: update.available && update.release ? `nueva: ${update.release.version}` : null,
+          },
+        ]
+      : []),
     {
       href: "/ajustes/diagnostico",
       titulo: "Diagnóstico",

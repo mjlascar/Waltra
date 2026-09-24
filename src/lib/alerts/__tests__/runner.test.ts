@@ -543,3 +543,124 @@ describe("recordatorios de informe", () => {
     expect(avisos[0].group).toBe("waltra-informes");
   });
 });
+
+describe("versiones nuevas del APK", () => {
+  interface Version {
+    versionPublicada: (release: unknown) => number | null;
+    tocaRevisarVersion: (plan: unknown, estado: unknown, ahora: Date) => boolean;
+    decidirVersion: (
+      plan: unknown,
+      publicada: number | null,
+      estado: unknown,
+      ahora: Date,
+    ) => { aviso: Aviso | null; upd: { at: number; notified?: number } };
+  }
+  const v = runner as unknown as Version;
+  const API = "https://api.github.com/repos/mjlascar/Waltra/releases/tags/apk-latest";
+  const conUpdate = (over: Record<string, unknown> = {}) =>
+    plan({ assets: [], update: { build: 40, api: API }, ...over });
+  const ahora = new Date(2026, 8, 24, 12, 0);
+
+  it("lee la versión igual que la app", async () => {
+    const { releaseBuild } = await import("@/lib/update");
+    const casos = [
+      { name: "Waltra 1.0.52", body: "" },
+      { name: "Waltra - ultima compilacion", body: "Version 1.0.47, de abc12345 en main." },
+      { name: null, body: null },
+      { name: "sin numero", body: "nada" },
+      { name: "Waltra 1.0.7", body: "Version 1.0.9" },
+    ];
+    for (const c of casos) expect(v.versionPublicada(c)).toBe(releaseBuild(c));
+  });
+
+  it("revisa cada seis horas, y no en silencio", () => {
+    expect(v.tocaRevisarVersion(conUpdate(), {}, ahora)).toBe(true);
+    const hace2h = { upd: { at: ahora.getTime() - 2 * 3600_000 } };
+    const hace7h = { upd: { at: ahora.getTime() - 7 * 3600_000 } };
+    expect(v.tocaRevisarVersion(conUpdate(), hace2h, ahora)).toBe(false);
+    expect(v.tocaRevisarVersion(conUpdate(), hace7h, ahora)).toBe(true);
+    expect(v.tocaRevisarVersion(conUpdate({ quiet: [11, 14] }), {}, ahora)).toBe(false);
+    expect(v.tocaRevisarVersion(plan({ assets: [] }), {}, ahora)).toBe(false);
+  });
+
+  it("avisa una sola vez por versión", () => {
+    const primera = v.decidirVersion(conUpdate(), 41, {}, ahora);
+    expect(primera.aviso?.body).toContain("1.0.41");
+    const otra = v.decidirVersion(conUpdate(), 41, { upd: primera.upd }, ahora);
+    expect(otra.aviso).toBeNull();
+    // Sale otra más nueva sin haber actualizado: esa sí se avisa.
+    expect(v.decidirVersion(conUpdate(), 42, { upd: primera.upd }, ahora).aviso).not.toBeNull();
+  });
+
+  it("la instalada o una vieja no avisan", () => {
+    expect(v.decidirVersion(conUpdate(), 40, {}, ahora).aviso).toBeNull();
+    expect(v.decidirVersion(conUpdate(), 39, {}, ahora).aviso).toBeNull();
+    expect(v.decidirVersion(conUpdate(), null, {}, ahora).aviso).toBeNull();
+  });
+
+  describe("en la corrida", () => {
+    function entorno(planGuardado: unknown, release: unknown, estado?: unknown) {
+      const almacen: Record<string, string> = { "waltra.alertas.plan": JSON.stringify(planGuardado) };
+      if (estado) almacen["waltra.alertas.estado"] = JSON.stringify(estado);
+      const programadas: { title: string; body: string }[][] = [];
+      const pedidos: string[] = [];
+      const globals = {
+        CapacitorKV: {
+          get: (key: string) => {
+            if (!(key in almacen)) throw new Error("no existe");
+            return { value: almacen[key] };
+          },
+          set: (key: string, value: string) => {
+            almacen[key] = value;
+          },
+        },
+        CapacitorNotifications: { schedule: (items: { title: string; body: string }[]) => programadas.push(items) },
+        CapacitorDevice: { getNetworkStatus: () => ({ connected: true }) },
+        fetch: vi.fn(async (url: string) => {
+          pedidos.push(url);
+          if (!url.includes("api.github.com") || release === null) {
+            return { ok: false, status: 500, json: async () => ({}) };
+          }
+          return { ok: true, status: 200, json: async () => release };
+        }),
+      };
+      return { almacen, programadas, pedidos, globals };
+    }
+    async function correr(env: ReturnType<typeof entorno>) {
+      const { listeners } = cargar(env.globals);
+      await new Promise<void>((done, fail) => listeners.checkPrices(done, fail));
+    }
+
+    it("sin alertas de precio, igual revisa la versión y avisa", async () => {
+      const env = entorno(conUpdate(), { name: "Waltra 1.0.45" });
+      await correr(env);
+      expect(env.pedidos).toEqual([API]);
+      expect(env.programadas.flat().map((a) => a.title)).toEqual(["Hay una versión nueva de Waltra"]);
+      expect(JSON.parse(env.almacen["waltra.alertas.estado"]).upd.notified).toBe(45);
+    });
+
+    it("la corrida siguiente no pregunta de nuevo", async () => {
+      const env = entorno(conUpdate(), { name: "Waltra 1.0.45" });
+      await correr(env);
+      await correr(env);
+      expect(env.pedidos).toHaveLength(1);
+      expect(env.programadas).toHaveLength(1);
+    });
+
+    it("si GitHub no contesta, no anota nada y reintenta", async () => {
+      const env = entorno(conUpdate(), null);
+      await correr(env);
+      expect(env.programadas).toHaveLength(0);
+      expect(JSON.parse(env.almacen["waltra.alertas.estado"]).upd).toBeUndefined();
+      await correr(env);
+      expect(env.pedidos).toHaveLength(2);
+    });
+
+    it("no pisa lo que ya estaba avisado de precios", async () => {
+      const env = entorno(conUpdate(), { name: "Waltra 1.0.45" }, { upd: { at: 1, notified: 45 } });
+      await correr(env);
+      expect(env.programadas).toHaveLength(0);
+      expect(JSON.parse(env.almacen["waltra.alertas.estado"]).upd.notified).toBe(45);
+    });
+  });
+});

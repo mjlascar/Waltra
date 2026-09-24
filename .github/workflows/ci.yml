@@ -168,6 +168,10 @@ jobs:
       #
       # Se borra y se rehace en vez de editarlo para que la etiqueta apunte
       # siempre al commit que se acaba de compilar.
+      #
+      # La app lee el numero de version del titulo ("Waltra 1.0.<corrida>")
+      # para saber si hay una nueva: ver src/lib/update.ts. Si cambia el
+      # formato, deja de avisar sin un solo error.
       - name: Publicar el APK para descargar
         if: github.event_name == 'push'
         env:
@@ -189,6 +193,6 @@ jobs:
           gh release create apk-latest waltra.apk \
             --prerelease \
             --target "$GITHUB_SHA" \
-            --title "Waltra - ultima compilacion" \
+            --title "Waltra 1.0.${GITHUB_RUN_NUMBER}" \
             --notes "$notas"
           echo "Descarga directa: https://github.com/${GITHUB_REPOSITORY}/releases/download/apk-latest/waltra.apk"

@@ -356,6 +356,24 @@ Android decide cuándo corre: el intervalo que se pide es un pedido, no una
 promesa, y nunca baja de 15 minutos. La pantalla lo dice así en vez de prometer
 puntualidad.
 
+## Al tocar las actualizaciones
+
+La app no está en Play: nadie le avisa al teléfono que salió un APK nuevo.
+`src/lib/update.ts` compara el `versionCode` instalado (`App.getInfo()`)
+con el del release `apk-latest`, que la API de GitHub da sin credenciales, y
+Ajustes → Actualizaciones ofrece bajar el APK con un enlace: lo baja el
+navegador y Android pide confirmar. Instalar desde adentro pediría el permiso
+de instalar paquetes y código nativo propio para ahorrarse un toque.
+
+El número sale del **título del release**, `Waltra 1.0.<corrida>`, que arma
+CI (y de las notas, como respaldo). Si cambia ese formato, la app deja de
+avisar sin un solo error. El vigía también lo busca, cada unas seis horas y
+fuera del horario de silencio, y avisa una vez por versión; como no puede
+preguntarle a Android qué versión hay instalada, se la deja la app en el
+plan (`update`). Por eso hay plan aunque las alertas estén apagadas.
+`versionPublicada` en el vigía es copia de `releaseBuild`, y el test las
+compara.
+
 ## Al tocar los plugins de Capacitor
 
 Son proxies que convierten cualquier acceso a una propiedad en una llamada al
