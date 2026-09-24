@@ -259,11 +259,6 @@ export function parseQuickEntry(raw: string, ctx: ParseContext): ParsedEntry | n
     currency = "ARS";
     work = cut(work, arsHit[0]);
     confidence += 0.05;
-  } else if (/(?<![a-z])\$(?!s)/.test(work) && account?.broker !== "binance") {
-    // "$" pelado es pesos: es como se escribe aca, y como la app muestra los
-    // pesos. Sin esto "compré $450.000 de SPY" en Cocos, que es una cuenta en
-    // dolares, se leia como US$ 450.000. En Binance no hay pesos que comprar.
-    currency = "ARS";
   }
 
   // --- Comision suelta -----------------------------------------------------
