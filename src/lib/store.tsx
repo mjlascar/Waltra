@@ -23,6 +23,7 @@ import type {
 } from "@/lib/types";
 import { DEFAULT_SETTINGS, ensureSeeded, getDb, type WaltraDB } from "@/lib/db";
 import { computePortfolio, type Portfolio } from "@/lib/engine/portfolio";
+import { marketPriceOn, type MarketPrice } from "@/lib/engine/market-price";
 import { addDays, today, toDay } from "@/lib/date";
 import { syncMarket, type BackendContext } from "@/lib/backend";
 import { proveedoresCaidos } from "@/lib/market/down";
@@ -58,6 +59,8 @@ interface StoreValue {
   saveInsight: (report: InsightReport) => Promise<void>;
   /** Lo que la capa de backend necesita para saber con quien hablar. */
   backend: () => BackendContext;
+  /** Lo que cotizaba un activo ese dia, en la moneda pedida. Ver `market-price.ts`. */
+  marketPrice: (assetId: string, day: string, currency: Asset["currency"]) => MarketPrice | null;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -285,6 +288,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       db,
       refresh,
       backend,
+      marketPrice: (assetId, day, currency) => {
+        const asset = assets.find((a) => a.id === assetId);
+        if (!asset) return null;
+        return marketPriceOn({
+          asset,
+          day,
+          currency,
+          today: today(),
+          quotes,
+          priceSeries,
+          fxRates,
+          splits: portfolio.splits[assetId],
+        });
+      },
       saveTransaction: async (tx) => {
         await db?.transactions.put({ ...tx, updatedAt: new Date().toISOString() });
       },
@@ -321,7 +338,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (stale.length) await db.insights.bulkDelete(stale);
       },
     }),
-    [ready, accounts, assets, transactions, settings, insights, portfolio, sync, db, refresh, backend],
+    [ready, accounts, assets, transactions, settings, insights, portfolio, sync, db, refresh, backend, quotes, priceSeries, fxRates],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

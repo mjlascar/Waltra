@@ -362,3 +362,27 @@ describe("un CEDEAR se nombra sin el sufijo", () => {
     expect(r.assetId).toBe("a-qqq");
   });
 });
+
+describe("el signo $ pelado", () => {
+  it("es pesos, aunque la cuenta sea en dólares", () => {
+    // Cocos está en dólares: "$450.000" se leía como US$ 450.000.
+    expect(p("compré $450.000 de spy")).toMatchObject({ currency: "ARS", amount: 450_000 });
+  });
+
+  it("US$ y u$s siguen siendo dólares", () => {
+    expect(p("compré US$ 300 de spy").currency).toBe("USD");
+    expect(p("compré u$s 300 de spy").currency).toBe("USD");
+  });
+
+  it("en Binance no hay pesos que comprar", () => {
+    expect(p("compré $50 de btc en binance").currency).toBe("USD");
+  });
+});
+
+describe("parseLooseNumber lee de vuelta el precio que propone la carga", () => {
+  it("con coma decimal y dos decimales", () => {
+    expect(parseLooseNumber("20282,00")).toBeCloseTo(20282);
+    expect(parseLooseNumber("33,33")).toBeCloseTo(33.33);
+    expect(parseLooseNumber("0,001234")).toBeCloseTo(0.001234);
+  });
+});

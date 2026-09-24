@@ -11,7 +11,7 @@ import { parseLooseNumber } from "@/lib/parse/number";
 import { lookupCatalog, searchCatalog, type CatalogEntry } from "@/lib/catalog";
 import { lastUsedAccountId } from "@/lib/assets";
 import { cedearSymbol, isUsListing, resolveTradeAsset, tradesAsCedear } from "@/lib/cedear";
-import { longDate, money, quantity as fmtQty, TX_LABEL } from "@/lib/format";
+import { longDate, money, percent, quantity as fmtQty, shortDate, TX_LABEL } from "@/lib/format";
 import { txColor } from "@/lib/tx-style";
 import { today } from "@/lib/date";
 import type { SymbolHit } from "@/lib/market/search";
@@ -88,6 +88,12 @@ function emptyDraft(accountId: string, currency: Currency): Draft {
   };
 }
 
+/**
+ * Un precio como texto que `parseLooseNumber` lee de vuelta igual: con coma
+ * decimal y nunca con tres decimales, que se leerian como miles.
+ */
+const precioTexto = (v: number): string => v.toFixed(v >= 1 ? 2 : 6).replace(".", ",");
+
 const num = (text: string): number | undefined => {
   const value = parseLooseNumber(text);
   return value === null ? undefined : value;
@@ -104,7 +110,7 @@ export function AddTransaction({
 }) {
   const {
     accounts, assets, transactions, portfolio,
-    saveTransaction, saveAsset, refresh, settings, backend,
+    saveTransaction, saveAsset, refresh, settings, backend, marketPrice,
   } = useStore();
 
   const defaultAccount = useMemo(
@@ -279,6 +285,35 @@ export function AddTransaction({
   }, [isExchange, draft.amountText, draft.toAmountText, draft.currency]);
   const isTrade = draft.type === "buy" || draft.type === "sell";
 
+  /**
+   * Lo que cotizaba el activo el dia de la operacion, en su moneda.
+   *
+   * La posicion se valua a la cotizacion, asi que las unidades que salen de
+   * un precio que no es el del mercado aparecen como ganancia o perdida en el
+   * momento de guardar. Comprar hoy $ 450.000 de SPY con el precio de otro dia
+   * daba rendimiento el mismo dia de la compra. Solo para un activo que ya
+   * esta cargado: de uno nuevo todavia no hay cotizacion guardada.
+   *
+   * Con el precio vacio se usa esta: el campo la muestra y sigue a la fecha
+   * y al activo mientras nadie escriba otro. Si el usuario escribe el suyo,
+   * queda el suyo, y el aviso de abajo dice cuanto se aleja.
+   */
+  const referencia = useMemo(() => {
+    if (!isTrade) return null;
+    const elegido = draft.assetId ? assets.find((a) => a.id === draft.assetId) : undefined;
+    const symbol = (elegido?.symbol ?? draft.symbol).trim().toUpperCase();
+    if (!symbol) return null;
+    // El mismo camino que al guardar: en pesos, SPY es SPY.BA.
+    const { asset, nuevo } = resolveTradeAsset(assets, symbol, draft.currency, () => "", {
+      catalog: catalogHit ?? undefined,
+      existing: elegido,
+      broker: accounts.find((a) => a.id === draft.accountId)?.broker,
+    });
+    if (nuevo) return null;
+    const ref = marketPrice(asset.id, draft.date, draft.currency);
+    return ref ? { ...ref, symbol: asset.symbol } : null;
+  }, [isTrade, draft.assetId, draft.symbol, draft.currency, draft.date, draft.accountId, assets, accounts, catalogHit, marketPrice]);
+
   /** Monto y cantidad se derivan uno del otro segun como lo hayas dicho. */
   const computed = useMemo(() => {
     if (draft.basis === "total") {
@@ -297,7 +332,7 @@ export function AddTransaction({
         price: amount !== undefined && qty !== undefined && qty > 0 ? amount / qty : undefined,
       };
     }
-    const price = num(draft.priceText);
+    const price = num(draft.priceText) ?? referencia?.price;
     if (draft.basis === "quantity") {
       const qty = num(draft.quantityText);
       return { quantity: qty, price, amount: qty !== undefined && price !== undefined ? qty * price : num(draft.amountText) };
@@ -308,7 +343,26 @@ export function AddTransaction({
       price,
       quantity: amount !== undefined && price !== undefined && price > 0 ? amount / price : num(draft.quantityText),
     };
-  }, [draft.basis, draft.type, draft.quantityText, draft.priceText, draft.amountText, draft.feeText]);
+  }, [draft.basis, draft.type, draft.quantityText, draft.priceText, draft.amountText, draft.feeText, referencia?.price]);
+
+  /**
+   * Cuanto se aleja lo cargado de la cotizacion de ese dia, y lo que eso va a
+   * mostrar como resultado apenas se guarde. Un 5% cubre la punta
+   * compradora-vendedora y lo que se mueve un precio en el dia.
+   */
+  const desvio = useMemo(() => {
+    if (!referencia || computed.price === undefined || !(computed.price > 0)) return null;
+    if (computed.quantity === undefined || !(computed.quantity > 0)) return null;
+    const r = computed.price / referencia.price - 1;
+    if (Math.abs(r) < 0.05) return null;
+    // Comprar por encima del mercado es perder la diferencia en el acto;
+    // vender por encima, ganarla.
+    const signo = draft.type === "sell" ? 1 : -1;
+    const diff = signo * (computed.price - referencia.price) * computed.quantity;
+    const fx = portfolio.fxLatest;
+    const diffUsd = draft.currency === "ARS" ? (fx > 0 ? diff / fx : null) : diff;
+    return { r, diffUsd };
+  }, [referencia, computed.price, computed.quantity, draft.type, draft.currency, portfolio.fxLatest]);
 
   const suggestions = useMemo(() => {
     if (!needsAsset || draft.assetId || draft.symbol.length < 1) return [];
@@ -641,6 +695,32 @@ export function AddTransaction({
           que cotiza en BYMA. Desde acá no se compra la acción de EE.UU., y un CEDEAR es
           una fracción de ella: contarlos como acciones inflaría el valor.
         </p>
+      )}
+      {desvio && referencia && (
+        <div className="mt-2 text-[11px] leading-snug" style={{ color: "var(--color-warn)" }}>
+          <p className="flex items-start gap-1.5">
+            <IconWarning size={13} className="mt-px shrink-0" />
+            <span>
+              {referencia.live
+                ? `Hoy ${referencia.symbol} cotiza `
+                : `El ${shortDate(referencia.day, true)} ${referencia.symbol} cotizaba `}
+              {money(referencia.price, referencia.currency)} y acá dice{" "}
+              {money(computed.price, draft.currency)} ({percent(desvio.r, { sign: true })}).
+              {desvio.diffUsd !== null &&
+                ` Al guardarlo, la diferencia aparece en el acto como ${desvio.diffUsd >= 0 ? "ganancia" : "pérdida"} de ${money(Math.abs(desvio.diffUsd), "USD")}.`}
+              {draft.basis === "total" && " Revisá las unidades contra el comprobante."}
+            </span>
+          </p>
+          {draft.basis !== "total" && (
+            <button
+              type="button"
+              className="btn btn-ghost mt-1.5 w-full text-[12px]"
+              onClick={() => set({ priceText: "" })}
+            >
+              Usar la cotización
+            </button>
+          )}
+        </div>
       )}
       {[...warnings, ...checks].length > 0 && (
         <ul className="mt-2 space-y-1">
@@ -1014,7 +1094,7 @@ export function AddTransaction({
                   <input
                     className="input num"
                     inputMode="decimal"
-                    value={draft.priceText}
+                    value={draft.priceText || (referencia ? precioTexto(referencia.price) : "")}
                     onChange={(e) => set({ priceText: e.target.value })}
                     placeholder="480"
                   />
@@ -1027,6 +1107,8 @@ export function AddTransaction({
                   : draft.basis === "quantity"
                     ? `Total: ${computed.amount !== undefined ? money(computed.amount, draft.currency) : "—"}.`
                     : `Precio por unidad: ${computed.price !== undefined ? money(computed.price, draft.currency) : "—"}${num(draft.feeText) ? ", sin la comisión" : ""}.`}
+                {referencia &&
+                  ` Cotización ${referencia.live ? "de hoy" : `del ${shortDate(referencia.day, true)}`}: ${money(referencia.price, referencia.currency)}.`}
               </p>
             </>
           ) : (

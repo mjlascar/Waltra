@@ -130,6 +130,16 @@ split que nadie informó; el inicio lo avisa y ofrece cargarlo con el ratio
 sugerido. Solo para acciones, ETFs y CEDEARs: la cripto no se divide. Las
 operaciones del historial que va a los insights viajan en unidades de hoy.
 
+**El precio de una compra se compara con la cotización de ese día**
+(`src/lib/engine/market-price.ts`). La posición se valúa a la cotización, así
+que unas unidades sacadas de un precio que no es el del mercado aparecen como
+ganancia o pérdida en el acto: pasó al cargar una compra de SPY de hoy con un
+precio de otro día. La carga propone la cotización (en vivo si es hoy, el
+cierre de ese día si no, sin el ajuste de los splits posteriores y pasada a la
+moneda de la operación), y si lo escrito se aleja más de un 5% dice cuánto va a
+aparecer como resultado y ofrece usar la cotización. "$" pelado es pesos, como
+lo escribe cualquiera acá y como lo muestra la app; en Binance, no.
+
 **Comprar dólares es un cambio de moneda, no capital** (`type: "exchange"`).
 Salen `amount` en `currency` y entran `toAmount` en `toCurrency`, en la misma
 cuenta. No mueve el capital aportado ni el rendimiento. Cada lado se valúa al

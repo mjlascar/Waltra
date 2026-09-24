@@ -319,6 +319,40 @@ await page.waitForTimeout(900);
 check("la frase suelta también lo entiende", await has("Cambio de moneda"), (await text()).slice(0, 400));
 await cerrarHoja();
 
+console.log("\n2j. Una compra de hoy no da rendimiento");
+// El caso real: pesos ingresados hace meses, SPY comprado ese dia y otra vez
+// hoy. Las unidades de hoy salian de un precio escrito a mano, y la
+// diferencia contra la cotizacion aparecia como ganancia en el acto.
+await goto("/");
+const heroUsd = async () =>
+  Number(
+    (await page.locator(".hero-num").first().innerText())
+      .replace(/[^\d,]/g, "")
+      .replace(",", "."),
+  );
+const totalAntes = await heroUsd();
+await abrirEscritura();
+await page.locator('input[placeholder*="QQQ"]').first().fill("compré $450.000 de spy en cocos");
+await page.waitForTimeout(1000);
+// Sin precio en la frase, las unidades salen de la cotizacion de hoy.
+check("toma la cotización de hoy", await has("SPY.BA · a $"), (await text()).slice(-600));
+check("no avisa desvío si el precio es el del mercado", !(await has("en el acto")));
+await page.locator('input[placeholder*="QQQ"]').first().fill("compré $450.000 de spy a 1000 en cocos");
+await page.waitForTimeout(1000);
+check("avisa si el precio escrito se aleja", await has("aparece en el acto como ganancia"), (await text()).slice(-700));
+await page.getByRole("button", { name: /^Usar la cotización$/ }).click();
+await page.waitForTimeout(300);
+check("vuelve a la cotización", !(await has("en el acto")));
+await page.getByRole("button", { name: /^Agregar$/ }).click();
+await page.waitForTimeout(2500);
+await goto("/");
+const totalDespues = await heroUsd();
+check(
+  "el total no se mueve al comprar",
+  Math.abs(totalDespues - totalAntes) < 2,
+  `${totalAntes} → ${totalDespues}`,
+);
+
 console.log("\n3. La posición nueva llega a la cartera");
 await goto("/cartera");
 check("la posición figura en la cartera", await has("SOL"));
