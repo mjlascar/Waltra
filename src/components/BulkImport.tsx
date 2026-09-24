@@ -81,9 +81,12 @@ export function BulkImport({ open, onClose }: { open: boolean; onClose: () => vo
 
         let assetId: string | undefined;
         if (entry.symbol) {
-          // La moneda es parte de la clave: "SPY" en pesos es el CEDEAR y en
-          // dolares la accion, y las dos pueden aparecer en el mismo pegado.
-          const key = `${entry.symbol.toUpperCase()}|${entry.currency}`;
+          // La moneda y el broker son parte de la clave: "SPY" en pesos o desde
+          // Cocos es el CEDEAR, y en dolares desde otro broker puede ser la
+          // accion. Las dos pueden aparecer en el mismo pegado.
+          const cuenta = entry.accountId ?? defaultAccount;
+          const broker = accounts.find((a) => a.id === cuenta)?.broker;
+          const key = `${entry.symbol.toUpperCase()}|${entry.currency}|${broker ?? ""}`;
           assetId = porSimbolo.get(key);
           if (!assetId) {
             const { asset, nuevo } = resolveTradeAsset(
@@ -91,7 +94,7 @@ export function BulkImport({ open, onClose }: { open: boolean; onClose: () => vo
               entry.symbol,
               entry.currency,
               newId,
-              { catalog: entry.catalog },
+              { catalog: entry.catalog, broker },
             );
             if (nuevo) nuevos.push(asset);
             assetId = asset.id;

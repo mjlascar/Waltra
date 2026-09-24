@@ -83,6 +83,20 @@ export function applyTransaction(
   const rate = tx.fxRate && tx.fxRate > 0 ? tx.fxRate : fx.at(day);
   const usd = (v: number) => toUsd(v, tx.currency, rate);
   const fee = tx.fee ?? 0;
+  /**
+   * Un monto de la operacion, en la moneda del activo.
+   *
+   * Casi siempre son la misma, pero un CEDEAR cotiza en pesos y desde Cocos se
+   * compra en dolares. El costo promedio se guarda en la moneda del activo
+   * porque es contra su precio que se compara (y con lo que se valua si falta
+   * la cotizacion): sumar dolares a un costo en pesos daria un CEDEAR que
+   * "costo $ 33". Se convierte al dolar de la operacion, o al del dia.
+   */
+  const asset = tx.assetId ? assets[tx.assetId] : undefined;
+  const local = (v: number): number => {
+    if (!asset || asset.currency === tx.currency) return v;
+    return asset.currency === "USD" ? usd(v) : usd(v) * rate;
+  };
 
   switch (tx.type) {
     case "deposit": {
@@ -111,7 +125,7 @@ export function applyTransaction(
       if (!tx.assetId || !tx.quantity) break;
       bumpCash(state.cash, tx.accountId, tx.currency, -(tx.amount + fee));
       const lot = (state.positions[tx.assetId] ??= { quantity: 0, avgCost: 0, avgCostUsd: 0 });
-      const costLocal = lot.avgCost * lot.quantity + tx.amount + fee;
+      const costLocal = lot.avgCost * lot.quantity + local(tx.amount + fee);
       const costUsd = lot.avgCostUsd * lot.quantity + usd(tx.amount + fee);
       lot.quantity += tx.quantity;
       lot.avgCost = lot.quantity > 0 ? costLocal / lot.quantity : 0;
@@ -168,7 +182,6 @@ export function applyTransaction(
       break;
     }
   }
-  void assets;
 }
 
 /** Flujo de capital externo del dia, en USD (positivo = entra plata nueva). */

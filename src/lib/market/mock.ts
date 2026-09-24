@@ -86,11 +86,41 @@ function walk(symbol: string, from: string, to: string): PricePoint[] {
   return points;
 }
 
+/**
+ * Cuantos CEDEARs hacen una accion, en la simulacion.
+ *
+ * Es un numero de juguete: cada CEDEAR tiene el suyo y la app de verdad nunca
+ * lo necesita, porque BYMA cotiza cada CEDEAR directo. Solo sirve para que el
+ * CEDEAR simulado de QQQ valga lo que QQQ dividido algo, en vez de un precio
+ * al azar que haria que la cartera de ejemplo gane o pierda cualquier cosa.
+ */
+const CEDEAR_RATIO_SIMULADO = 20;
+
+/**
+ * La serie de un CEDEAR simulado: la accion, dividida por el ratio y pasada a
+ * pesos al dolar simulado de cada dia. Asi el CEDEAR se mueve con la accion y
+ * con el dolar, que es lo que hace el de verdad.
+ */
+function cedearWalk(symbol: string, from: string, to: string): PricePoint[] | null {
+  const base = symbol.toUpperCase().replace(/\.BA$/, "");
+  if (base === symbol.toUpperCase() || !BASE_PRICE[base]) return null;
+  const dolar = new Map(mockFx(from).map((p) => [p.date, p.arsPerUsd]));
+  const ultimo = mockFx(from).at(-1)?.arsPerUsd ?? 1_250;
+  return walk(base, from, to).map((p) => ({
+    date: p.date,
+    close: Number(((p.close / CEDEAR_RATIO_SIMULADO) * (dolar.get(p.date) ?? ultimo)).toFixed(2)),
+  }));
+}
+
+function mockSeries(symbol: string, from: string, to: string): PricePoint[] {
+  return cedearWalk(symbol, from, to) ?? walk(symbol, from, to);
+}
+
 export function mockQuotes(refs: MarketRef[]): QuoteResult[] {
   const at = new Date().toISOString();
   const to = today();
   return refs.map((ref) => {
-    const series = walk(ref.sourceSymbol, addDays(to, -3), to);
+    const series = mockSeries(ref.sourceSymbol, addDays(to, -3), to);
     const last = series[series.length - 1].close;
     const prev = series[series.length - 2]?.close ?? last;
     return {
@@ -108,7 +138,7 @@ export function mockHistory(req: HistoryRequest): HistoryResult {
   return {
     assetId: req.assetId,
     currency: req.currency,
-    points: walk(req.sourceSymbol, req.from, today()),
+    points: mockSeries(req.sourceSymbol, req.from, today()),
   };
 }
 

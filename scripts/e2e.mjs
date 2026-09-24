@@ -97,8 +97,9 @@ await page.locator('input[placeholder*="QQQ"]').first().fill("vendí todo el QQQ
 await page.waitForTimeout(900);
 const vendeTodo = await text();
 check("lee la venta total", await has("Venta"), vendeTodo.slice(0, 160));
-// La cartera de ejemplo tiene 2,95 unidades de QQQ.
-check("completa la cantidad desde la posición", /2,95|2\.95/.test(vendeTodo), vendeTodo.slice(0, 200));
+// La cartera de ejemplo tiene 59 CEDEARs de QQQ (QQQ.BA): se nombran sin el
+// sufijo y la app tiene que encontrarlos igual.
+check("completa la cantidad desde la posición", /\b59\b/.test(vendeTodo), vendeTodo.slice(0, 200));
 check("no reclama un monto que puede deducir", !(await has("No encontré ningún monto")));
 await cerrarHoja();
 
@@ -123,8 +124,8 @@ check("los menos frecuentes no compiten", await has("Menos frecuentes"));
 await page.getByRole("button", { name: /^Compré Acciones/ }).click();
 await page.waitForTimeout(500);
 check("pasa al paso de datos", await has("Activo"));
-check("ofrece lo que ya tenés en cartera", (await page.getByRole("button", { name: /^QQQ$/ }).count()) > 0);
-await page.getByRole("button", { name: /^QQQ$/ }).first().click();
+check("ofrece lo que ya tenés en cartera", (await page.getByRole("button", { name: /^QQQ\.BA$/ }).count()) > 0);
+await page.getByRole("button", { name: /^QQQ\.BA$/ }).first().click();
 await page.waitForTimeout(300);
 await page.locator('input[placeholder="50"]').first().fill("200");
 await page.locator('input[placeholder="480"]').first().fill("500");
@@ -161,11 +162,34 @@ await goto("/");
 await abrirEscritura();
 await page.locator('input[placeholder*="QQQ"]').first().fill("compré 9 SPY a 50705 pesos en cocos");
 await page.waitForTimeout(1000);
-check("avisa que va como CEDEAR", await has("se carga como su CEDEAR (SPY.BA)"), (await text()).slice(0, 400));
+// El ejemplo ya tiene SPY.BA: "SPY" lo encuentra directo, sin nada que avisar.
+check("la compra va al CEDEAR que ya tenés", await has("9 SPY.BA"), (await text()).slice(0, 400));
 await page.getByRole("button", { name: /^Agregar$/ }).click();
 await page.waitForTimeout(2500);
 await goto("/cartera");
 check("la compra en pesos queda en el CEDEAR", await has("SPY.BA"));
+
+// Un ticker que todavía no está cargado: la app avisa que lo guarda como
+// CEDEAR, antes de tocar Agregar.
+await goto("/");
+await abrirEscritura();
+await page.locator('input[placeholder*="QQQ"]').first().fill("compré 5 NVDA a 9000 pesos en cocos");
+await page.waitForTimeout(1000);
+check("avisa que va como CEDEAR", await has("En pesos, NVDA se carga como su CEDEAR (NVDA.BA)"), (await text()).slice(0, 400));
+await cerrarHoja();
+
+// Desde Cocos también en dólares: ahí se compran CEDEARs en dólares MEP y la
+// acción de Nueva York no. Es como se opera de verdad.
+await goto("/");
+await abrirEscritura();
+await page.locator('input[placeholder*="QQQ"]').first().fill("compré 9 AAPL por 300 dólares en cocos");
+await page.waitForTimeout(1000);
+check(
+  "en dólares desde Cocos también va como CEDEAR",
+  await has("En Cocos Capital, AAPL se carga como su CEDEAR (AAPL.BA)"),
+  (await text()).slice(0, 400),
+);
+await cerrarHoja();
 
 // Y lo que ya estaba mal cargado antes de la regla: un backup con una accion
 // de EE.UU. comprada en pesos, como el que quedo en el telefono.
@@ -215,7 +239,7 @@ await page.getByRole("button", { name: /agregar movimiento/i }).click();
 await page.waitForTimeout(400);
 await page.getByRole("button", { name: /^Compré Acciones/ }).click();
 await page.waitForTimeout(400);
-await page.getByRole("button", { name: /^QQQ$/ }).first().click();
+await page.getByRole("button", { name: /^QQQ\.BA$/ }).first().click();
 await page.waitForTimeout(200);
 await page.getByRole("button", { name: /^Total y unid\.$/ }).click();
 await page.waitForTimeout(200);

@@ -4,6 +4,7 @@ import { today } from "@/lib/date";
 import { CATALOG_ALIASES, lookupCatalog, type CatalogEntry } from "@/lib/catalog";
 import { extractDate } from "./dates";
 import { parseLooseNumber } from "./number";
+import { tradesAsCedear } from "@/lib/cedear";
 
 export interface ParseContext {
   accounts: Account[];
@@ -112,13 +113,33 @@ function findSymbol(
   text: string,
   raw: string,
   assets: Asset[],
+  preferCedear = false,
 ): { symbol: string; asset?: Asset; catalog?: CatalogEntry; match: string } | null {
   // 1. Activos que el usuario ya tiene cargados: son los mas probables.
+  //
+  // Un CEDEAR se guarda como "QQQ.BA", pero nadie escribe el sufijo: "vendí
+  // todo el QQQ" habla de los CEDEARs que tiene. Por eso tambien se lo busca
+  // por el simbolo pelado. Si estan cargados los dos (la accion y el CEDEAR),
+  // decide la cuenta: desde Cocos o en pesos es el CEDEAR.
   const candidates = assets
-    .map((a) => ({ asset: a, keys: [strip(a.symbol), strip(a.name)] }))
+    .map((a) => ({
+      asset: a,
+      keys: [
+        strip(a.symbol),
+        strip(a.name),
+        ...(a.kind === "cedear" && /\.ba$/i.test(a.symbol)
+          ? [strip(a.symbol.replace(/\.ba$/i, ""))]
+          : []),
+      ],
+    }))
     .flatMap(({ asset, keys }) => keys.map((k) => ({ asset, key: k })))
     .filter((c) => c.key.length >= 2)
-    .sort((a, b) => b.key.length - a.key.length);
+    .sort((a, b) => {
+      if (b.key.length !== a.key.length) return b.key.length - a.key.length;
+      const ca = a.asset.kind === "cedear" ? 1 : 0;
+      const cb = b.asset.kind === "cedear" ? 1 : 0;
+      return preferCedear ? cb - ca : ca - cb;
+    });
   for (const c of candidates) {
     const re = new RegExp(`(?<![a-z0-9])${c.key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![a-z0-9])`);
     const m = text.match(re);
@@ -282,7 +303,12 @@ export function parseQuickEntry(raw: string, ctx: ParseContext): ParsedEntry | n
   const needsAsset = type === "buy" || type === "sell" || type === "dividend";
   // "vendí todo el SPY": la cantidad la completa la app con la tenencia real.
   const sellAll = type === "sell" && /\b(todo|toda|todos|todas)\b/.test(work);
-  const symbolHit = findSymbol(work, input, ctx.assets);
+  const symbolHit = findSymbol(
+    work,
+    input,
+    ctx.assets,
+    tradesAsCedear(currency, ctx.accounts.find((a) => a.id === accountId)?.broker),
+  );
   // "compré 100 dólares a 1450": lo que se compra es la moneda. Sin un activo
   // en la frase y con dolares nombrados, es un cambio de pesos a dolares
   // dentro de la cuenta y no una compra a la que le falta el activo. USDT y

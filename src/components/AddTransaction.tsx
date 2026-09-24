@@ -10,7 +10,7 @@ import { parseQuickEntry } from "@/lib/parse/quick-add";
 import { parseLooseNumber } from "@/lib/parse/number";
 import { lookupCatalog, searchCatalog, type CatalogEntry } from "@/lib/catalog";
 import { lastUsedAccountId } from "@/lib/assets";
-import { cedearSymbol, isUsListing, resolveTradeAsset } from "@/lib/cedear";
+import { cedearSymbol, isUsListing, resolveTradeAsset, tradesAsCedear } from "@/lib/cedear";
 import { longDate, money, quantity as fmtQty, TX_LABEL } from "@/lib/format";
 import { txColor } from "@/lib/tx-style";
 import { today } from "@/lib/date";
@@ -325,12 +325,20 @@ export function AddTransaction({
    * antes de tocar Agregar.
    */
   const comoCedear = useMemo(() => {
-    if (!needsAsset || draft.currency !== "ARS") return null;
+    if (!needsAsset) return null;
+    const cuenta = accounts.find((a) => a.id === draft.accountId);
+    if (!tradesAsCedear(draft.currency, cuenta?.broker)) return null;
     const elegido = draft.assetId ? assets.find((a) => a.id === draft.assetId) : undefined;
     const plantilla = elegido ?? catalogHit ?? (draft.symbol ? lookupCatalog(draft.symbol) : undefined);
     if (!plantilla || !isUsListing(plantilla)) return null;
-    return { accion: plantilla.symbol, cedear: cedearSymbol(plantilla.symbol) };
-  }, [needsAsset, draft.currency, draft.assetId, draft.symbol, assets, catalogHit]);
+    return {
+      accion: plantilla.symbol,
+      cedear: cedearSymbol(plantilla.symbol),
+      // La razon que se muestra es la que aplica: en pesos vale para todos; en
+      // dolares, solo porque el broker opera en BYMA.
+      porque: draft.currency === "ARS" ? "En pesos" : `En ${cuenta?.name ?? "este broker"}`,
+    };
+  }, [needsAsset, draft.currency, draft.accountId, draft.assetId, draft.symbol, assets, accounts, catalogHit]);
 
   /**
    * Avisos que la app puede dar mirando el resto de los datos, no la frase.
@@ -467,6 +475,7 @@ export function AddTransaction({
     const { asset, nuevo } = resolveTradeAsset(assets, symbol, draft.currency, newId, {
       catalog: desdeBusqueda ?? catalogHit ?? undefined,
       existing: elegido,
+      broker: accounts.find((a) => a.id === draft.accountId)?.broker,
     });
     if (nuevo) await saveAsset(asset);
     return asset.id;
@@ -628,8 +637,8 @@ export function AddTransaction({
       )}
       {comoCedear && (
         <p className="label mt-2 leading-snug">
-          En pesos, {comoCedear.accion} se carga como su CEDEAR ({comoCedear.cedear}), que
-          cotiza en BYMA. Con pesos no se compra la acción de EE.UU., y un CEDEAR es
+          {comoCedear.porque}, {comoCedear.accion} se carga como su CEDEAR ({comoCedear.cedear}),
+          que cotiza en BYMA. Desde acá no se compra la acción de EE.UU., y un CEDEAR es
           una fracción de ella: contarlos como acciones inflaría el valor.
         </p>
       )}

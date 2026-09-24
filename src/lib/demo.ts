@@ -2,6 +2,7 @@ import type { Asset, Transaction } from "@/lib/types";
 import { lookupCatalog } from "@/lib/catalog";
 import { addDays, today } from "@/lib/date";
 import { defaultAccounts, type WaltraDB } from "@/lib/db";
+import { cedearOf } from "@/lib/cedear";
 
 /**
  * Carga una cartera de ejemplo para poder ver la app funcionando antes de
@@ -29,7 +30,15 @@ function assetFrom(symbol: string): Asset {
 export async function loadDemoData(db: WaltraDB): Promise<void> {
   const now = today();
   const at = (daysAgo: number) => addDays(now, -daysAgo);
-  const assets = ["QQQ", "SPY", "BTC", "ETH", "MELI"].map(assetFrom);
+  // En Cocos lo que se tiene de EE.UU. son CEDEARs, comprados en dolares: es
+  // como se opera de verdad desde ahi, y el ejemplo no puede contradecir la
+  // regla que la app aplica a los datos reales. Las cantidades van en CEDEARs
+  // (veinte por accion, el ratio de juguete del simulador de precios).
+  const cedear = (symbol: string) => {
+    const base = assetFrom(symbol);
+    return cedearOf(base, base.id);
+  };
+  const assets = [cedear("QQQ"), cedear("SPY"), assetFrom("BTC"), assetFrom("ETH"), cedear("MELI")];
 
   let seq = 0;
   const tx = (
@@ -49,23 +58,23 @@ export async function loadDemoData(db: WaltraDB): Promise<void> {
   // transferencia entre cuentas.
   const transactions: Transaction[] = [
     tx({ date: at(400), type: "deposit", accountId: "cocos", amount: 1200, currency: "USD" }),
-    tx({ date: at(398), type: "buy", accountId: "cocos", assetId: "demo-qqq", quantity: 1.5, price: 430, amount: 645, currency: "USD" }),
-    tx({ date: at(398), type: "buy", accountId: "cocos", assetId: "demo-spy", quantity: 1, price: 510, amount: 510, currency: "USD" }),
+    tx({ date: at(398), type: "buy", accountId: "cocos", assetId: "demo-qqq", quantity: 30, price: 21.5, amount: 645, currency: "USD" }),
+    tx({ date: at(398), type: "buy", accountId: "cocos", assetId: "demo-spy", quantity: 20, price: 25.5, amount: 510, currency: "USD" }),
     tx({ date: at(330), type: "deposit", accountId: "binance", amount: 800, currency: "USD" }),
     tx({ date: at(329), type: "buy", accountId: "binance", assetId: "demo-btc", quantity: 0.008, price: 62_000, amount: 496, currency: "USD" }),
     tx({ date: at(329), type: "buy", accountId: "binance", assetId: "demo-eth", quantity: 0.09, price: 3_300, amount: 297, currency: "USD" }),
     tx({ date: at(250), type: "deposit", accountId: "cocos", amount: 500, currency: "USD" }),
-    tx({ date: at(249), type: "buy", accountId: "cocos", assetId: "demo-meli", quantity: 0.26, price: 1_850, amount: 481, currency: "USD" }),
+    tx({ date: at(249), type: "buy", accountId: "cocos", assetId: "demo-meli", quantity: 5, price: 92.5, amount: 462.5, currency: "USD" }),
     tx({ date: at(180), type: "deposit", accountId: "cocos", amount: 400, currency: "USD" }),
-    tx({ date: at(178), type: "buy", accountId: "cocos", assetId: "demo-qqq", quantity: 0.8, price: 470, amount: 376, currency: "USD" }),
+    tx({ date: at(178), type: "buy", accountId: "cocos", assetId: "demo-qqq", quantity: 16, price: 23.5, amount: 376, currency: "USD" }),
     tx({ date: at(120), type: "dividend", accountId: "cocos", assetId: "demo-spy", amount: 6.4, currency: "USD" }),
     tx({ date: at(95), type: "deposit", accountId: "binance", amount: 300, currency: "USD" }),
     tx({ date: at(94), type: "buy", accountId: "binance", assetId: "demo-btc", quantity: 0.003, price: 88_000, amount: 264, currency: "USD" }),
-    tx({ date: at(60), type: "sell", accountId: "cocos", assetId: "demo-spy", quantity: 0.4, price: 580, amount: 232, currency: "USD", fee: 1.2 }),
+    tx({ date: at(60), type: "sell", accountId: "cocos", assetId: "demo-spy", quantity: 8, price: 29, amount: 232, currency: "USD", fee: 1.2 }),
     tx({ date: at(45), type: "transfer", accountId: "cocos", counterAccountId: "binance", amount: 150, currency: "USD" }),
     tx({ date: at(44), type: "buy", accountId: "binance", assetId: "demo-eth", quantity: 0.045, price: 3_150, amount: 141.75, currency: "USD" }),
     tx({ date: at(20), type: "deposit", accountId: "cocos", amount: 350, currency: "USD" }),
-    tx({ date: at(19), type: "buy", accountId: "cocos", assetId: "demo-qqq", quantity: 0.65, price: 492, amount: 319.8, currency: "USD" }),
+    tx({ date: at(19), type: "buy", accountId: "cocos", assetId: "demo-qqq", quantity: 13, price: 24.6, amount: 319.8, currency: "USD" }),
   ];
 
   await db.transaction("rw", [db.accounts, db.assets, db.transactions], async () => {

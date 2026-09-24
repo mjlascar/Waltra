@@ -326,3 +326,39 @@ describe("comprar dólares", () => {
     expect(p("ingresé 500 dólares a cocos").type).toBe("deposit");
   });
 });
+
+describe("un CEDEAR se nombra sin el sufijo", () => {
+  const qqqAccion: Asset = { ...assets[0] };
+  const qqqCedear: Asset = {
+    id: "a-qqq-ba",
+    symbol: "QQQ.BA",
+    name: "Invesco QQQ (Nasdaq 100) (CEDEAR)",
+    kind: "cedear",
+    currency: "ARS",
+    source: "byma",
+    sourceSymbol: "QQQ.BA",
+    precision: 2,
+  };
+  const conCedear = (text: string, lista: Asset[]) =>
+    parseQuickEntry(text, { ...ctx, assets: lista })!;
+
+  it("«vendí todo el QQQ» encuentra los CEDEARs que tenés", () => {
+    const r = conCedear("vendí todo el QQQ en cocos", [qqqCedear]);
+    expect(r.assetId).toBe("a-qqq-ba");
+    expect(r.all).toBe(true);
+  });
+
+  it("con la acción y el CEDEAR cargados, desde Cocos elige el CEDEAR", () => {
+    expect(conCedear("vendí 2 QQQ en cocos", [qqqAccion, qqqCedear]).assetId).toBe("a-qqq-ba");
+  });
+
+  it("y en dólares desde otro broker, la acción", () => {
+    const otro: Account = { id: "ibkr", name: "Interactive", broker: "other", currency: "USD", createdAt: "" };
+    const r = parseQuickEntry("vendí 2 QQQ en interactive", {
+      ...ctx,
+      accounts: [...accounts, otro],
+      assets: [qqqAccion, qqqCedear],
+    })!;
+    expect(r.assetId).toBe("a-qqq");
+  });
+});

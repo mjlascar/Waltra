@@ -1,4 +1,4 @@
-import type { Asset, Currency, Transaction } from "@/lib/types";
+import type { Account, Asset, Broker, Currency, Transaction } from "@/lib/types";
 import type { CatalogEntry } from "@/lib/catalog";
 import { lookupCatalog } from "@/lib/catalog";
 import { assetFromSymbol, findAssetBySymbol } from "@/lib/assets";
@@ -17,9 +17,16 @@ import type { WaltraDB } from "@/lib/db";
  * ganancia de miles de dólares, que es exactamente lo que pasó con la primera
  * compra real cargada en la app.
  *
- * La regla que evita eso: una acción o un ETF de EE.UU. operado en pesos es
- * su CEDEAR. Con pesos no se compra la acción de Nueva York, así que no hay
- * caso legítimo del otro lado. El CEDEAR se guarda como `SPY.BA`, que es como
+ * La regla que evita eso tiene dos mitades:
+ *
+ * - Operada en pesos, en cualquier cuenta, una acción de EE.UU. es su CEDEAR.
+ *   Con pesos no se compra la acción de Nueva York.
+ * - En un broker argentino, también en dólares: desde Cocos se compran
+ *   CEDEARs en dólares MEP (las especies que terminan en D, como SPYD), pero
+ *   la acción real no. En un broker del exterior, en cambio, dólares y acción
+ *   de EE.UU. sí es la acción, y la app es para más de un usuario.
+ *
+ * El CEDEAR se guarda como `SPY.BA`, que es como
  * lo nombran Yahoo y el resto del catálogo para lo que cotiza en BYMA: un
  * símbolo propio evita que choque con la acción si algún día se tienen las
  * dos.
@@ -36,6 +43,20 @@ export function isUsListing(asset: Listing): boolean {
     // "GGAL.BA", "BRK-B" con sufijo de mercado ya no son la acción de EE.UU.
     !asset.symbol.includes(".")
   );
+}
+
+/**
+ * Brokers desde los que una acción de EE.UU. solo puede ser un CEDEAR.
+ *
+ * Cocos opera en BYMA: lo que llama "SPY" es el CEDEAR, en pesos o en
+ * dólares. Si algún día se agrega otro broker argentino, va acá; uno del
+ * exterior no, porque desde ahí sí se compra la acción.
+ */
+const BROKERS_LOCALES: readonly Broker[] = ["cocos"];
+
+/** Si una acción de EE.UU. operada así es, en realidad, su CEDEAR. */
+export function tradesAsCedear(currency: Currency, broker?: Broker): boolean {
+  return currency === "ARS" || (broker !== undefined && BROKERS_LOCALES.includes(broker));
 }
 
 export function cedearSymbol(symbol: string): string {
@@ -78,14 +99,14 @@ export function resolveTradeAsset(
   symbol: string,
   currency: Currency,
   newId: () => string,
-  options: { catalog?: CatalogEntry; existing?: Asset } = {},
+  options: { catalog?: CatalogEntry; existing?: Asset; broker?: Broker } = {},
 ): TradeAsset {
   const clean = symbol.trim().toUpperCase();
   const existing = options.existing ?? findAssetBySymbol(assets, clean);
   const plantilla: Listing & { name: string } | undefined =
     existing ?? options.catalog ?? lookupCatalog(clean) ?? undefined;
 
-  if (currency === "ARS" && plantilla && isUsListing(plantilla)) {
+  if (tradesAsCedear(currency, options.broker) && plantilla && isUsListing(plantilla)) {
     const ya = findAssetBySymbol(assets, cedearSymbol(plantilla.symbol));
     if (ya) return { asset: ya, nuevo: false, cedear: true };
     return { asset: cedearOf(plantilla, newId()), nuevo: true, cedear: true };
@@ -101,19 +122,29 @@ export function resolveTradeAsset(
 
 /**
  * Acciones de EE.UU. que en realidad son CEDEARs cargados antes de que
- * existiera la regla: todas sus compras y ventas son en pesos.
+ * existiera la regla: todas sus compras y ventas son en pesos o en un broker
+ * argentino.
  *
- * No hay falso positivo posible: con pesos no se opera la acción de Nueva
- * York. Por eso la app puede proponer el arreglo con un toque en vez de
- * limitarse a avisar.
+ * No hay falso positivo posible: ni con pesos ni desde Cocos se opera la
+ * acción de Nueva York. Por eso la app puede proponer el arreglo con un toque
+ * en vez de limitarse a avisar. Si alguna operación es en dólares desde otro
+ * broker, la acción puede ser real y no se adivina.
  */
-export function misloadedCedears(assets: Asset[], transactions: Transaction[]): Asset[] {
+export function misloadedCedears(
+  assets: Asset[],
+  transactions: Transaction[],
+  accounts: Pick<Account, "id" | "broker">[],
+): Asset[] {
+  const broker = new Map(accounts.map((a) => [a.id, a.broker]));
   return assets.filter((asset) => {
     if (!isUsListing(asset)) return false;
     const operaciones = transactions.filter(
       (t) => t.assetId === asset.id && (t.type === "buy" || t.type === "sell"),
     );
-    return operaciones.length > 0 && operaciones.every((t) => t.currency === "ARS");
+    return (
+      operaciones.length > 0 &&
+      operaciones.every((t) => tradesAsCedear(t.currency, broker.get(t.accountId)))
+    );
   });
 }
 

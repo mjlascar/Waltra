@@ -5,6 +5,7 @@ import {
   isUsListing,
   misloadedCedears,
   resolveTradeAsset,
+  tradesAsCedear,
 } from "@/lib/cedear";
 import { computePortfolio } from "@/lib/engine/portfolio";
 import { lookupCatalog } from "@/lib/catalog";
@@ -163,26 +164,89 @@ describe("resolveTradeAsset", () => {
   });
 });
 
+const cuentas = [
+  { id: "cocos", broker: "cocos" as const },
+  { id: "ibkr", broker: "other" as const },
+];
+
 describe("misloadedCedears", () => {
   it("detecta la acción con compras en pesos", () => {
     const txs = [tx({ type: "buy", date: "2026-02-25", amount: 456_345, currency: "ARS", assetId: "spy", quantity: 9 })];
-    expect(misloadedCedears([spy], txs).map((a) => a.id)).toEqual(["spy"]);
+    expect(misloadedCedears([spy], txs, cuentas).map((a) => a.id)).toEqual(["spy"]);
   });
 
-  it("deja en paz la acción comprada en dólares", () => {
-    const txs = [tx({ type: "buy", date: "2026-02-25", amount: 660, currency: "USD", assetId: "spy", quantity: 1 })];
-    expect(misloadedCedears([spy], txs)).toEqual([]);
+  it("deja en paz la acción comprada en dólares desde un broker del exterior", () => {
+    const txs = [
+      tx({ type: "buy", date: "2026-02-25", amount: 660, currency: "USD", assetId: "spy", quantity: 1, accountId: "ibkr" }),
+    ];
+    expect(misloadedCedears([spy], txs, cuentas)).toEqual([]);
   });
 
   it("con operaciones mezcladas no adivina", () => {
     const txs = [
-      tx({ type: "buy", date: "2026-02-25", amount: 660, currency: "USD", assetId: "spy", quantity: 1 }),
+      tx({ type: "buy", date: "2026-02-25", amount: 660, currency: "USD", assetId: "spy", quantity: 1, accountId: "ibkr" }),
       tx({ type: "buy", date: "2026-02-26", amount: 50_000, currency: "ARS", assetId: "spy", quantity: 1 }),
     ];
-    expect(misloadedCedears([spy], txs)).toEqual([]);
+    expect(misloadedCedears([spy], txs, cuentas)).toEqual([]);
   });
 
   it("un activo sin operaciones no es sospechoso", () => {
-    expect(misloadedCedears([spy], [])).toEqual([]);
+    expect(misloadedCedears([spy], [], cuentas)).toEqual([]);
+  });
+});
+
+describe("en Cocos, también en dólares", () => {
+  /**
+   * Desde un broker argentino se compran CEDEARs en dólares MEP (SPYD), pero
+   * la acción de Nueva York no. Sin esta mitad de la regla, 9 CEDEARs de SPY
+   * comprados con US$ 300 volvían a valuarse como 9 acciones de US$ 660.
+   */
+  it("la regla sabe qué broker es local", () => {
+    expect(tradesAsCedear("ARS")).toBe(true);
+    expect(tradesAsCedear("USD", "cocos")).toBe(true);
+    expect(tradesAsCedear("USD", "other")).toBe(false);
+    expect(tradesAsCedear("USD")).toBe(false);
+  });
+
+  it("SPY comprado en dólares desde Cocos es el CEDEAR", () => {
+    const r = resolveTradeAsset([], "SPY", "USD", nuevoId, { broker: "cocos" });
+    expect(r.cedear).toBe(true);
+    expect(r.asset.symbol).toBe("SPY.BA");
+  });
+
+  it("SPY comprado en dólares desde un broker del exterior es la acción", () => {
+    const r = resolveTradeAsset([], "SPY", "USD", nuevoId, { broker: "other" });
+    expect(r.cedear).toBe(false);
+    expect(r.asset.symbol).toBe("SPY");
+  });
+
+  it("detecta la acción comprada en dólares desde Cocos", () => {
+    const txs = [
+      tx({ type: "buy", date: "2026-02-25", amount: 300, currency: "USD", assetId: "spy", quantity: 9, accountId: "cocos" }),
+    ];
+    expect(misloadedCedears([spy], txs, cuentas).map((a) => a.id)).toEqual(["spy"]);
+  });
+
+  it("un CEDEAR comprado en dólares vale lo que costó, con el costo en pesos", () => {
+    // 9 CEDEARs a US$ 33,33 con el dólar a 1.450: el CEDEAR cotiza $ 48.333.
+    const cedear = cedearOf(spy, "spy");
+    const p = computePortfolio({
+      transactions: [
+        tx({ type: "deposit", date: "2026-02-20", amount: 300, currency: "USD", accountId: "cocos" }),
+        tx({ type: "buy", date: "2026-02-25", amount: 300, currency: "USD", assetId: "spy", quantity: 9, price: 300 / 9, accountId: "cocos" }),
+      ],
+      assets: [cedear],
+      accounts: [{ id: "cocos", name: "Cocos Capital", broker: "cocos", currency: "USD", createdAt: "" }],
+      priceSeries: [],
+      quotes: [{ assetId: "spy", price: (300 / 9) * 1450, currency: "ARS", at: "2026-03-01", source: "byma" }],
+      fxRates: [{ date: "2026-02-20", arsPerUsd: 1450 }],
+      asOf: "2026-03-01",
+    });
+    expect(p.totalPnlUsd).toBeCloseTo(0, 6);
+    expect(p.totalValueUsd).toBeCloseTo(300, 6);
+    // El costo promedio se guarda en la moneda del CEDEAR, pesos, aunque se
+    // haya pagado en dólares: mezclarlas daría un costo de "$ 33".
+    expect(p.positions[0].avgCost).toBeCloseTo((300 / 9) * 1450, 4);
+    expect(p.positions[0].avgCostUsd).toBeCloseTo(300 / 9, 6);
   });
 });

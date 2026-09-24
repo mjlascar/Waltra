@@ -79,16 +79,31 @@ activo de más. Pero describe algo que no pudo pasar, así que la app lo dice
 —al cargar el movimiento, en el inicio y en el detalle de cuenta— en vez de
 taparlo. Casi siempre significa que falta cargar el ingreso que lo financió.
 
-**Una acción de EE.UU. operada en pesos es su CEDEAR** (`src/lib/cedear.ts`).
-Un CEDEAR es una fracción de la acción —el de SPY es 20 a 1—, así que confundir
-los dos es un error de unidades y no de cotización: 9 CEDEARs de SPY son unos
-US$ 300 y 9 acciones, unos US$ 6.000. Pasó con la primera compra real cargada
-en la app. Con pesos no se compra la acción de Nueva York, así que la regla no
-tiene falso positivo y se aplica sola: el activo se guarda como `SPY.BA`
-(fuente BYMA, en pesos), la pantalla lo dice antes de guardar, y lo que quedó
-mal cargado de antes se ofrece corregir con un toque en el inicio. Todo camino
-que convierta un símbolo en activo pasa por `resolveTradeAsset`; si agregás
-uno nuevo y no pasa por ahí, el bug vuelve.
+**Una acción de EE.UU. operada en pesos, o desde Cocos, es su CEDEAR**
+(`src/lib/cedear.ts`). Un CEDEAR es una fracción de la acción —el de SPY es 20
+a 1—, así que confundir los dos es un error de unidades y no de cotización: 9
+CEDEARs de SPY son unos US$ 300 y 9 acciones, unos US$ 6.000. Pasó con la
+primera compra real cargada en la app. Ni con pesos ni desde un broker
+argentino se compra la acción de Nueva York (desde Cocos se compran CEDEARs
+también en dólares MEP), así que la regla no tiene falso positivo: el activo
+se guarda como `SPY.BA` (fuente BYMA, en pesos), la pantalla lo dice antes de
+guardar, y lo que quedó mal cargado de antes se ofrece corregir con un toque
+en el inicio. En dólares desde otro broker sí puede ser la acción, y la app es
+para más de un usuario: por eso la regla mira el broker (`BROKERS_LOCALES`) y
+no solo la moneda. Todo camino que convierta un símbolo en activo pasa por
+`resolveTradeAsset`; si agregás uno nuevo y no pasa por ahí, el bug vuelve.
+
+Un CEDEAR comprado en dólares cotiza en pesos, así que el ledger guarda el
+costo promedio **en la moneda del activo**, convertido al dólar de la
+operación. Sumar los dólares tal cual daba un CEDEAR que "costó $ 33".
+
+El parser encuentra un CEDEAR por el símbolo pelado ("vendí todo el QQQ" es
+`QQQ.BA`), y si están cargados la acción y el CEDEAR decide la cuenta.
+
+Los datos de ejemplo tienen CEDEARs en Cocos, comprados en dólares: el
+ejemplo no puede contradecir la regla que se aplica a los datos reales. El
+simulador de precios cotiza `X.BA` como la acción de `X` dividida por un ratio
+de juguete y pasada a pesos; la app real nunca usa ratios.
 
 **Comprar dólares es un cambio de moneda, no capital** (`type: "exchange"`).
 Salen `amount` en `currency` y entran `toAmount` en `toCurrency`, en la misma

@@ -208,7 +208,7 @@ export default function Overview() {
    * entera. No hay falso positivo posible —con pesos no se compra la accion de
    * Nueva York— asi que se ofrece el arreglo en vez de solo avisar.
    */
-  const malCargados = misloadedCedears(assets, transactions);
+  const malCargados = misloadedCedears(assets, transactions, accounts);
 
   async function corregir(assetId: string) {
     const asset = assets.find((a) => a.id === assetId);
@@ -266,8 +266,8 @@ export default function Overview() {
             <IconWarning size={14} className="mt-0.5 shrink-0" />
             <p className="text-[12px] leading-snug">
               <strong>{asset.symbol}</strong> está cargado como la acción de EE.UU., pero lo
-              compraste en pesos: es un CEDEAR. Cada CEDEAR es una fracción de la acción,
-              así que la cartera lo está valuando de más.
+              compraste en pesos o desde Cocos: es un CEDEAR. Cada CEDEAR es una fracción
+              de la acción, así que la cartera lo está valuando de más.
             </p>
           </div>
           <button
