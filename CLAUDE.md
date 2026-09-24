@@ -140,7 +140,14 @@ retorno del día en que entró el aporte.
 
 **Nada sensible sale del teléfono.** Los movimientos viven en IndexedDB. Al
 modelo solo viajan tickers, pesos y números (ver `src/lib/insights/digest.ts`,
-que tiene un test que lo fija). En la web la clave de Anthropic se lee solo en
+que tiene un test que lo fija). Eso incluye, a propósito, la historia de cada
+posición —fecha, cantidad y precio en dólares de cada compra y venta, y las
+posiciones ya cerradas—: sin eso el informe solo ve una foto y no puede decir
+si alguien promedió a la baja o vendió las ganadoras temprano. Lo que **no**
+viaja son la nota y la frase original de un movimiento, que son texto del
+usuario y pueden decir cualquier cosa; el esquema las descarta aunque alguien
+las mande, y hay un test que lo verifica. Van las 30 operaciones más recientes
+por activo y se cuenta cuántas quedaron afuera. En la web la clave de Anthropic se lee solo en
 el servidor; en el APK la carga el usuario, no se vuelve a mostrar y queda
 fuera del backup, que es un archivo que termina en Drive o en un mail. El
 backup automático de Android está apagado por lo mismo. El repositorio es

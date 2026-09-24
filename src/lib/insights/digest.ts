@@ -6,6 +6,31 @@ import { z } from "zod";
  * personal, ningun identificador de cuenta real del broker.
  */
 
+/**
+ * Una compra o venta, como viaja al modelo: fecha, lado, cantidad y precio en
+ * dolares de ese dia. Sin notas ni la frase original: esas son del usuario y
+ * pueden decir cualquier cosa, los numeros no.
+ */
+export const TradeSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  side: z.enum(["compra", "venta"]),
+  quantity: z.number(),
+  priceUsd: z.number().nullable(),
+});
+
+/**
+ * Cuantas operaciones por activo se mandan. Las mas recientes: con decenas de
+ * compras chicas mensuales, mandar todas agranda el pedido sin cambiar la
+ * lectura. Las que quedan afuera se cuentan, para que el modelo sepa que hay.
+ */
+export const MAX_TRADES = 30;
+
+const tradeHistory = {
+  trades: z.array(TradeSchema).max(MAX_TRADES).optional(),
+  /** Operaciones mas viejas que no entraron en `trades`. */
+  olderTrades: z.number().int().min(0).optional(),
+};
+
 export const HoldingSchema = z.object({
   symbol: z.string(),
   name: z.string().optional(),
@@ -16,10 +41,26 @@ export const HoldingSchema = z.object({
   returnPct: z.number().nullable(),
   heldDays: z.number(),
   account: z.string().optional(),
+  quantity: z.number().optional(),
+  /** Costo promedio por unidad y precio actual, los dos en dolares. */
+  avgCostUsd: z.number().nullable().optional(),
+  priceUsd: z.number().nullable().optional(),
+  /** Lo ya realizado en ventas parciales de este activo. */
+  realizedUsd: z.number().optional(),
+  ...tradeHistory,
+});
+
+/** Lo que se vendio entero: lo que dejo y como se opero. */
+export const ClosedSchema = z.object({
+  symbol: z.string(),
+  kind: z.string(),
+  realizedUsd: z.number(),
+  ...tradeHistory,
 });
 
 export const InsightRequestSchema = z.object({
   holdings: z.array(HoldingSchema).max(60),
+  closed: z.array(ClosedSchema).max(30).optional(),
   totals: z.object({
     valueUsd: z.number(),
     contributedUsd: z.number(),
@@ -116,6 +157,30 @@ const n = (value: number, decimals = 0) =>
 const pct = (value: number | null) =>
   value === null || !Number.isFinite(value) ? "s/d" : `${value.toFixed(1)}%`;
 
+/**
+ * Un precio por unidad: con centavos salvo que sea grande. Un CEDEAR de
+ * US$ 100,50 redondeado a 101 es otra compra; un bitcoin de 62.000, no.
+ */
+const usd = (value: number) => n(value, Math.abs(value) < 1000 ? 2 : 0);
+
+/** Una cantidad sin ceros de relleno: 9, 0.011, 59. */
+const qty = (value: number) =>
+  Number.isFinite(value) ? String(Number(value.toFixed(8))) : "s/d";
+
+/** La historia de un activo en una linea: fecha, lado, cantidad y precio. */
+function operaciones(trades: z.output<typeof TradeSchema>[] | undefined, older = 0): string {
+  if (!trades?.length) return "";
+  const partes = trades.map(
+    (t) =>
+      `${t.date} ${t.side} ${qty(t.quantity)}` +
+      (t.priceUsd === null ? " (precio en pesos, sin dolar)" : ` a US$ ${usd(t.priceUsd)}`),
+  );
+  return (
+    `Operaciones: ${partes.join("; ")}` +
+    (older > 0 ? ` (y ${older} ${older === 1 ? "anterior" : "anteriores"})` : "")
+  );
+}
+
 /** Convierte la cartera en el texto que lee el modelo. */
 export function buildDigest(body: InsightRequest): string {
   const lines: string[] = [];
@@ -134,13 +199,34 @@ export function buildDigest(body: InsightRequest): string {
   lines.push("Posiciones:");
   if (body.holdings.length === 0) lines.push("- (ninguna)");
   for (const h of body.holdings) {
+    const unidades =
+      h.quantity !== undefined
+        ? `, ${qty(h.quantity)} unidades` +
+          (h.avgCostUsd != null ? `, costo promedio US$ ${usd(h.avgCostUsd)} por unidad` : "") +
+          (h.priceUsd != null ? `, precio actual US$ ${usd(h.priceUsd)}` : "")
+        : "";
     lines.push(
       `- ${h.symbol} (${h.kind}${h.account ? `, ${h.account}` : ""}): ${h.weightPct.toFixed(1)}% de la cartera, ` +
         `US$ ${n(h.valueUsd)}, costo US$ ${n(h.costUsd)}, ` +
-        `retorno ${pct(h.returnPct)}, tenencia ${h.heldDays} dias`,
+        `retorno ${pct(h.returnPct)}, tenencia ${h.heldDays} dias${unidades}` +
+        (h.realizedUsd ? `, ya realizado US$ ${n(h.realizedUsd)}` : ""),
     );
+    const historia = operaciones(h.trades, h.olderTrades);
+    if (historia) lines.push(`  ${historia}`);
   }
   lines.push("");
+
+  // Lo que ya no esta tambien dice como invierte: si vende ganadoras rapido,
+  // si aguanta perdedoras. Sin esto el analisis solo ve a los sobrevivientes.
+  if (body.closed?.length) {
+    lines.push("Posiciones cerradas (vendidas enteras):");
+    for (const c of body.closed) {
+      lines.push(`- ${c.symbol} (${c.kind}): resultado realizado US$ ${n(c.realizedUsd)}`);
+      const historia = operaciones(c.trades, c.olderTrades);
+      if (historia) lines.push(`  ${historia}`);
+    }
+    lines.push("");
+  }
 
   const b = body.behaviour;
   lines.push(

@@ -26,6 +26,26 @@ import {
 import { longDate, percent, relativeTime } from "@/lib/format";
 import { daysBetween, toDay, today } from "@/lib/date";
 import type { InsightReport, InsightSignal } from "@/lib/types";
+import type { TradeView } from "@/lib/engine/portfolio";
+import { MAX_TRADES } from "@/lib/insights/digest";
+
+/**
+ * Las compras y ventas de un activo, como viajan al modelo: las mas
+ * recientes, y cuantas quedaron afuera. Con fecha, cantidad y precio en
+ * dolares; sin notas ni la frase original, que son del usuario.
+ */
+function historial(trades: TradeView[]) {
+  const ultimas = trades.slice(-MAX_TRADES);
+  return {
+    trades: ultimas.map((t) => ({
+      date: t.day,
+      side: t.side === "buy" ? ("compra" as const) : ("venta" as const),
+      quantity: t.quantity,
+      priceUsd: t.priceUsd,
+    })),
+    olderTrades: trades.length - ultimas.length || undefined,
+  };
+}
 
 /** Cada recomendacion lleva su etiqueta escrita: el color nunca va solo. */
 const ACTION_STYLE: Record<InsightSignal["action"], { color: string; label: string }> = {
@@ -117,6 +137,19 @@ export default function Insights() {
           heldDays: heldSince[pos.assetId] ? daysBetween(heldSince[pos.assetId], now) : 0,
           account:
             accounts.find((a) => a.id === pos.accounts[0]?.accountId)?.name ?? undefined,
+          quantity: pos.quantity,
+          avgCostUsd: pos.avgCostUsd,
+          priceUsd: pos.priceUsd,
+          realizedUsd: pos.realizedUsd || undefined,
+          ...historial(pos.trades),
+        })),
+        // Lo vendido entero tambien viaja: como se salio de una posicion dice
+        // tanto sobre como invierte alguien como lo que conserva.
+        closed: p.closedPositions.slice(-30).map((c) => ({
+          symbol: c.symbol,
+          kind: c.kind,
+          realizedUsd: c.realizedUsd,
+          ...historial(c.trades),
         })),
         totals: {
           valueUsd: p.totalValueUsd,

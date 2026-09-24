@@ -18,7 +18,7 @@ export const CONSIGNA: Record<ReportKind, string> = {
 
 Despues escribi:
 1. El contexto de mercado que le importa a ESTA cartera.
-2. Una lectura por posicion: que hacer y por que, con el hecho concreto que lo respalda.
+2. Una lectura por posicion: que hacer y por que, con el hecho concreto que lo respalda. Usa su historial de operaciones: a que precios entro, si fue promediando a la baja o persiguiendo la suba, cuanto gana o pierde desde cada compra. "Compraste 30 a US$ 21 y 13 a US$ 24.6; hoy vale 24.7: la ultima compra esta empatada" vale mas que "la posicion gana 9%".
 3. Que revela la operatoria sobre como invierte en la practica, y en que se contradice con el perfil declarado.
 4. Riesgos concretos que esta corriendo ahora.`,
 
@@ -32,7 +32,7 @@ Despues escribi:
 
   conducta: `Este informe NO es sobre el mercado: es sobre como invierte esta persona en la practica. Los datos de abajo salen de su historial real, no de una encuesta.
 
-Mira la frecuencia y el tamano de los aportes, cuantas operaciones hizo, la concentracion, cuanto efectivo deja sin invertir y cuanto tiempo lleva cada posicion. Cruzalo con el perfil y el horizonte que declaro.
+Mira la frecuencia y el tamano de los aportes, cuantas operaciones hizo, la concentracion, cuanto efectivo deja sin invertir y cuanto tiempo lleva cada posicion. Tenes el historial de compras y ventas de cada activo con fecha y precio, y las posiciones que ya cerro: fijate si compra despues de las subas o en las caidas, si promedia a la baja, si vende las ganadoras rapido y aguanta las perdedoras, y a que precio salio de lo que vendio comparado con el de hoy. Cruzalo con el perfil y el horizonte que declaro.
 
 Escribi:
 1. El retrato: como invierte de verdad, en tres o cuatro frases, sin diplomacia.
@@ -59,7 +59,7 @@ Busca todo lo relevante de los ultimos meses sobre ese activo: resultados, guida
 
 Escribi:
 1. Que es y de que depende que suba. En terminos simples.
-2. Que cambio desde que esta persona entro. Tene en cuenta su precio de costo y hace cuanto lo tiene: no es lo mismo estar arriba que estar abajo.
+2. Que cambio desde que esta persona entro. Tenes cada compra y venta con fecha y precio: deci que paso con el activo entre esas fechas y hoy, y cual de sus entradas fue buena y cual no. No es lo mismo estar arriba que estar abajo, ni haber entrado una vez que haber ido comprando.
 3. La tesis hoy: por que tendria sentido seguir, y por que no.
 4. Que tendria que pasar para que la tesis se rompa. Concreto y observable, no "si el mercado cae".
 5. Que haria vos con esta posicion, dado el peso que tiene en esta cartera y el perfil declarado.`,
@@ -70,7 +70,7 @@ Busca el contexto de mercado actual que importe para esa decision.
 
 Escribi:
 1. Las opciones reales, dos o tres, no una lista. Para cada una: a que activo, por que, y que se estaria asumiendo.
-2. Como queda la cartera despues de cada opcion. Si una empeora la concentracion, decilo con el numero.
+2. Como queda la cartera despues de cada opcion. Si una empeora la concentracion, decilo con el numero. Si una es sumar a algo que ya tiene, compara el precio de hoy con su costo promedio y con sus ultimas compras.
 3. Que NO haria con esa plata, y por que.
 4. Si la mejor opcion es esperar o dejarlo en efectivo, decilo. Es una respuesta valida y muchas veces la correcta.
 5. Una recomendacion, no cinco. Con su condicion: "esto tiene sentido si X".`,

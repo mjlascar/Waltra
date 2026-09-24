@@ -547,3 +547,59 @@ describe("comprar dólares no es capital ni ganancia", () => {
     expect(p.metrics.twrCumulative).toBeCloseTo(0, 6);
   });
 });
+
+describe("la historia de cada posición", () => {
+  it("cada compra y venta queda con su fecha y su precio en dólares", () => {
+    const p = correr({
+      transactions: [
+        tx("deposit", "2024-01-01", { amount: 1000 }),
+        tx("buy", "2024-01-02", { amount: 600, assetId: "qqq", quantity: 2, price: 300 }),
+        tx("buy", "2024-02-01", { amount: 330, assetId: "qqq", quantity: 1, price: 330 }),
+        tx("sell", "2024-02-15", { amount: 350, assetId: "qqq", quantity: 1, price: 350 }),
+      ],
+      precios: { qqq: 360 },
+    });
+    const qqq = p.positions.find((x) => x.assetId === "qqq")!;
+    expect(qqq.trades.map((t) => [t.day, t.side, t.quantity, t.priceUsd])).toEqual([
+      ["2024-01-02", "buy", 2, 300],
+      ["2024-02-01", "buy", 1, 330],
+      ["2024-02-15", "sell", 1, 350],
+    ]);
+  });
+
+  it("una compra en pesos se lleva a dólares del dólar de su día", () => {
+    const p = correr({
+      transactions: [
+        tx("deposit", "2024-01-01", { amount: 500_000, currency: "ARS" }),
+        tx("buy", "2024-01-02", { amount: 300_000, currency: "ARS", assetId: "spy", quantity: 1, price: 300_000 }),
+      ],
+      precios: { spy: 300 },
+      fxRates: [{ date: "2024-01-01", arsPerUsd: 1000 }],
+    });
+    expect(p.positions[0].trades[0].priceUsd).toBeCloseTo(300);
+  });
+
+  it("sin dólar, el precio en pesos no se hace pasar por dólares", () => {
+    const p = correr({
+      transactions: [
+        tx("buy", "2024-01-02", { amount: 300_000, currency: "ARS", assetId: "spy", quantity: 1, price: 300_000 }),
+      ],
+    });
+    expect(p.positions[0].trades[0].priceUsd).toBeNull();
+  });
+
+  it("lo que se vendió entero también queda, con lo que dejó", () => {
+    const p = correr({
+      transactions: [
+        tx("deposit", "2024-01-01", { amount: 1000 }),
+        tx("buy", "2024-01-02", { amount: 600, assetId: "qqq", quantity: 2, price: 300 }),
+        tx("sell", "2024-02-15", { amount: 800, assetId: "qqq", quantity: 2, price: 400 }),
+      ],
+      precios: { qqq: 400 },
+    });
+    expect(p.positions).toHaveLength(0);
+    expect(p.closedPositions).toHaveLength(1);
+    expect(p.closedPositions[0]).toMatchObject({ symbol: "QQQ", realizedUsd: 200 });
+    expect(p.closedPositions[0].trades).toHaveLength(2);
+  });
+});

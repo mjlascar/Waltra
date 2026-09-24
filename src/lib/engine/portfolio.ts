@@ -21,6 +21,34 @@ import {
   type TwrPoint,
 } from "./returns";
 
+/**
+ * Una compra o una venta, en dolares del dia en que paso.
+ *
+ * Es la historia que hace falta para analizar una posicion y no solo mirarla:
+ * cuando entro, a que precio, si promedio a la baja o persiguio la suba. Cada
+ * operacion se pasa a dolares con el dolar que se uso en ella, o el del dia,
+ * igual que en el costo: asi el precio de una compra en pesos se puede
+ * comparar con el de hoy.
+ */
+export interface TradeView {
+  day: DayKey;
+  side: "buy" | "sell";
+  quantity: number;
+  /** Precio por unidad en dolares. `null` si era en pesos y no habia dolar. */
+  priceUsd: number | null;
+  amountUsd: number | null;
+}
+
+/** Una posicion que ya se vendio entera: lo que dejo, y como se opero. */
+export interface ClosedPositionView {
+  assetId: string;
+  symbol: string;
+  name: string;
+  kind: Asset["kind"];
+  realizedUsd: number;
+  trades: TradeView[];
+}
+
 export interface PositionView {
   assetId: string;
   symbol: string;
@@ -44,6 +72,8 @@ export interface PositionView {
   dayChangePct?: number;
   accounts: { accountId: string; quantity: number }[];
   priceMissing: boolean;
+  /** Compras y ventas de este activo, de la mas vieja a la mas nueva. */
+  trades: TradeView[];
 }
 
 export interface AccountView {
@@ -89,6 +119,8 @@ export interface Portfolio {
   /** Ganancia simple sobre el capital aportado. */
   simpleReturn: number | null;
   positions: PositionView[];
+  /** Lo que se tuvo y se vendio entero. Sin esto, el analisis solo ve a los que quedaron. */
+  closedPositions: ClosedPositionView[];
   accountViews: AccountView[];
   daily: DailyPoint[];
   contributions: { day: DayKey; value: number }[];
@@ -171,6 +203,7 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
     totalPnlUsd: 0,
     simpleReturn: null,
     positions: [],
+    closedPositions: [],
     accountViews: [],
     daily: [],
     contributions: [],
@@ -225,6 +258,23 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
   const missingPrices: string[] = [];
   let investedUsd = 0;
 
+  // Historia de compras y ventas por activo, en dolares de cada dia.
+  const tradesByAsset: Record<string, TradeView[]> = {};
+  for (const tx of txs) {
+    if ((tx.type !== "buy" && tx.type !== "sell") || !tx.assetId || !tx.quantity) continue;
+    const rate = tx.fxRate && tx.fxRate > 0 ? tx.fxRate : fx.at(toDay(tx.date));
+    // En pesos sin dolar conocido no hay precio en dolares: se dice que no hay
+    // en vez de mandar pesos como si fueran dolares.
+    const amountUsd = tx.currency === "ARS" && !(rate > 0) ? null : toUsd(tx.amount, tx.currency, rate);
+    (tradesByAsset[tx.assetId] ??= []).push({
+      day: toDay(tx.date),
+      side: tx.type,
+      quantity: tx.quantity,
+      priceUsd: amountUsd === null ? null : amountUsd / tx.quantity,
+      amountUsd,
+    });
+  }
+
   for (const [assetId, lot] of Object.entries(state.positions)) {
     if (lot.quantity <= 1e-12) continue;
     const asset = assetsById[assetId];
@@ -262,11 +312,26 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
         .map(([accountId, held]) => ({ accountId, quantity: held[assetId] ?? 0 }))
         .filter((a) => Math.abs(a.quantity) > 1e-12),
       priceMissing,
+      trades: tradesByAsset[assetId] ?? [],
     });
   }
 
   for (const p of positions) p.weight = investedUsd > 0 ? p.valueUsd / investedUsd : 0;
   positions.sort((a, b) => b.valueUsd - a.valueUsd);
+
+  // Lo que se opero y ya no esta: sin esto, cualquier lectura de como invierte
+  // alguien solo ve a los que sobrevivieron.
+  const abiertos = new Set(positions.map((p) => p.assetId));
+  const closedPositions: ClosedPositionView[] = Object.entries(tradesByAsset)
+    .filter(([assetId]) => !abiertos.has(assetId) && assetsById[assetId])
+    .map(([assetId, trades]) => ({
+      assetId,
+      symbol: assetsById[assetId].symbol,
+      name: assetsById[assetId].name,
+      kind: assetsById[assetId].kind,
+      realizedUsd: state.realizedByAsset[assetId] ?? 0,
+      trades,
+    }));
 
   let cashUsd = 0;
   for (const acc of Object.values(state.cash)) {
@@ -362,6 +427,7 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
     simpleReturn:
       state.netContributedUsd > 0 ? totalPnlUsd / state.netContributedUsd : null,
     positions,
+    closedPositions,
     accountViews,
     daily,
     contributions,
