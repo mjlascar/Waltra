@@ -156,6 +156,17 @@ export function applyTransaction(
       state.feesUsd += usd(tx.amount);
       break;
     }
+    case "exchange": {
+      // Salen pesos y entran dolares (o al reves) en la misma cuenta. No toca
+      // el capital: la plata no cruzo el borde del portafolio, cambio de forma.
+      // Cada lado se valua despues al dolar del dia, asi que si se pago mas
+      // caro que ese dolar el patrimonio baja un poco, y esa es la verdad.
+      if (!tx.toCurrency || !tx.toAmount) break;
+      bumpCash(state.cash, tx.accountId, tx.currency, -(tx.amount + fee));
+      bumpCash(state.cash, tx.accountId, tx.toCurrency, tx.toAmount);
+      state.feesUsd += usd(fee);
+      break;
+    }
   }
   void assets;
 }

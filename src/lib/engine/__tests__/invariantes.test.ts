@@ -451,3 +451,99 @@ describe("pesos", () => {
     expect(p.netContributedUsd).toBeCloseTo(0);
   });
 });
+
+describe("comprar dólares no es capital ni ganancia", () => {
+  const fxRates = [{ date: "2024-01-01", arsPerUsd: 1000 }];
+
+  it("al dólar del día, el patrimonio no se mueve", () => {
+    const p = correr({
+      transactions: [
+        tx("deposit", "2024-01-01", { amount: 200_000, currency: "ARS" }),
+        tx("exchange", "2024-01-02", {
+          amount: 100_000,
+          currency: "ARS",
+          toAmount: 100,
+          toCurrency: "USD",
+        }),
+      ],
+      fxRates,
+    });
+    verificarIdentidades(p);
+    expect(p.netContributedUsd).toBeCloseTo(200);
+    expect(p.totalValueUsd).toBeCloseTo(200);
+    expect(p.totalPnlUsd).toBeCloseTo(0);
+  });
+
+  it("los pesos salen y los dólares entran, en la misma cuenta", () => {
+    const p = correr({
+      transactions: [
+        tx("deposit", "2024-01-01", { amount: 200_000, currency: "ARS" }),
+        tx("exchange", "2024-01-02", {
+          amount: 100_000,
+          currency: "ARS",
+          toAmount: 100,
+          toCurrency: "USD",
+        }),
+      ],
+      fxRates,
+    });
+    const cocos = p.accountViews.find((v) => v.accountId === "cocos")!;
+    expect(cocos.cash.ARS).toBeCloseTo(100_000);
+    expect(cocos.cash.USD).toBeCloseTo(100);
+  });
+
+  it("pagarlo más caro que el dólar del día se ve como lo que es", () => {
+    // 105.000 pesos por 100 dólares con el dólar a 1.000: se pagaron 5 de más.
+    const p = correr({
+      transactions: [
+        tx("deposit", "2024-01-01", { amount: 200_000, currency: "ARS" }),
+        tx("exchange", "2024-01-02", {
+          amount: 105_000,
+          currency: "ARS",
+          toAmount: 100,
+          toCurrency: "USD",
+        }),
+      ],
+      fxRates,
+    });
+    verificarIdentidades(p);
+    expect(p.netContributedUsd).toBeCloseTo(200);
+    expect(p.totalPnlUsd).toBeCloseTo(-5);
+  });
+
+  it("vender dólares es el mismo movimiento al revés", () => {
+    const p = correr({
+      transactions: [
+        tx("deposit", "2024-01-01", { amount: 100 }),
+        tx("exchange", "2024-01-02", {
+          amount: 100,
+          currency: "USD",
+          toAmount: 100_000,
+          toCurrency: "ARS",
+        }),
+      ],
+      fxRates,
+    });
+    verificarIdentidades(p);
+    expect(p.totalPnlUsd).toBeCloseTo(0);
+    const cocos = p.accountViews.find((v) => v.accountId === "cocos")!;
+    expect(cocos.cash.USD ?? 0).toBeCloseTo(0);
+    expect(cocos.cash.ARS).toBeCloseTo(100_000);
+  });
+
+  it("no mueve el rendimiento", () => {
+    const p = correr({
+      transactions: [
+        tx("deposit", "2024-01-01", { amount: 200_000, currency: "ARS" }),
+        tx("exchange", "2024-01-02", {
+          amount: 100_000,
+          currency: "ARS",
+          toAmount: 100,
+          toCurrency: "USD",
+        }),
+      ],
+      fxRates,
+    });
+    expect(p.metrics.twrCumulative).toBeCloseTo(0, 6);
+  });
+});

@@ -79,6 +79,23 @@ activo de más. Pero describe algo que no pudo pasar, así que la app lo dice
 —al cargar el movimiento, en el inicio y en el detalle de cuenta— en vez de
 taparlo. Casi siempre significa que falta cargar el ingreso que lo financió.
 
+**Una acción de EE.UU. operada en pesos es su CEDEAR** (`src/lib/cedear.ts`).
+Un CEDEAR es una fracción de la acción —el de SPY es 20 a 1—, así que confundir
+los dos es un error de unidades y no de cotización: 9 CEDEARs de SPY son unos
+US$ 300 y 9 acciones, unos US$ 6.000. Pasó con la primera compra real cargada
+en la app. Con pesos no se compra la acción de Nueva York, así que la regla no
+tiene falso positivo y se aplica sola: el activo se guarda como `SPY.BA`
+(fuente BYMA, en pesos), la pantalla lo dice antes de guardar, y lo que quedó
+mal cargado de antes se ofrece corregir con un toque en el inicio. Todo camino
+que convierta un símbolo en activo pasa por `resolveTradeAsset`; si agregás
+uno nuevo y no pasa por ahí, el bug vuelve.
+
+**Comprar dólares es un cambio de moneda, no capital** (`type: "exchange"`).
+Salen `amount` en `currency` y entran `toAmount` en `toCurrency`, en la misma
+cuenta. No mueve el capital aportado ni el rendimiento. Cada lado se valúa al
+dólar del día, así que si se pagó más caro que ese dólar la diferencia aparece
+como una pérdida chica, que es lo que fue; está fijado en los invariantes.
+
 **Nunca inventar un número.** Sin cotización, una posición se valúa al costo y
 la app lo dice (`missingPrices`). Sin dólar MEP, los montos en pesos quedan
 sin convertir y la app lo dice (`fxMissing`); el fallback de la tabla de
@@ -165,11 +182,17 @@ números distintos a diez píxeles se lee como un error.
 
 ## Al tocar el parser
 
-Probá contra frases reales antes de dar algo por bueno. Los tres bugs que
+Probá contra frases reales antes de dar algo por bueno. Los bugs que
 aparecieron así están fijados en `quick-add.test.ts`: la marca de moneda al
 final de la frase no convierte unidades en plata, las palabras que cuentan
-unidades ("3 acciones de AAPL") y los sustantivos que funcionan como verbo
-("ingreso 250").
+unidades ("3 acciones de AAPL"), los sustantivos que funcionan como verbo
+("ingreso 250"), y **"por" / "pagando" / "pagué"**, que introducen el total y
+no el precio: "compré 9 SPY por 456.345 pesos" se leía como 9 × 456.345. "A"
+sigue siendo el precio de cada una.
+
+"Compré 100 dólares a 1450", sin un activo en la frase, es un cambio de
+moneda y no una compra a la que le falta el activo. USDT y USDC no entran:
+son cripto.
 
 ## Al tocar la importación de Binance
 

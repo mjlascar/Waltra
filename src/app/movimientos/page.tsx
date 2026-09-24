@@ -182,8 +182,13 @@ export default function Movimientos() {
                 // La fecha va primero y sin año: el encabezado del mes ya lo
                 // dice, y asi lo que se corta al final es el detalle de precio,
                 // que ademas se deduce del monto de la derecha.
+                // En un cambio, a la derecha va lo que entro y abajo lo que se
+                // dio a cambio y a que dolar: es como lo cuenta el comprobante.
+                const esCambio = tx.type === "exchange" && tx.toAmount !== undefined;
                 const detailParts = [
                   shortDate(tx.date, false),
+                  esCambio ? `por ${money(tx.amount, tx.currency, { compact: true })}` : null,
+                  esCambio && tx.fxRate ? `a ${plainNumber(tx.fxRate, 0)}` : null,
                   asset ? shortAccount(tx.accountId) : null,
                   // El simbolo de moneda del precio unitario se omite: es el
                   // mismo del monto que esta a la derecha, y aca cada caracter
@@ -212,13 +217,16 @@ export default function Movimientos() {
                       <div className="truncate text-[13px]">
                         {tx.type === "transfer"
                           ? `${shortAccount(tx.accountId)} → ${shortAccount(tx.counterAccountId)}`
-                          : (asset?.symbol ?? accountOf(tx.accountId))}
+                          : esCambio
+                            ? `${tx.toCurrency === "USD" ? "Compra" : "Venta"} de dólares · ${shortAccount(tx.accountId)}`
+                            : (asset?.symbol ?? accountOf(tx.accountId))}
                       </div>
                       <div className="label mt-0.5 truncate">{detailParts.join(" · ")}</div>
                     </div>
                     <span className="num shrink-0 text-[13px]">
-                      {outflow ? "−" : ""}
-                      {money(tx.amount, tx.currency, { compact: true })}
+                      {esCambio
+                        ? money(tx.toAmount!, tx.toCurrency ?? "USD", { compact: true })
+                        : `${outflow ? "−" : ""}${money(tx.amount, tx.currency, { compact: true })}`}
                     </span>
                   </button>
                 );
@@ -300,7 +308,10 @@ export default function Movimientos() {
                 assetOf(detail) ? ["Activo", `${assetOf(detail)!.symbol} — ${assetOf(detail)!.name}`] : null,
                 detail.quantity ? ["Cantidad", fmtQty(detail.quantity, 8)] : null,
                 detail.price ? ["Precio unitario", money(detail.price, detail.currency)] : null,
-                ["Monto", money(detail.amount, detail.currency)],
+                [detail.type === "exchange" ? "Entregado" : "Monto", money(detail.amount, detail.currency)],
+                detail.type === "exchange" && detail.toAmount !== undefined
+                  ? ["Recibido", money(detail.toAmount, detail.toCurrency ?? "USD")]
+                  : null,
                 detail.fee ? ["Comisión", money(detail.fee, detail.currency)] : null,
                 detail.fxRate ? ["Dólar usado", `$ ${detail.fxRate}`] : null,
                 detail.note ? ["Nota", detail.note] : null,
@@ -318,6 +329,13 @@ export default function Movimientos() {
           {(detail.type === "deposit" || detail.type === "withdraw") && (
             <p className="label mt-3 leading-snug">
               Esto cuenta como capital: entra en «capital aportado» y no como ganancia.
+            </p>
+          )}
+          {detail.type === "exchange" && (
+            <p className="label mt-3 leading-snug">
+              Cambiar pesos por dólares no es capital ni ganancia: es la misma plata en
+              otra moneda. Si lo pagaste más caro que el dólar del día, la diferencia
+              aparece como una pérdida chica, que es lo que fue.
             </p>
           )}
           {detail.type === "transfer" && (

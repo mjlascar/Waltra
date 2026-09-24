@@ -21,6 +21,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { EmptyStart } from "@/components/EmptyStart";
 import { MetricsExplainer } from "@/components/MetricsExplainer";
 import { AccountSheet } from "@/components/AccountSheet";
+import { convertToCedear, misloadedCedears } from "@/lib/cedear";
+import { IconWarning } from "@/components/icons";
 
 const RANGES: { value: RangeKey; label: string }[] = [
   { value: "7D", label: "7D" },
@@ -50,7 +52,8 @@ const RANGE_LABEL: Record<RangeKey, string> = {
 type ChartMode = "valor" | "rendimiento";
 
 export default function Overview() {
-  const { portfolio: p, transactions, accounts, assets, settings, sync, ready } = useStore();
+  const { portfolio: p, transactions, accounts, assets, settings, sync, ready, refresh } = useStore();
+  const [arreglando, setArreglando] = useState<string | null>(null);
   // Un mes por defecto y no todo el historial: al abrir la app lo que se
   // quiere saber es como viene esto, no como viene desde el principio. El
   // historico sigue a un toque.
@@ -199,6 +202,26 @@ export default function Overview() {
    */
   const enDescubierto = p.accountViews.filter((a) => a.cashUsd < -0.01);
 
+  /**
+   * Acciones de EE.UU. compradas en pesos: son CEDEARs cargados antes de que
+   * existiera la regla, y cada una infla la cartera al valor de la accion
+   * entera. No hay falso positivo posible —con pesos no se compra la accion de
+   * Nueva York— asi que se ofrece el arreglo en vez de solo avisar.
+   */
+  const malCargados = misloadedCedears(assets, transactions);
+
+  async function corregir(assetId: string) {
+    const asset = assets.find((a) => a.id === assetId);
+    if (!db || !asset || arreglando) return;
+    setArreglando(assetId);
+    try {
+      await convertToCedear(db, asset, assets);
+      await refresh({ force: true });
+    } finally {
+      setArreglando(null);
+    }
+  }
+
   const activas = p.accountViews.filter(
     (a) => a.valueUsd > 0.01 || a.netContributedUsd !== 0,
   ).length;
@@ -233,6 +256,29 @@ export default function Overview() {
           contados en los totales. Tocá actualizar cuando tengas señal.
         </Notice>
       )}
+      {malCargados.map((asset) => (
+        <div
+          key={asset.id}
+          className="mb-3 p-2.5"
+          style={{ border: "1px solid var(--color-warn)", background: "var(--color-surface)" }}
+        >
+          <div className="flex items-start gap-2" style={{ color: "var(--color-warn)" }}>
+            <IconWarning size={14} className="mt-0.5 shrink-0" />
+            <p className="text-[12px] leading-snug">
+              <strong>{asset.symbol}</strong> está cargado como la acción de EE.UU., pero lo
+              compraste en pesos: es un CEDEAR. Cada CEDEAR es una fracción de la acción,
+              así que la cartera lo está valuando de más.
+            </p>
+          </div>
+          <button
+            className="btn btn-sm mt-2 w-full"
+            disabled={arreglando !== null}
+            onClick={() => void corregir(asset.id)}
+          >
+            {arreglando === asset.id ? "Corrigiendo…" : `Corregir: pasar a CEDEAR (${asset.symbol}.BA)`}
+          </button>
+        </div>
+      ))}
       {enDescubierto.length > 0 && (
         <Notice>
           {enDescubierto.length === 1 ? "La cuenta " : "Las cuentas "}
@@ -431,11 +477,15 @@ export default function Overview() {
                 <div key={tx.id} className="flex items-center gap-3 p-3">
                   <span className="chip shrink-0">{TX_SHORT[tx.type]}</span>
                   <span className="min-w-0 flex-1 truncate text-[13px]">
-                    {asset?.symbol ?? accounts.find((a) => a.id === tx.accountId)?.name ?? "—"}
+                    {tx.type === "exchange"
+                      ? `${tx.toCurrency === "USD" ? "Compra" : "Venta"} de dólares`
+                      : (asset?.symbol ?? accounts.find((a) => a.id === tx.accountId)?.name ?? "—")}
                   </span>
                   <span className="label shrink-0">{shortDate(tx.date)}</span>
                   <span className="num shrink-0 text-[13px]">
-                    {money(tx.amount, tx.currency, { compact: true })}
+                    {tx.type === "exchange" && tx.toAmount !== undefined
+                      ? money(tx.toAmount, tx.toCurrency ?? "USD", { compact: true })
+                      : money(tx.amount, tx.currency, { compact: true })}
                   </span>
                 </div>
               );

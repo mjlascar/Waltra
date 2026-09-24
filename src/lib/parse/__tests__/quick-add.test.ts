@@ -231,3 +231,98 @@ describe("casos que aparecieron probando con frases reales", () => {
     expect(p("metí 500 en binance ayer").day).toBe("2025-06-14");
   });
 });
+
+/**
+ * El cuarto bug salido de una frase real: "compré 9 SPY por 456.345 pesos".
+ * Sin marca de precio, la regla de "el segundo número es el precio unitario"
+ * leía el total como precio y registraba 9 × 456.345 = 4,1 millones. "Por",
+ * "pagando" y "pagué" introducen lo que salió del bolsillo; "a" introduce el
+ * precio de cada una.
+ */
+describe("total pagado y unidades", () => {
+  it("«por» después de las unidades es el total, no el precio", () => {
+    const r = p("compré 9 SPY por 456345 pesos en cocos");
+    expect(r.basis).toBe("total");
+    expect(r.quantity).toBe(9);
+    expect(r.amount).toBeCloseTo(456_345);
+    expect(r.price).toBeCloseTo(50_705);
+    expect(r.currency).toBe("ARS");
+  });
+
+  it("«pagando» y «pagué» también", () => {
+    for (const frase of [
+      "compré 9 cedears de SPY pagando 456.345 pesos",
+      "compré 9 SPY, pagué 456345 pesos",
+    ]) {
+      const r = p(frase);
+      expect(r.quantity).toBe(9);
+      expect(r.price).toBeCloseTo(50_705);
+    }
+  });
+
+  it("«a» sigue siendo el precio de cada una", () => {
+    const r = p("compré 9 SPY a 50705 pesos");
+    expect(r.basis).toBe("quantity");
+    expect(r.amount).toBeCloseTo(456_345);
+  });
+
+  it("sin unidades, «por» es el monto invertido", () => {
+    const r = p("compré por 50 dólares de QQQ");
+    expect(r.amount).toBe(50);
+    expect(r.basis).toBe("amount");
+  });
+
+  it("la comisión se separa del total, para el lado que corresponde", () => {
+    // Lo cobrado ya viene sin la comisión: el bruto de la venta es mayor.
+    const venta = p("vendí 2 QQQ por 1000 usd con comisión de 5");
+    expect(venta.amount).toBeCloseTo(1005);
+    expect(venta.price).toBeCloseTo(502.5);
+    // Lo pagado ya la incluye: el bruto de la compra es menor.
+    const compra = p("compré 2 QQQ por 1000 usd con comisión de 5");
+    expect(compra.amount).toBeCloseTo(995);
+    expect(compra.total).toBe(1000);
+  });
+});
+
+describe("comprar dólares", () => {
+  it("«compré 100 dólares a 1450» es un cambio de pesos a dólares", () => {
+    const r = p("compré 100 dólares a 1450 en cocos");
+    expect(r.type).toBe("exchange");
+    expect(r.currency).toBe("ARS");
+    expect(r.amount).toBeCloseTo(145_000);
+    expect(r.toCurrency).toBe("USD");
+    expect(r.toAmount).toBeCloseTo(100);
+    expect(r.rate).toBeCloseTo(1450);
+  });
+
+  it("con dos de los tres números deduce el tercero", () => {
+    expect(p("compré dólares por 145000 pesos a 1450").toAmount).toBeCloseTo(100);
+    expect(p("compré 100 dólares por 145000 pesos").rate).toBeCloseTo(1450);
+  });
+
+  it("vender dólares es el cambio al revés", () => {
+    const r = p("vendí 100 dólares a 1400");
+    expect(r.type).toBe("exchange");
+    expect(r.currency).toBe("USD");
+    expect(r.amount).toBeCloseTo(100);
+    expect(r.toCurrency).toBe("ARS");
+    expect(r.toAmount).toBeCloseTo(140_000);
+  });
+
+  it("si falta el dólar, lo pide en vez de inventarlo", () => {
+    const r = p("compré 100 dólares");
+    expect(r.type).toBe("exchange");
+    expect(r.amount).toBeUndefined();
+    expect(r.warnings.join(" ")).toMatch(/dólar/);
+  });
+
+  it("con un activo en la frase sigue siendo una compra", () => {
+    const r = p("compré 50 dólares de QQQ");
+    expect(r.type).toBe("buy");
+    expect(r.symbol).toBe("QQQ");
+  });
+
+  it("un ingreso en dólares no es un cambio", () => {
+    expect(p("ingresé 500 dólares a cocos").type).toBe("deposit");
+  });
+});

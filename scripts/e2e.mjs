@@ -120,7 +120,7 @@ await page.waitForTimeout(400);
 check("pregunta primero qué hiciste", await has("¿Qué hiciste?"));
 check("ofrece los cuatro movimientos frecuentes", await has("Ingresé dinero"));
 check("los menos frecuentes no compiten", await has("Menos frecuentes"));
-await page.getByRole("button", { name: /^Compré/ }).click();
+await page.getByRole("button", { name: /^Compré Acciones/ }).click();
 await page.waitForTimeout(500);
 check("pasa al paso de datos", await has("Activo"));
 check("ofrece lo que ya tenés en cartera", (await page.getByRole("button", { name: /^QQQ$/ }).count()) > 0);
@@ -152,6 +152,102 @@ check(
 await page.locator('input[placeholder*="QQQ"]').first().fill("compré 20 dólares de QQQ en cocos");
 await page.waitForTimeout(900);
 check("no avisa cuando el efectivo alcanza", !/falta cargar el ingreso/i.test(await text()));
+await cerrarHoja();
+
+console.log("\n2f. En pesos, una acción de EE.UU. es su CEDEAR");
+// El bug real: 9 CEDEARs de SPY comprados en pesos quedaron como 9 acciones
+// de US$ 660 y la cartera salto US$ 6.000.
+await goto("/");
+await abrirEscritura();
+await page.locator('input[placeholder*="QQQ"]').first().fill("compré 9 SPY a 50705 pesos en cocos");
+await page.waitForTimeout(1000);
+check("avisa que va como CEDEAR", await has("se carga como su CEDEAR (SPY.BA)"), (await text()).slice(0, 400));
+await page.getByRole("button", { name: /^Agregar$/ }).click();
+await page.waitForTimeout(2500);
+await goto("/cartera");
+check("la compra en pesos queda en el CEDEAR", await has("SPY.BA"));
+
+// Y lo que ya estaba mal cargado antes de la regla: un backup con una accion
+// de EE.UU. comprada en pesos, como el que quedo en el telefono.
+const roto = {
+  app: "waltra",
+  version: 1,
+  exportedAt: "2026-09-24T00:00:00.000Z",
+  accounts: [],
+  assets: [
+    { id: "aapl-roto", symbol: "AAPL", name: "Apple", kind: "stock", currency: "USD", source: "yahoo", sourceSymbol: "AAPL", precision: 6 },
+  ],
+  transactions: [
+    {
+      id: "aapl-roto-compra",
+      date: "2026-09-01",
+      type: "buy",
+      accountId: "cocos",
+      assetId: "aapl-roto",
+      quantity: 10,
+      price: 20000,
+      amount: 200000,
+      currency: "ARS",
+      createdAt: "2026-09-01T12:00:00.000Z",
+      updatedAt: "2026-09-01T12:00:00.000Z",
+    },
+  ],
+};
+await goto("/ajustes/datos");
+await page.locator('input[type="file"][accept*="json"]').setInputFiles({
+  name: "backup-roto.json",
+  mimeType: "application/json",
+  buffer: Buffer.from(JSON.stringify(roto), "utf8"),
+});
+await page.waitForTimeout(1500);
+await goto("/");
+await page.waitForTimeout(800);
+check("detecta la acción comprada en pesos", await has("AAPL está cargado como la acción de EE.UU."), (await text()).slice(0, 500));
+await page.getByRole("button", { name: /Corregir: pasar a CEDEAR/ }).click();
+await page.waitForTimeout(2500);
+check("el aviso se va después de corregir", !(await has("AAPL está cargado como la acción de EE.UU.")));
+await goto("/cartera");
+check("queda como CEDEAR en la cartera", await has("AAPL.BA"));
+
+console.log("\n2g. Cargar con el total del comprobante y las unidades");
+await goto("/");
+await page.getByRole("button", { name: /agregar movimiento/i }).click();
+await page.waitForTimeout(400);
+await page.getByRole("button", { name: /^Compré Acciones/ }).click();
+await page.waitForTimeout(400);
+await page.getByRole("button", { name: /^QQQ$/ }).first().click();
+await page.waitForTimeout(200);
+await page.getByRole("button", { name: /^Total y unid\.$/ }).click();
+await page.waitForTimeout(200);
+await page.locator('input[placeholder="456.345"]').fill("1000");
+await page.locator('input[placeholder="9"]').fill("2");
+await page.waitForTimeout(400);
+check("deduce el precio por unidad", await has("Precio por unidad: US$ 500,00"), (await text()).slice(0, 500));
+await cerrarHoja();
+
+console.log("\n2h. Comprar dólares en la cuenta");
+await goto("/");
+await page.getByRole("button", { name: /agregar movimiento/i }).click();
+await page.waitForTimeout(400);
+await page.getByRole("button", { name: /Compré o vendí dólares/ }).click();
+await page.waitForTimeout(400);
+await page.locator('input[placeholder="145.000"]').fill("145000");
+await page.locator('input[placeholder="100"]').first().fill("100");
+await page.waitForTimeout(400);
+check("muestra el dólar que resulta", await has("Dólar a $ 1.450"), (await text()).slice(0, 500));
+check("aclara que no es capital", await has("No es capital ni ganancia"));
+await page.getByRole("button", { name: /^Agregar$/ }).click();
+await page.waitForTimeout(2000);
+await goto("/movimientos");
+check("queda como compra de dólares", await has("Compra de dólares"));
+check("a la derecha lo que entró", await has("US$ 100"));
+
+// Y escrito en una línea, como se diría.
+await goto("/");
+await abrirEscritura();
+await page.locator('input[placeholder*="QQQ"]').first().fill("compré 50 dólares a 1400 en cocos");
+await page.waitForTimeout(900);
+check("la frase suelta también lo entiende", await has("Cambio de moneda"), (await text()).slice(0, 400));
 await cerrarHoja();
 
 console.log("\n3. La posición nueva llega a la cartera");

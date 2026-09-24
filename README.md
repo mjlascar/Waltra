@@ -25,6 +25,12 @@ cartel amarillo. Con precios reales ese aviso no aparece.</sub>
 - **Cargás como si escribieras una nota.** `pasé 100 dólares a cocos`,
   `compré 50 de QQQ a 480`, `vendí 2 QQQ a 520 ayer`, `retiré 200 de binance`.
   La app muestra lo que entendió antes de guardar, y se corrige de un toque.
+- **CEDEARs y dólares como en Cocos.** Una acción de EE.UU. comprada en pesos
+  se guarda como su CEDEAR (`SPY.BA`), que es lo que realmente compraste: una
+  fracción de la acción, cotizando en BYMA. Comprar o vender dólares MEP es un
+  movimiento propio, que cambia la moneda del efectivo sin contar como capital
+  ni como ganancia. Y una compra se puede cargar como la dice el comprobante:
+  el total pagado y las unidades; el precio lo calcula la app.
 - **Traés tu historia de una.** Si ya venías anotando en un bloc de notas,
   pegás el archivo entero: la app lee línea por línea, te muestra lo que
   entendió, marca lo que no cierra y carga todo junto. La cuenta se arrastra

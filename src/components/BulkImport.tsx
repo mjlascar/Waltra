@@ -6,7 +6,8 @@ import { Field } from "@/components/ui/Field";
 import { IconWarning } from "@/components/icons";
 import { newId, useStore } from "@/lib/store";
 import { parseBulk, summarize, type BulkRow } from "@/lib/parse/bulk";
-import { assetFromSymbol, findAssetBySymbol, lastUsedAccountId } from "@/lib/assets";
+import { lastUsedAccountId } from "@/lib/assets";
+import { resolveTradeAsset } from "@/lib/cedear";
 import { money, quantity as fmtQty, shortDate, TX_SHORT } from "@/lib/format";
 import { txColor } from "@/lib/tx-style";
 import { today } from "@/lib/date";
@@ -68,7 +69,6 @@ export function BulkImport({ open, onClose }: { open: boolean; onClose: () => vo
     try {
       const nuevos: Asset[] = [];
       const porSimbolo = new Map<string, string>();
-      for (const asset of assets) porSimbolo.set(asset.symbol.toUpperCase(), asset.id);
 
       const txs: Transaction[] = [];
       const now = new Date().toISOString();
@@ -81,20 +81,20 @@ export function BulkImport({ open, onClose }: { open: boolean; onClose: () => vo
 
         let assetId: string | undefined;
         if (entry.symbol) {
-          const key = entry.symbol.toUpperCase();
+          // La moneda es parte de la clave: "SPY" en pesos es el CEDEAR y en
+          // dolares la accion, y las dos pueden aparecer en el mismo pegado.
+          const key = `${entry.symbol.toUpperCase()}|${entry.currency}`;
           assetId = porSimbolo.get(key);
           if (!assetId) {
-            const existente = findAssetBySymbol(assets, key);
-            if (existente) {
-              assetId = existente.id;
-            } else {
-              const asset = assetFromSymbol(key, newId(), {
-                catalog: entry.catalog,
-                currency: entry.currency,
-              });
-              nuevos.push(asset);
-              assetId = asset.id;
-            }
+            const { asset, nuevo } = resolveTradeAsset(
+              [...assets, ...nuevos],
+              entry.symbol,
+              entry.currency,
+              newId,
+              { catalog: entry.catalog },
+            );
+            if (nuevo) nuevos.push(asset);
+            assetId = asset.id;
             porSimbolo.set(key, assetId);
           }
         }
@@ -117,6 +117,10 @@ export function BulkImport({ open, onClose }: { open: boolean; onClose: () => vo
           amount,
           currency: entry.currency,
           fee: entry.fee,
+          // Un cambio de moneda guarda lo que entro y el dolar al que se hizo.
+          toAmount: entry.type === "exchange" ? entry.toAmount : undefined,
+          toCurrency: entry.type === "exchange" ? entry.toCurrency : undefined,
+          fxRate: entry.type === "exchange" ? entry.rate : undefined,
           raw: entry.raw,
           // El orden de carga define el desempate cuando dos movimientos caen
           // el mismo dia: respetamos el orden del archivo.

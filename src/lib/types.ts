@@ -67,7 +67,15 @@ export type TxType =
   /** Comision o impuesto suelto. */
   | "fee"
   /** Movimiento entre dos cuentas propias. No es capital nuevo. */
-  | "transfer";
+  | "transfer"
+  /**
+   * Cambio de moneda dentro de la misma cuenta: comprar o vender dolares en
+   * Cocos. Salen `amount` en `currency` y entran `toAmount` en `toCurrency`.
+   * No es capital (la plata no entra ni sale del portafolio) ni ganancia: si
+   * se compro por encima del dolar del dia, la diferencia aparece sola como
+   * una perdida chica, que es lo que fue.
+   */
+  | "exchange";
 
 export interface Transaction {
   id: string;
@@ -90,6 +98,9 @@ export interface Transaction {
   fee?: number;
   /** ARS por USD en el momento de la operacion. Solo si currency === "ARS". */
   fxRate?: number;
+  /** Lo que entra en un cambio de moneda, solo para type === "exchange". */
+  toAmount?: number;
+  toCurrency?: Currency;
   note?: string;
   /** Texto original si vino del parser rapido. */
   raw?: string;

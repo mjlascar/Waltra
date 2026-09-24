@@ -35,11 +35,19 @@ export interface ParsedEntry {
   currency: Currency;
   fee?: number;
   /**
-   * Como interpretamos el numero principal: "amount" = el usuario dijo cuanta
-   * plata puso; "quantity" = dijo cuantas unidades compro. La UI muestra un
+   * Como interpretamos los numeros: "amount" = el usuario dijo cuanta plata
+   * puso; "quantity" = dijo cuantas unidades compro; "total" = dijo el total
+   * del comprobante y las unidades, y el precio se deduce. La UI muestra un
    * interruptor para dar vuelta la lectura sin reescribir la frase.
    */
-  basis: "amount" | "quantity";
+  basis: "amount" | "quantity" | "total";
+  /** Lo que se pago o cobro en total, comision incluida, si la frase lo dijo. */
+  total?: number;
+  /** En un cambio de moneda, lo que entra. `amount` y `currency` es lo que sale. */
+  toAmount?: number;
+  toCurrency?: Currency;
+  /** Pesos por dolar de un cambio, si la frase lo dijo o se puede deducir. */
+  rate?: number;
   note?: string;
   confidence: number;
   warnings: string[];
@@ -253,12 +261,40 @@ export function parseQuickEntry(raw: string, ctx: ParseContext): ParsedEntry | n
     if (price !== undefined) confidence += 0.1;
   }
 
+  // --- Total pagado --------------------------------------------------------
+  // "compré 9 SPY por 456.345 pesos": el numero despues de "por", "pagando" o
+  // "pagué" es lo que salio del bolsillo, no el precio unitario. Leido como
+  // precio —que es lo que hacia la regla de "el segundo numero es el precio"—
+  // se multiplicaba: 9 × 456.345 daba una compra de 4,1 millones.
+  let total: number | undefined;
+  const totalHit = work.match(
+    /(?:\bpor\s+(?:un\s+total\s+de\s+)?|\bpagando\s+|\bpague\s+|\ben\s+total\s+|\btotal\s+(?:de\s+)?)(?:\$\s*|usd\s*|u\$s\s*|ars\s*)?(\d[\d.,]*)/,
+  );
+  if (totalHit) {
+    total = parseLooseNumber(totalHit[1]) ?? undefined;
+    if (total !== undefined) {
+      work = cut(work, totalHit[0]);
+      confidence += 0.1;
+    }
+  }
+
   // --- Activo --------------------------------------------------------------
   const needsAsset = type === "buy" || type === "sell" || type === "dividend";
   // "vendí todo el SPY": la cantidad la completa la app con la tenencia real.
   const sellAll = type === "sell" && /\b(todo|toda|todos|todas)\b/.test(work);
   const symbolHit = findSymbol(work, input, ctx.assets);
-  if (symbolHit) {
+  // "compré 100 dólares a 1450": lo que se compra es la moneda. Sin un activo
+  // en la frase y con dolares nombrados, es un cambio de pesos a dolares
+  // dentro de la cuenta y no una compra a la que le falta el activo. USDT y
+  // USDC no entran: son cripto, y comprarlos en Binance es otra cosa.
+  const esCambio =
+    (type === "buy" || type === "sell") && !symbolHit && Boolean(usdHit) && !sellAll;
+  // El sentido del cambio sale del verbo, que se pisa con "exchange" abajo.
+  const verbWasBuy = type === "buy";
+  if (esCambio) {
+    type = "exchange";
+    confidence += 0.15;
+  } else if (symbolHit) {
     work = cut(work, symbolHit.match);
     if (needsAsset) confidence += 0.15;
   } else if (needsAsset) {
@@ -286,7 +322,7 @@ export function parseQuickEntry(raw: string, ctx: ParseContext): ParsedEntry | n
       warnings.push("Interpreté el segundo número como precio unitario.");
     }
   }
-  if (main === undefined) {
+  if (main === undefined && total === undefined) {
     if (!sellAll) {
       warnings.push("No encontré ningún monto.");
       confidence -= 0.2;
@@ -298,12 +334,55 @@ export function parseQuickEntry(raw: string, ctx: ParseContext): ParsedEntry | n
   // --- Monto vs cantidad ---------------------------------------------------
   // "compre 50 de QQQ" son 50 dolares; "compre 2 QQQ" son 2 unidades. La
   // diferencia esta en si hay un "de" entre el numero y el simbolo.
-  let basis: "amount" | "quantity" = "amount";
+  let basis: "amount" | "quantity" | "total" = "amount";
   let quantity: number | undefined;
   let amount: number | undefined;
   const isTrade = type === "buy" || type === "sell";
 
-  if (isTrade && main !== undefined) {
+  let toAmount: number | undefined;
+  let toCurrency: Currency | undefined;
+  let rate: number | undefined;
+
+  if (esCambio) {
+    // Los numeros de un cambio: los dolares (el numero que queda), el dolar
+    // al que se pago ("a 1450") y los pesos ("por 145.000 pesos"). Con dos de
+    // los tres, el tercero sale de la cuenta.
+    let dolares = main;
+    let pesos = total;
+    rate = price;
+    if (dolares === undefined && pesos !== undefined && rate) dolares = pesos / rate;
+    if (pesos === undefined && dolares !== undefined && rate) pesos = dolares * rate;
+    if (rate === undefined && pesos !== undefined && dolares) rate = pesos / dolares;
+    price = undefined;
+    if (verbWasBuy) {
+      currency = "ARS";
+      amount = pesos;
+      toCurrency = "USD";
+      toAmount = dolares;
+    } else {
+      currency = "USD";
+      amount = dolares;
+      toCurrency = "ARS";
+      toAmount = pesos;
+    }
+    if (amount === undefined || toAmount === undefined) {
+      warnings.push("Falta el dólar al que lo pagaste o cuántos pesos fueron.");
+    }
+  } else if (isTrade && total !== undefined) {
+    if (main !== undefined) {
+      // Unidades y total: el precio sale de la division. La comision, si la
+      // frase la dijo, ya esta adentro del total del comprobante; el
+      // movimiento guarda el bruto y la comision aparte.
+      basis = "total";
+      quantity = main;
+      amount = type === "sell" ? total + (fee ?? 0) : total - (fee ?? 0);
+      price = quantity > 0 ? amount / quantity : undefined;
+    } else {
+      // "compré por 50 dólares de QQQ": no hay unidades, el total es el monto.
+      amount = total;
+      quantity = price !== undefined && price > 0 ? total / price : undefined;
+    }
+  } else if (isTrade && main !== undefined) {
     const norm = ` ${strip(input)} `;
     const num = esc(numbers[0]?.text ?? "");
     const sym = symbolHit ? esc(symbolHit.match) : null;
@@ -342,6 +421,8 @@ export function parseQuickEntry(raw: string, ctx: ParseContext): ParsedEntry | n
   } else if (main !== undefined) {
     // Dividendos, intereses, comisiones, depositos: el numero siempre es plata.
     amount = main;
+  } else if (total !== undefined) {
+    amount = total;
   }
 
   const note = undefined;
@@ -364,6 +445,10 @@ export function parseQuickEntry(raw: string, ctx: ParseContext): ParsedEntry | n
     currency,
     fee,
     basis,
+    total,
+    toAmount,
+    toCurrency,
+    rate,
     note,
     confidence: Math.max(0, Math.min(1, confidence)),
     warnings,

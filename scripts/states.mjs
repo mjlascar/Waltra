@@ -104,7 +104,7 @@ await page.keyboard.press("Escape");
 await page.waitForTimeout(400);
 await page.getByRole("button", { name: /agregar movimiento/i }).click();
 await page.waitForTimeout(400);
-await page.getByRole("button", { name: /^Compré/ }).first().click();
+await page.getByRole("button", { name: /^Compré Acciones/ }).first().click();
 await page.waitForTimeout(400);
 await shot("carga-datos", true);
 await page.keyboard.press("Escape");

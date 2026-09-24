@@ -24,6 +24,8 @@ export const TX_COLOR: Record<TxType, string> = {
   fee: "var(--color-neg)",
   // Una transferencia no cambia el patrimonio: no merece color propio.
   transfer: "var(--color-ink-3)",
+  // Cambiar pesos por dolares tampoco: es la misma plata en otra moneda.
+  exchange: "var(--color-ink-3)",
 };
 
 export function txColor(type: TxType): string {

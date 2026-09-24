@@ -9,7 +9,8 @@ import { describeBackendError, parseEntry, searchSymbols } from "@/lib/backend";
 import { parseQuickEntry } from "@/lib/parse/quick-add";
 import { parseLooseNumber } from "@/lib/parse/number";
 import { lookupCatalog, searchCatalog, type CatalogEntry } from "@/lib/catalog";
-import { assetFromSymbol, findAssetBySymbol, lastUsedAccountId } from "@/lib/assets";
+import { lastUsedAccountId } from "@/lib/assets";
+import { cedearSymbol, isUsListing, resolveTradeAsset } from "@/lib/cedear";
 import { longDate, money, quantity as fmtQty, TX_LABEL } from "@/lib/format";
 import { txColor } from "@/lib/tx-style";
 import { today } from "@/lib/date";
@@ -31,6 +32,7 @@ const PRINCIPALES: { value: TxType; label: string; detalle: string }[] = [
 ];
 
 const SECUNDARIOS: { value: TxType; label: string; detalle: string }[] = [
+  { value: "exchange", label: "Compré o vendí dólares", detalle: "MEP, en la misma cuenta" },
   { value: "transfer", label: "Transferencia", detalle: "Entre cuentas propias" },
   { value: "dividend", label: "Dividendo", detalle: "Renta de un activo" },
   { value: "interest", label: "Interés", detalle: "Renta de una cuenta" },
@@ -53,7 +55,17 @@ interface Draft {
   feeText: string;
   fxText: string;
   note: string;
-  basis: "amount" | "quantity";
+  /** Lo que entra en un cambio de moneda: los dolares al comprar, los pesos al vender. */
+  toAmountText: string;
+  /**
+   * Que dos datos cargo el usuario; el tercero se deduce.
+   *
+   * - `amount`: monto y precio -> unidades.
+   * - `quantity`: unidades y precio -> monto.
+   * - `total`: lo que pagaste (o cobraste) y las unidades -> precio. Es lo que
+   *   muestra el comprobante del broker, que casi nunca dice el precio limpio.
+   */
+  basis: "amount" | "quantity" | "total";
 }
 
 function emptyDraft(accountId: string, currency: Currency): Draft {
@@ -70,6 +82,7 @@ function emptyDraft(accountId: string, currency: Currency): Draft {
     currency,
     feeText: "",
     fxText: "",
+    toAmountText: "",
     note: "",
     basis: "amount",
   };
@@ -155,6 +168,7 @@ export function AddTransaction({
         amountText: String(editing.amount),
         currency: editing.currency,
         feeText: editing.fee ? String(editing.fee) : "",
+        toAmountText: editing.toAmount ? String(editing.toAmount) : "",
         fxText: editing.fxRate ? String(editing.fxRate) : "",
         note: editing.note ?? "",
         basis: editing.quantity ? "quantity" : "amount",
@@ -221,9 +235,18 @@ export function AddTransaction({
           : allQuantity !== undefined && holding?.price
             ? String(holding.price)
             : "",
-      amountText: parsed.amount !== undefined ? String(parsed.amount) : "",
+      // Con total y unidades, el campo de monto muestra el total del
+      // comprobante tal como se dijo; el bruto sin comision lo recalcula
+      // `computed`, igual que cuando se carga a mano.
+      amountText:
+        parsed.basis === "total" && parsed.total !== undefined
+          ? String(parsed.total)
+          : parsed.amount !== undefined
+            ? String(parsed.amount)
+            : "",
       currency: parsed.currency,
       feeText: parsed.fee !== undefined ? String(parsed.fee) : "",
+      toAmountText: parsed.toAmount !== undefined ? String(parsed.toAmount) : "",
       basis: allQuantity !== undefined ? "quantity" : parsed.basis,
     }));
     // Sin `portfolio` en las dependencias a proposito: un refresco de precios
@@ -232,10 +255,48 @@ export function AddTransaction({
   }, [text, paso, open, accounts, assets, defaultAccount]);
 
   const needsAsset = draft.type === "buy" || draft.type === "sell" || draft.type === "dividend";
+  const isExchange = draft.type === "exchange";
+
+  /**
+   * Un cambio de moneda: en pesos sale lo que se paga y en dolares entra lo
+   * que se recibe (al reves si se venden). El sentido lo da la moneda de lo
+   * que sale, asi no hay un tercer campo que pueda contradecir a los otros.
+   */
+  const cambio = useMemo(() => {
+    if (!isExchange) return null;
+    const sale = num(draft.amountText);
+    const entra = num(draft.toAmountText);
+    const comprando = draft.currency === "ARS";
+    const pesos = comprando ? sale : entra;
+    const dolares = comprando ? entra : sale;
+    return {
+      comprando,
+      entra,
+      toCurrency: (comprando ? "USD" : "ARS") as Currency,
+      // Pesos por dolar. Es el tipo de cambio que se guarda con el movimiento.
+      rate: pesos !== undefined && dolares ? pesos / dolares : undefined,
+    };
+  }, [isExchange, draft.amountText, draft.toAmountText, draft.currency]);
   const isTrade = draft.type === "buy" || draft.type === "sell";
 
   /** Monto y cantidad se derivan uno del otro segun como lo hayas dicho. */
   const computed = useMemo(() => {
+    if (draft.basis === "total") {
+      // El total del comprobante ya trae la comision adentro. El movimiento
+      // guarda el monto bruto y la comision aparte, asi que se separa: en una
+      // compra lo pagado es bruto + comision, en una venta lo cobrado es
+      // bruto - comision. El costo de la posicion termina siendo el mismo.
+      const total = num(draft.amountText);
+      const qty = num(draft.quantityText);
+      const fee = num(draft.feeText) ?? 0;
+      const amount =
+        total === undefined ? undefined : draft.type === "sell" ? total + fee : total - fee;
+      return {
+        amount,
+        quantity: qty,
+        price: amount !== undefined && qty !== undefined && qty > 0 ? amount / qty : undefined,
+      };
+    }
     const price = num(draft.priceText);
     if (draft.basis === "quantity") {
       const qty = num(draft.quantityText);
@@ -247,7 +308,7 @@ export function AddTransaction({
       price,
       quantity: amount !== undefined && price !== undefined && price > 0 ? amount / price : num(draft.quantityText),
     };
-  }, [draft.basis, draft.quantityText, draft.priceText, draft.amountText]);
+  }, [draft.basis, draft.type, draft.quantityText, draft.priceText, draft.amountText, draft.feeText]);
 
   const suggestions = useMemo(() => {
     if (!needsAsset || draft.assetId || draft.symbol.length < 1) return [];
@@ -255,6 +316,21 @@ export function AddTransaction({
   }, [needsAsset, draft.assetId, draft.symbol]);
 
   const accountName = accounts.find((a) => a.id === draft.accountId)?.name ?? "—";
+
+  /**
+   * El CEDEAR que va a guardarse en lugar de la accion, si corresponde.
+   *
+   * No es un aviso de error: es la app haciendo lo correcto, pero el simbolo
+   * que queda guardado no es el que el usuario escribio y eso tiene que verse
+   * antes de tocar Agregar.
+   */
+  const comoCedear = useMemo(() => {
+    if (!needsAsset || draft.currency !== "ARS") return null;
+    const elegido = draft.assetId ? assets.find((a) => a.id === draft.assetId) : undefined;
+    const plantilla = elegido ?? catalogHit ?? (draft.symbol ? lookupCatalog(draft.symbol) : undefined);
+    if (!plantilla || !isUsListing(plantilla)) return null;
+    return { accion: plantilla.symbol, cedear: cedearSymbol(plantilla.symbol) };
+  }, [needsAsset, draft.currency, draft.assetId, draft.symbol, assets, catalogHit]);
 
   /**
    * Avisos que la app puede dar mirando el resto de los datos, no la frase.
@@ -338,14 +414,16 @@ export function AddTransaction({
   const summary = useMemo(() => {
     const parts: string[] = [TX_LABEL[draft.type]];
     if (needsAsset && draft.symbol) {
+      // Lo que se va a guardar, no lo que se escribio: en pesos, SPY es SPY.BA.
+      const simbolo = comoCedear?.cedear ?? draft.symbol;
       parts.push(
-        computed.quantity !== undefined
-          ? `${fmtQty(computed.quantity, 6)} ${draft.symbol}`
-          : draft.symbol,
+        computed.quantity !== undefined ? `${fmtQty(computed.quantity, 6)} ${simbolo}` : simbolo,
       );
       if (computed.price !== undefined) parts.push(`a ${money(computed.price, draft.currency)}`);
     }
     if (computed.amount !== undefined) parts.push(money(computed.amount, draft.currency));
+    if (cambio?.entra !== undefined) parts.push(`→ ${money(cambio.entra, cambio.toCurrency)}`);
+    if (cambio?.rate) parts.push(`dólar a ${money(cambio.rate, "ARS")}`);
     parts.push(accountName);
     if (draft.type === "transfer") {
       const dest = accounts.find((a) => a.id === draft.counterAccountId)?.name;
@@ -353,7 +431,7 @@ export function AddTransaction({
     }
     parts.push(draft.date === today() ? "hoy" : longDate(draft.date));
     return parts.join(" · ");
-  }, [draft, computed, needsAsset, accountName, accounts]);
+  }, [draft, computed, needsAsset, accountName, accounts, cambio, comoCedear]);
 
   const canSave =
     Boolean(draft.accountId) &&
@@ -361,17 +439,22 @@ export function AddTransaction({
     computed.amount > 0 &&
     (!needsAsset || Boolean(draft.symbol)) &&
     (draft.type !== "transfer" || Boolean(draft.counterAccountId)) &&
+    (!isExchange || (cambio?.entra !== undefined && cambio.entra > 0)) &&
     (!isTrade || (computed.quantity !== undefined && computed.quantity > 0));
 
-  /** Busca el activo o lo crea, usando el catalogo cuando lo reconoce. */
+  /**
+   * Busca el activo o lo crea, usando el catalogo cuando lo reconoce.
+   *
+   * Pasa siempre por `resolveTradeAsset`, incluso cuando la frase ya eligio un
+   * activo cargado: si ese activo es la accion de EE.UU. y la operacion es en
+   * pesos, lo que se compro es el CEDEAR, y confiar en la eleccion del parser
+   * volveria a meter nueve acciones de US$ 660 donde hay nueve CEDEARs.
+   */
   async function resolveAsset(): Promise<string | undefined> {
     if (!needsAsset) return undefined;
-    if (draft.assetId) return draft.assetId;
-    const symbol = draft.symbol.trim().toUpperCase();
-    if (!symbol) return undefined;
-
-    const existing = findAssetBySymbol(assets, symbol);
-    if (existing) return existing.id;
+    const elegido = draft.assetId ? assets.find((a) => a.id === draft.assetId) : undefined;
+    const symbol = (elegido?.symbol ?? draft.symbol).trim().toUpperCase();
+    if (!symbol) return draft.assetId || undefined;
 
     // Un hallazgo del buscador trae ya resuelto proveedor, moneda y precision;
     // tiene la misma forma que una entrada del catalogo salvo los alias.
@@ -381,11 +464,11 @@ export function AddTransaction({
         ? { ...hallado, aliases: [] }
         : undefined;
 
-    const asset = assetFromSymbol(symbol, newId(), {
+    const { asset, nuevo } = resolveTradeAsset(assets, symbol, draft.currency, newId, {
       catalog: desdeBusqueda ?? catalogHit ?? undefined,
-      currency: draft.currency,
+      existing: elegido,
     });
-    await saveAsset(asset);
+    if (nuevo) await saveAsset(asset);
     return asset.id;
   }
 
@@ -462,7 +545,13 @@ export function AddTransaction({
         amount: computed.amount!,
         currency: draft.currency,
         fee: num(draft.feeText),
-        fxRate: draft.currency === "ARS" ? num(draft.fxText) : undefined,
+        fxRate: isExchange
+          ? cambio?.rate
+          : draft.currency === "ARS"
+            ? num(draft.fxText)
+            : undefined,
+        toAmount: isExchange ? cambio?.entra : undefined,
+        toCurrency: isExchange ? cambio?.toCurrency : undefined,
         note: draft.note.trim() || undefined,
         raw: paso === "escribir" && text.trim() ? text.trim() : editing?.raw,
         createdAt: editing?.createdAt ?? now,
@@ -524,7 +613,7 @@ export function AddTransaction({
   }
 
   function elegirTipo(value: TxType) {
-    set({ type: value });
+    set(value === "exchange" ? { type: value, currency: "ARS" } : { type: value });
     setPaso("datos");
   }
 
@@ -535,6 +624,13 @@ export function AddTransaction({
       {aiNote && (
         <p className="mt-2 text-[11px] leading-snug" style={{ color: "var(--color-s1)" }}>
           {aiNote}
+        </p>
+      )}
+      {comoCedear && (
+        <p className="label mt-2 leading-snug">
+          En pesos, {comoCedear.accion} se carga como su CEDEAR ({comoCedear.cedear}), que
+          cotiza en BYMA. Con pesos no se compra la acción de EE.UU., y un CEDEAR es
+          una fracción de ella: contarlos como acciones inflaría el valor.
         </p>
       )}
       {[...warnings, ...checks].length > 0 && (
@@ -808,7 +904,54 @@ export function AddTransaction({
             </Field>
           )}
 
-          {isTrade ? (
+          {isExchange && cambio ? (
+            <>
+              <Segmented
+                value={cambio.comprando ? "compre" : "vendi"}
+                // El sentido es la moneda de lo que sale. Al darlo vuelta se
+                // intercambian los montos, para no dejar pesos en el campo
+                // de dolares.
+                onChange={(v) =>
+                  (v === "compre") !== cambio.comprando &&
+                  set({
+                    currency: v === "compre" ? "ARS" : "USD",
+                    amountText: draft.toAmountText,
+                    toAmountText: draft.amountText,
+                  })
+                }
+                options={[
+                  { value: "compre", label: "Compré dólares" },
+                  { value: "vendi", label: "Vendí dólares" },
+                ]}
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <Field label={cambio.comprando ? "Pagué (pesos)" : "Entregué (dólares)"}>
+                  <input
+                    className="input num"
+                    inputMode="decimal"
+                    value={draft.amountText}
+                    onChange={(e) => set({ amountText: e.target.value })}
+                    placeholder={cambio.comprando ? "145.000" : "100"}
+                  />
+                </Field>
+                <Field label={cambio.comprando ? "Recibí (dólares)" : "Recibí (pesos)"}>
+                  <input
+                    className="input num"
+                    inputMode="decimal"
+                    value={draft.toAmountText}
+                    onChange={(e) => set({ toAmountText: e.target.value })}
+                    placeholder={cambio.comprando ? "100" : "145.000"}
+                  />
+                </Field>
+              </div>
+              <p className="text-[11px] leading-snug" style={{ color: "var(--color-ink-3)" }}>
+                {cambio.rate
+                  ? `Dólar a ${money(cambio.rate, "ARS")}. `
+                  : ""}
+                No es capital ni ganancia: es la misma plata en otra moneda.
+              </p>
+            </>
+          ) : isTrade ? (
             <>
               <div>
                 <span className="eyebrow mb-1.5 block">Cómo lo cargás</span>
@@ -816,11 +959,34 @@ export function AddTransaction({
                   value={draft.basis}
                   onChange={(v) => set({ basis: v })}
                   options={[
-                    { value: "amount", label: "Por monto" },
-                    { value: "quantity", label: "Por unidades" },
+                    { value: "amount", label: "Monto" },
+                    { value: "quantity", label: "Unidades" },
+                    { value: "total", label: "Total y unid." },
                   ]}
                 />
               </div>
+              {draft.basis === "total" ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label={draft.type === "sell" ? "Total cobrado" : "Total pagado"}>
+                    <input
+                      className="input num"
+                      inputMode="decimal"
+                      value={draft.amountText}
+                      onChange={(e) => set({ amountText: e.target.value })}
+                      placeholder="456.345"
+                    />
+                  </Field>
+                  <Field label="Unidades">
+                    <input
+                      className="input num"
+                      inputMode="decimal"
+                      value={draft.quantityText}
+                      onChange={(e) => set({ quantityText: e.target.value })}
+                      placeholder="9"
+                    />
+                  </Field>
+                </div>
+              ) : (
               <div className="grid grid-cols-2 gap-3">
                 <Field label={draft.basis === "amount" ? "Monto invertido" : "Unidades"}>
                   <input
@@ -845,10 +1011,13 @@ export function AddTransaction({
                   />
                 </Field>
               </div>
+              )}
               <p className="text-[11px]" style={{ color: "var(--color-ink-3)" }}>
                 {draft.basis === "amount"
                   ? `Equivale a ${computed.quantity !== undefined ? fmtQty(computed.quantity, 8) : "—"} unidades.`
-                  : `Total: ${computed.amount !== undefined ? money(computed.amount, draft.currency) : "—"}.`}
+                  : draft.basis === "quantity"
+                    ? `Total: ${computed.amount !== undefined ? money(computed.amount, draft.currency) : "—"}.`
+                    : `Precio por unidad: ${computed.price !== undefined ? money(computed.price, draft.currency) : "—"}${num(draft.feeText) ? ", sin la comisión" : ""}.`}
               </p>
             </>
           ) : (
@@ -873,16 +1042,19 @@ export function AddTransaction({
                 onChange={(e) => set({ date: e.target.value })}
               />
             </Field>
-            <Field label="Moneda">
-              <Segmented
-                value={draft.currency}
-                onChange={(v) => set({ currency: v })}
-                options={[
-                  { value: "USD", label: "USD" },
-                  { value: "ARS", label: "ARS" },
-                ]}
-              />
-            </Field>
+            {/* En un cambio la moneda la decide si compraste o vendiste. */}
+            {!isExchange && (
+              <Field label="Moneda">
+                <Segmented
+                  value={draft.currency}
+                  onChange={(v) => set({ currency: v })}
+                  options={[
+                    { value: "USD", label: "USD" },
+                    { value: "ARS", label: "ARS" },
+                  ]}
+                />
+              </Field>
+            )}
           </div>
 
           {resumen}
@@ -893,7 +1065,11 @@ export function AddTransaction({
             onClick={() => setAvanzado((v) => !v)}
             aria-expanded={avanzado}
           >
-            {avanzado ? "Ocultar detalles" : "Comisión, tipo de cambio y nota"}
+            {avanzado
+              ? "Ocultar detalles"
+              : isExchange
+                ? "Comisión y nota"
+                : "Comisión, tipo de cambio y nota"}
           </button>
 
           {avanzado && (
@@ -908,7 +1084,9 @@ export function AddTransaction({
                 />
               </Field>
 
-              {draft.currency === "ARS" && (
+              {/* En un cambio el dolar sale de los dos montos: un tercer campo
+                  solo podria contradecirlos. */}
+              {draft.currency === "ARS" && !isExchange && (
                 <Field
                   label="Dólar de la operación"
                   hint="Opcional. Sin esto se usa el MEP del día que traiga la app."

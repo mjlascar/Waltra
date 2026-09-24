@@ -58,6 +58,11 @@ export function parseBulk(
       if (entry.type === "transfer" && !entry.counterAccountId) {
         blockers.push("Falta la cuenta destino.");
       }
+      // Un cambio sin los dos lados guardaria plata que sale sin nada que
+      // entre, y eso si seria inventar una perdida.
+      if (entry.type === "exchange" && (entry.toAmount === undefined || entry.toAmount <= 0)) {
+        blockers.push("Falta el dólar al que lo pagaste.");
+      }
     }
 
     rows.push({ index: i + 1, raw, entry, blockers, include: blockers.length === 0 });
