@@ -105,6 +105,31 @@ ejemplo no puede contradecir la regla que se aplica a los datos reales. El
 simulador de precios cotiza `X.BA` como la acción de `X` dividida por un ratio
 de juguete y pasada a pesos; la app real nunca usa ratios.
 
+**Los cambios de ratio y los splits se registran** (`src/lib/engine/splits.ts`,
+`type: "split"`). Cuando un CEDEAR cambia de ratio, cada unidad pasa a ser
+varias, más baratas. Yahoo entrega **toda la historia ya ajustada** —los
+cierres viejos divididos por el ratio—, así que sin registrar el split la app
+multiplicaba unidades viejas por precios nuevos: el caso real fue SPY.BA, que
+mostró una pérdida de US$ 200 el mismo día de la compra y "bajó 59,6%" desde
+ella. Un split cambia las unidades en el ledger (cantidad × ratio, costo por
+unidad ÷ ratio, sin plata ni resultado), y la valuación diaria deshace el
+ajuste de la serie con `priceFactor`. Si la serie en cambio muestra el salto
+(es cruda), no se deshace nada: `seriesAdjustedFor` lo decide mirando los dos
+lados de la fecha, para no ajustar dos veces.
+
+Los splits vienen de dos lados: Yahoo los informa junto con la serie
+(`events=split`) y se aplican solos, y se pueden cargar a mano para cuando el
+proveedor no los informa. Si están los dos, cuenta uno. Los del proveedor
+anteriores a la primera operación de un activo se ignoran: si no, la historia
+de la cartera arrancaría en esa fecha. Un split aplicado solo se muestra en el
+detalle de la posición: las unidades no pueden cambiar sin que se vea por qué.
+
+`priceMismatches` detecta compras que no cierran con la cotización histórica
+de ese día (pagado sobre cotizado fuera de 0,55–1,8), que casi siempre es un
+split que nadie informó; el inicio lo avisa y ofrece cargarlo con el ratio
+sugerido. Solo para acciones, ETFs y CEDEARs: la cripto no se divide. Las
+operaciones del historial que va a los insights viajan en unidades de hoy.
+
 **Comprar dólares es un cambio de moneda, no capital** (`type: "exchange"`).
 Salen `amount` en `currency` y entran `toAmount` en `toCurrency`, en la misma
 cuenta. No mueve el capital aportado ni el rendimiento. Cada lado se valúa al

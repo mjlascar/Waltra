@@ -21,6 +21,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { EmptyStart } from "@/components/EmptyStart";
 import { MetricsExplainer } from "@/components/MetricsExplainer";
 import { AccountSheet } from "@/components/AccountSheet";
+import { SplitSheet } from "@/components/SplitSheet";
 import { convertToCedear, misloadedCedears } from "@/lib/cedear";
 import { IconWarning } from "@/components/icons";
 
@@ -54,6 +55,7 @@ type ChartMode = "valor" | "rendimiento";
 export default function Overview() {
   const { portfolio: p, transactions, accounts, assets, settings, sync, ready, refresh } = useStore();
   const [arreglando, setArreglando] = useState<string | null>(null);
+  const [ratioDe, setRatioDe] = useState<{ assetId: string; suggested: number } | null>(null);
   // Un mes por defecto y no todo el historial: al abrir la app lo que se
   // quiere saber es como viene esto, no como viene desde el principio. El
   // historico sigue a un toque.
@@ -279,6 +281,38 @@ export default function Overview() {
           </button>
         </div>
       ))}
+      {/* Compras que no cierran con la cotizacion de ese dia: casi siempre un
+          cambio de ratio que el proveedor ya aplico a los precios viejos y la
+          app no conoce. Sin registrarlo, el grafico muestra una perdida el
+          mismo dia de la compra. */}
+      {p.priceMismatches.map((m) => (
+        <div
+          key={m.assetId}
+          className="mb-3 p-2.5"
+          style={{ border: "1px solid var(--color-warn)", background: "var(--color-surface)" }}
+        >
+          <div className="flex items-start gap-2" style={{ color: "var(--color-warn)" }}>
+            <IconWarning size={14} className="mt-0.5 shrink-0" />
+            <p className="text-[12px] leading-snug">
+              Tus compras de <strong>{m.symbol}</strong> no cierran con su cotización: el{" "}
+              {shortDate(m.day, true)} cotizaba {money(m.market, m.currency, { compact: true })} y
+              pagaste {money(m.paid, m.currency, { compact: true })}, unas{" "}
+              {(m.factor >= 1 ? m.factor : 1 / m.factor).toLocaleString("es-AR", {
+                maximumFractionDigits: 1,
+              })}{" "}
+              veces {m.factor >= 1 ? "más" : "menos"}. Suele ser un cambio de ratio que la app no
+              conoce —el proveedor ya ajustó los precios viejos y tus unidades quedaron en la
+              escala anterior— o un precio mal cargado.
+            </p>
+          </div>
+          <button
+            className="btn btn-sm mt-2 w-full"
+            onClick={() => setRatioDe({ assetId: m.assetId, suggested: m.factor })}
+          >
+            Registrar el cambio de ratio
+          </button>
+        </div>
+      ))}
       {enDescubierto.length > 0 && (
         <Notice>
           {enDescubierto.length === 1 ? "La cuenta " : "Las cuentas "}
@@ -500,6 +534,13 @@ export default function Overview() {
         open={explaining}
         onClose={() => setExplaining(false)}
       />
+      {ratioDe && (
+        <SplitSheet
+          assetId={ratioDe.assetId}
+          suggested={ratioDe.suggested}
+          onClose={() => setRatioDe(null)}
+        />
+      )}
       <AccountSheet account={account} onClose={() => setAccount(null)} />
     </div>
   );

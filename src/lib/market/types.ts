@@ -1,4 +1,4 @@
-import type { Currency, PricePoint, QuoteSource } from "@/lib/types";
+import type { Currency, PricePoint, QuoteSource, Split } from "@/lib/types";
 import type { DayKey } from "@/lib/date";
 import { getJson } from "@/lib/net/json";
 
@@ -28,6 +28,8 @@ export interface HistoryResult {
   assetId: string;
   currency: Currency;
   points: PricePoint[];
+  /** Splits del periodo, si el proveedor los informa. */
+  splits?: Split[];
   error?: string;
 }
 

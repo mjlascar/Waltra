@@ -141,6 +141,9 @@ export default function Insights() {
           avgCostUsd: pos.avgCostUsd,
           priceUsd: pos.priceUsd,
           realizedUsd: pos.realizedUsd || undefined,
+          splits: p.splits[pos.assetId]?.length
+            ? p.splits[pos.assetId].map((sp) => ({ date: sp.date, ratio: sp.ratio }))
+            : undefined,
           ...historial(pos.trades),
         })),
         // Lo vendido entero tambien viaja: como se salio de una posicion dice

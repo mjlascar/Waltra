@@ -233,6 +233,51 @@ check("el aviso se va después de corregir", !(await has("AAPL está cargado com
 await goto("/cartera");
 check("queda como CEDEAR en la cartera", await has("AAPL.BA"));
 
+console.log("\n2i. Un cambio de ratio que la app no conocía");
+// El caso real de SPY.BA: el proveedor da los precios viejos ya divididos por
+// el ratio nuevo y la compra quedó en la escala anterior, así que parecía una
+// pérdida del 60% el mismo día de comprar. Acá, 10 CEDEARs de VOO pagados a
+// 2,5 veces lo que el simulador dice que cotizaban.
+const hace5 = new Date(Date.now() - 5 * 86_400_000).toISOString().slice(0, 10);
+const escalaVieja = {
+  app: "waltra",
+  version: 1,
+  exportedAt: new Date().toISOString(),
+  accounts: [],
+  assets: [
+    { id: "voo-ba", symbol: "VOO.BA", name: "Vanguard S&P 500 (CEDEAR)", kind: "cedear", currency: "ARS", source: "byma", sourceSymbol: "VOO.BA", precision: 2 },
+  ],
+  transactions: [
+    { id: "voo-ingreso", date: hace5, type: "deposit", accountId: "cocos", amount: 900000, currency: "ARS", createdAt: `${hace5}T10:00:00.000Z`, updatedAt: `${hace5}T10:00:00.000Z` },
+    { id: "voo-compra", date: hace5, type: "buy", accountId: "cocos", assetId: "voo-ba", quantity: 10, price: 84375, amount: 843750, currency: "ARS", createdAt: `${hace5}T11:00:00.000Z`, updatedAt: `${hace5}T11:00:00.000Z` },
+  ],
+};
+await goto("/ajustes/datos");
+await page.locator('input[type="file"][accept*="json"]').setInputFiles({
+  name: "backup-ratio.json",
+  mimeType: "application/json",
+  buffer: Buffer.from(JSON.stringify(escalaVieja), "utf8"),
+});
+await page.waitForTimeout(2500);
+await goto("/");
+await page.waitForTimeout(1500);
+check("detecta la compra que no cierra", await has("Tus compras de VOO.BA no cierran con su cotización"), (await text()).slice(0, 600));
+await page.getByRole("button", { name: /Registrar el cambio de ratio/ }).first().click();
+await page.waitForTimeout(500);
+const sugerido = await page.locator('input[placeholder="2,5"]').inputValue();
+check("sugiere el ratio a partir de los precios", sugerido === "2,5", `sugerido: ${sugerido}`);
+check("muestra con cuántas unidades quedás", await has("quedás con 25"));
+await page.getByRole("button", { name: /^Registrar$/ }).click();
+await page.waitForTimeout(2000);
+check("el aviso se va después de registrarlo", !(await has("Tus compras de VOO.BA no cierran")));
+await goto("/cartera");
+await page.locator("button").filter({ hasText: "VOO.BA" }).first().click();
+await page.waitForTimeout(800);
+check("la posición tiene las unidades nuevas", await has("25"));
+check("el cambio de ratio queda a la vista", await has("cada unidad pasó a ser 2,5"));
+await page.locator('[aria-label="Cerrar"]').first().click();
+await page.waitForTimeout(300);
+
 console.log("\n2g. Cargar con el total del comprobante y las unidades");
 await goto("/");
 await page.getByRole("button", { name: /agregar movimiento/i }).click();

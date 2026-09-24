@@ -47,6 +47,15 @@ export const HoldingSchema = z.object({
   priceUsd: z.number().nullable().optional(),
   /** Lo ya realizado en ventas parciales de este activo. */
   realizedUsd: z.number().optional(),
+  /**
+   * Cambios de ratio o splits. Las operaciones ya viajan en unidades de hoy;
+   * esto le dice al modelo por que una compra de 9 figura como 22,5, para que
+   * no lo lea como un error ni como una caida del precio.
+   */
+  splits: z
+    .array(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), ratio: z.number() }))
+    .max(10)
+    .optional(),
   ...tradeHistory,
 });
 
@@ -211,6 +220,13 @@ export function buildDigest(body: InsightRequest): string {
         `retorno ${pct(h.returnPct)}, tenencia ${h.heldDays} dias${unidades}` +
         (h.realizedUsd ? `, ya realizado US$ ${n(h.realizedUsd)}` : ""),
     );
+    if (h.splits?.length) {
+      lines.push(
+        `  Cambios de ratio: ${h.splits
+          .map((sp) => `${sp.date} cada unidad paso a ser ${qty(sp.ratio)}`)
+          .join("; ")} (las operaciones ya estan expresadas en unidades de hoy)`,
+      );
+    }
     const historia = operaciones(h.trades, h.olderTrades);
     if (historia) lines.push(`  ${historia}`);
   }

@@ -170,6 +170,23 @@ export function applyTransaction(
       state.feesUsd += usd(tx.amount);
       break;
     }
+    case "split": {
+      // Cada unidad pasa a ser `ratio` unidades. La plata no se mueve: el
+      // costo total queda igual, repartido en mas unidades. Tampoco hay
+      // resultado realizado: no se vendio nada.
+      if (!tx.assetId || !tx.ratio || tx.ratio <= 0) break;
+      const r = tx.ratio;
+      const lot = state.positions[tx.assetId];
+      if (lot) {
+        lot.quantity *= r;
+        lot.avgCost /= r;
+        lot.avgCostUsd /= r;
+      }
+      for (const held of Object.values(state.byAccount)) {
+        if (held[tx.assetId]) held[tx.assetId] *= r;
+      }
+      break;
+    }
     case "exchange": {
       // Salen pesos y entran dolares (o al reves) en la misma cuenta. No toca
       // el capital: la plata no cruzo el borde del portafolio, cambio de forma.

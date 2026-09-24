@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Sheet } from "@/components/ui/Sheet";
 import { ReturnChart, type ReturnMark } from "@/components/charts/ReturnChart";
 import { useStore } from "@/lib/store";
@@ -8,6 +8,7 @@ import { money, percent, quantity as fmtQty, shortDate, KIND_LABEL, TX_SHORT } f
 import type { PositionView } from "@/lib/engine/portfolio";
 import { useLiveQuery } from "dexie-react-hooks";
 import { getDb } from "@/lib/db";
+import { SplitSheet } from "@/components/SplitSheet";
 
 /** Detalle de una posicion: de donde viene el resultado y con que movimientos. */
 export function PositionSheet({
@@ -17,7 +18,8 @@ export function PositionSheet({
   position: PositionView | null;
   onClose: () => void;
 }) {
-  const { transactions, accounts, assets } = useStore();
+  const { transactions, accounts, assets, portfolio } = useStore();
+  const [cargandoRatio, setCargandoRatio] = useState(false);
   const db = getDb();
   const assetId = position?.assetId;
 
@@ -161,6 +163,39 @@ export function PositionSheet({
           No hay cotización para {position.symbol}. Está valuada al costo. Revisá el
           símbolo del proveedor en Ajustes → Activos.
         </p>
+      )}
+
+      {/* Los cambios de ratio a la vista: si el proveedor informa uno, las
+          unidades cambian solas, y eso no puede pasar sin que se vea por que. */}
+      <div className="eyebrow mb-2">Cambios de ratio</div>
+      <div className="card mb-4 p-3">
+        {(portfolio.splits[position.assetId] ?? []).length > 0 ? (
+          <ul className="mb-3 space-y-1">
+            {portfolio.splits[position.assetId].map((s) => (
+              <li key={`${s.source}-${s.date}`} className="flex items-baseline justify-between gap-3 text-[13px]">
+                <span>
+                  {shortDate(s.date, true)}: cada unidad pasó a ser{" "}
+                  <span className="num">{s.ratio.toLocaleString("es-AR", { maximumFractionDigits: 2 })}</span>
+                </span>
+                <span className="label shrink-0">
+                  {s.source === "proveedor" ? "lo informó el proveedor" : "cargado por vos"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="label mb-3 leading-snug">
+            Ninguno. Si tu broker te acreditó unidades por un cambio de ratio o un split,
+            registralo: si no, la historia de precios del proveedor, que ya viene ajustada, no
+            cierra con tus compras.
+          </p>
+        )}
+        <button className="btn btn-sm w-full" onClick={() => setCargandoRatio(true)}>
+          Registrar un cambio de ratio
+        </button>
+      </div>
+      {cargandoRatio && (
+        <SplitSheet assetId={position.assetId} onClose={() => setCargandoRatio(false)} />
       )}
 
       <div className="eyebrow mb-2">Movimientos ({moves.length})</div>

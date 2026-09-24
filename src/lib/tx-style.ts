@@ -26,6 +26,8 @@ export const TX_COLOR: Record<TxType, string> = {
   transfer: "var(--color-ink-3)",
   // Cambiar pesos por dolares tampoco: es la misma plata en otra moneda.
   exchange: "var(--color-ink-3)",
+  // Un cambio de ratio tampoco: son las mismas acciones contadas distinto.
+  split: "var(--color-ink-3)",
 };
 
 export function txColor(type: TxType): string {

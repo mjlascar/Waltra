@@ -249,3 +249,22 @@ describe("la historia de cada posición", () => {
     expect(InsightRequestSchema.safeParse(base).success).toBe(true);
   });
 });
+
+describe("cambios de ratio", () => {
+  it("el modelo sabe por qué una compra de 9 figura como 22,5", () => {
+    const text = buildDigest({
+      ...base,
+      holdings: [
+        {
+          ...base.holdings[0],
+          symbol: "SPY.BA",
+          splits: [{ date: "2026-06-10", ratio: 2.5 }],
+          trades: [{ date: "2026-02-25", side: "compra", quantity: 22.5, priceUsd: 13.99 }],
+        },
+      ],
+    });
+    expect(text).toContain("Cambios de ratio: 2026-06-10 cada unidad paso a ser 2.5");
+    expect(text).toContain("unidades de hoy");
+    expect(text).toContain("2026-02-25 compra 22.5 a US$ 13.99");
+  });
+});

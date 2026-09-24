@@ -4,6 +4,13 @@ import { addDays, daysBetween, maxDay, toDay, today } from "@/lib/date";
 import { FxTable, toUsd } from "./fx";
 import { PriceLookup } from "./prices";
 import {
+  collectSplits,
+  priceFactor,
+  providerSplitTransactions,
+  unitsFactor,
+  type AssetSplit,
+} from "./splits";
+import {
   applyTransaction,
   emptyLedger,
   externalFlowUsd,
@@ -33,10 +40,38 @@ import {
 export interface TradeView {
   day: DayKey;
   side: "buy" | "sell";
+  /**
+   * Cantidad y precio en unidades de hoy: si despues hubo un split de 2,5,
+   * 9 CEDEARs a US$ 35 figuran como 22,5 a US$ 14. Es la unica forma de
+   * comparar una compra vieja con el precio actual sin inventar una caida.
+   */
   quantity: number;
   /** Precio por unidad en dolares. `null` si era en pesos y no habia dolar. */
   priceUsd: number | null;
   amountUsd: number | null;
+  /** Por cuanto se multiplicaron las unidades por splits posteriores. 1 si ninguno. */
+  unitsFactor: number;
+}
+
+/**
+ * Compras que no cierran con la cotizacion historica de ese dia.
+ *
+ * Casi siempre es un cambio de ratio que la app no conoce: el proveedor da los
+ * precios viejos ya ajustados y la compra quedo en la escala anterior. Tambien
+ * puede ser un precio mal cargado. En los dos casos la app lo dice en vez de
+ * mostrar una ganancia o una perdida que no existen.
+ */
+export interface PriceMismatch {
+  assetId: string;
+  symbol: string;
+  /** Una compra de ejemplo, la mas representativa. */
+  day: DayKey;
+  /** Lo que se pago por unidad y lo que cotizaba ese dia, en la moneda del activo. */
+  paid: number;
+  market: number;
+  currency: Currency;
+  /** Pagado sobre cotizado, mediana de las compras del activo. */
+  factor: number;
 }
 
 /** Una posicion que ya se vendio entera: lo que dejo, y como se opero. */
@@ -121,6 +156,10 @@ export interface Portfolio {
   positions: PositionView[];
   /** Lo que se tuvo y se vendio entero. Sin esto, el analisis solo ve a los que quedaron. */
   closedPositions: ClosedPositionView[];
+  /** Splits de cada activo, manuales y del proveedor. Ver `engine/splits.ts`. */
+  splits: Record<string, AssetSplit[]>;
+  /** Activos cuyas compras no cierran con su cotizacion historica. */
+  priceMismatches: PriceMismatch[];
   accountViews: AccountView[];
   daily: DailyPoint[];
   contributions: { day: DayKey; value: number }[];
@@ -153,6 +192,7 @@ function valueAt(
   assetsById: Record<string, Asset>,
   prices: PriceLookup,
   fx: FxTable,
+  splits: Record<string, AssetSplit[]> = {},
 ): { nav: number; invested: number; cash: number } {
   const rate = fx.at(day);
   let invested = 0;
@@ -160,7 +200,14 @@ function valueAt(
     if (lot.quantity <= 1e-12) continue;
     const asset = assetsById[assetId];
     if (!asset) continue;
-    const close = prices.at(assetId, day) ?? asset.manualPrice ?? null;
+    // La serie puede venir ajustada por splits posteriores (Yahoo divide los
+    // cierres viejos por el ratio). Se deshace el ajuste para tener el precio
+    // de ese dia, que es el que corresponde a las unidades de ese dia.
+    const serie = prices.at(assetId, day);
+    const close =
+      serie !== null && serie !== undefined
+        ? serie * priceFactor(splits[assetId], day)
+        : (asset.manualPrice ?? null);
     // Sin precio, valuamos al costo: subestimar es mejor que inventar.
     const unit = close ?? lot.avgCost;
     invested += toUsd(unit * lot.quantity, asset.currency, rate);
@@ -184,7 +231,18 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
   const fx = new FxTable(input.fxRates, 0);
   const prices = new PriceLookup(input.priceSeries);
   const quoteByAsset = new Map(input.quotes.map((q) => [q.assetId, q]));
-  const txs = sortTransactions(input.transactions).filter((t) => toDay(t.date) <= asOf);
+  // Los splits que informa el proveedor entran al ledger como movimientos
+  // internos, igual que uno cargado a mano: cambian las unidades desde ese
+  // dia. Se calculan antes que nada porque la valuacion diaria los necesita.
+  const splits = collectSplits(input.transactions, input.priceSeries);
+  const txs = sortTransactions([
+    ...input.transactions,
+    ...providerSplitTransactions(
+      splits,
+      input.transactions,
+      (id) => assetsById[id]?.currency ?? "USD",
+    ),
+  ]).filter((t) => toDay(t.date) <= asOf);
 
   const empty: Portfolio = {
     asOf,
@@ -204,6 +262,8 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
     simpleReturn: null,
     positions: [],
     closedPositions: [],
+    splits: {},
+    priceMismatches: [],
     accountViews: [],
     daily: [],
     contributions: [],
@@ -245,7 +305,7 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
       applyTransaction(state, tx, assetsById, fx);
     }
     contributed += flow;
-    const { nav } = valueAt(state, day, assetsById, prices, fx);
+    const { nav } = valueAt(state, day, assetsById, prices, fx, splits);
     daily.push({ day, nav, flow });
     contributions.push({ day, value: contributed });
     if (day === lastDay) break;
@@ -266,12 +326,15 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
     // En pesos sin dolar conocido no hay precio en dolares: se dice que no hay
     // en vez de mandar pesos como si fueran dolares.
     const amountUsd = tx.currency === "ARS" && !(rate > 0) ? null : toUsd(tx.amount, tx.currency, rate);
+    const day = toDay(tx.date);
+    const f = unitsFactor(splits[tx.assetId], day);
     (tradesByAsset[tx.assetId] ??= []).push({
-      day: toDay(tx.date),
+      day,
       side: tx.type,
-      quantity: tx.quantity,
-      priceUsd: amountUsd === null ? null : amountUsd / tx.quantity,
+      quantity: tx.quantity * f,
+      priceUsd: amountUsd === null ? null : amountUsd / (tx.quantity * f),
       amountUsd,
+      unitsFactor: f,
     });
   }
 
@@ -318,6 +381,48 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
 
   for (const p of positions) p.weight = investedUsd > 0 ? p.valueUsd / investedUsd : 0;
   positions.sort((a, b) => b.valueUsd - a.valueUsd);
+
+  // --- Compras que no cierran con la cotizacion ---------------------------
+  // Solo para lo que puede cambiar de ratio: acciones, ETFs y CEDEARs. Una
+  // cripto no se divide, y su volatilidad simulada daria falsas alarmas.
+  const priceMismatches: PriceMismatch[] = [];
+  for (const pos of positions) {
+    const asset = assetsById[pos.assetId];
+    if (!asset || asset.source === "manual") continue;
+    if (!["stock", "etf", "cedear"].includes(asset.kind)) continue;
+    const muestras: { day: DayKey; paid: number; market: number; r: number }[] = [];
+    for (const tx of txs) {
+      if (tx.type !== "buy" || tx.assetId !== pos.assetId || !tx.quantity) continue;
+      const day = toDay(tx.date);
+      const serie = prices.at(pos.assetId, day);
+      if (serie === null) continue;
+      const market = serie * priceFactor(splits[pos.assetId], day);
+      // Lo pagado por unidad, llevado a la moneda del activo con el dolar de
+      // la operacion, igual que el costo promedio.
+      const rate = tx.fxRate && tx.fxRate > 0 ? tx.fxRate : fx.at(day);
+      const usd = toUsd(tx.amount, tx.currency, rate);
+      const total =
+        tx.currency === asset.currency ? tx.amount : asset.currency === "USD" ? usd : usd * rate;
+      const paid = total / tx.quantity;
+      if (!(market > 0) || !(paid > 0)) continue;
+      muestras.push({ day, paid, market, r: paid / market });
+    }
+    if (muestras.length === 0) continue;
+    const orden = [...muestras].sort((a, b) => a.r - b.r);
+    const mediana = orden[Math.floor(orden.length / 2)];
+    // Ningun dia normal separa lo pagado de la cotizacion en casi el doble.
+    if (mediana.r > 1.8 || mediana.r < 0.55) {
+      priceMismatches.push({
+        assetId: pos.assetId,
+        symbol: pos.symbol,
+        day: mediana.day,
+        paid: mediana.paid,
+        market: mediana.market,
+        currency: asset.currency,
+        factor: mediana.r,
+      });
+    }
+  }
 
   // Lo que se opero y ya no esta: sin esto, cualquier lectura de como invierte
   // alguien solo ve a los que sobrevivieron.
@@ -428,6 +533,8 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
       state.netContributedUsd > 0 ? totalPnlUsd / state.netContributedUsd : null,
     positions,
     closedPositions,
+    splits,
+    priceMismatches,
     accountViews,
     daily,
     contributions,

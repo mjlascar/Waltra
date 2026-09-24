@@ -202,7 +202,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const now = new Date().toISOString();
         const series: PriceSeries[] = data.history
           .filter((h) => h.points.length > 0)
-          .map((h) => ({ assetId: h.assetId, currency: h.currency, points: h.points, updatedAt: now }));
+          .map((h) => ({
+            assetId: h.assetId,
+            currency: h.currency,
+            points: h.points,
+            // La serie y sus splits vienen de la misma respuesta: guardarlos
+            // juntos es lo que garantiza que se lean de manera coherente.
+            splits: h.splits?.length ? h.splits : undefined,
+            updatedAt: now,
+          }));
         if (series.length) await db.priceSeries.bulkPut(series);
 
         if (data.fx.length) await db.fx.bulkPut(data.fx);

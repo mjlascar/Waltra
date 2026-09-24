@@ -75,7 +75,14 @@ export type TxType =
    * se compro por encima del dolar del dia, la diferencia aparece sola como
    * una perdida chica, que es lo que fue.
    */
-  | "exchange";
+  | "exchange"
+  /**
+   * Cambio de ratio o split: cada unidad pasa a ser `ratio` unidades. Pasa con
+   * los CEDEARs cuando cambia cuantos hacen una accion, y con las acciones que
+   * se dividen. No mueve plata: el costo total queda igual, repartido en mas
+   * unidades.
+   */
+  | "split";
 
 export interface Transaction {
   id: string;
@@ -98,6 +105,8 @@ export interface Transaction {
   fee?: number;
   /** ARS por USD en el momento de la operacion. Solo si currency === "ARS". */
   fxRate?: number;
+  /** Unidades nuevas por cada unidad vieja, solo para type === "split". */
+  ratio?: number;
   /** Lo que entra en un cambio de moneda, solo para type === "exchange". */
   toAmount?: number;
   toCurrency?: Currency;
@@ -114,10 +123,24 @@ export interface PricePoint {
   close: number;
 }
 
+/** Un split o cambio de ratio informado por el proveedor de precios. */
+export interface Split {
+  /** YYYY-MM-DD, el dia desde el que rige. */
+  date: string;
+  /** Unidades nuevas por cada unidad vieja: 2,5 si 20 pasan a ser 50. */
+  ratio: number;
+}
+
 export interface PriceSeries {
   assetId: string;
   currency: Currency;
   points: PricePoint[];
+  /**
+   * Splits que informa el proveedor. Yahoo entrega los precios viejos ya
+   * divididos por estos ratios, asi que sin ellos la historia parece un
+   * derrumbe que nunca paso.
+   */
+  splits?: Split[];
   updatedAt: string;
 }
 

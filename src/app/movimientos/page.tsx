@@ -19,6 +19,8 @@ import {
   TX_SHORT,
 } from "@/lib/format";
 import type { Transaction, TxType } from "@/lib/types";
+import { unitsFactor } from "@/lib/engine/splits";
+import { toDay } from "@/lib/date";
 
 const FILTERS: { value: TxType | "todos" | "capital"; label: string }[] = [
   { value: "todos", label: "Todos" },
@@ -224,9 +226,11 @@ export default function Movimientos() {
                       <div className="label mt-0.5 truncate">{detailParts.join(" · ")}</div>
                     </div>
                     <span className="num shrink-0 text-[13px]">
-                      {esCambio
-                        ? money(tx.toAmount!, tx.toCurrency ?? "USD", { compact: true })
-                        : `${outflow ? "−" : ""}${money(tx.amount, tx.currency, { compact: true })}`}
+                      {tx.type === "split" && tx.ratio
+                        ? `×${tx.ratio.toLocaleString("es-AR", { maximumFractionDigits: 2 })}`
+                        : esCambio
+                          ? money(tx.toAmount!, tx.toCurrency ?? "USD", { compact: true })
+                          : `${outflow ? "−" : ""}${money(tx.amount, tx.currency, { compact: true })}`}
                     </span>
                   </button>
                 );
@@ -281,15 +285,19 @@ export default function Movimientos() {
                 >
                   <IconTrash size={16} /> Borrar
                 </button>
-                <button
-                  className="btn btn-primary flex-1"
-                  onClick={() => {
-                    setEditing(detail);
-                    setDetail(null);
-                  }}
-                >
-                  <IconEdit size={16} /> Editar
-                </button>
+                {/* Un cambio de ratio se corrige borrandolo y cargandolo de nuevo
+                    desde la posicion: el formulario comun no sabe de ratios. */}
+                {detail.type !== "split" && (
+                  <button
+                    className="btn btn-primary flex-1"
+                    onClick={() => {
+                      setEditing(detail);
+                      setDetail(null);
+                    }}
+                  >
+                    <IconEdit size={16} /> Editar
+                  </button>
+                )}
               </div>
             )
           }
@@ -307,8 +315,13 @@ export default function Movimientos() {
                 detail.counterAccountId ? ["Hacia", accountOf(detail.counterAccountId)] : null,
                 assetOf(detail) ? ["Activo", `${assetOf(detail)!.symbol} — ${assetOf(detail)!.name}`] : null,
                 detail.quantity ? ["Cantidad", fmtQty(detail.quantity, 8)] : null,
+                detail.type === "split" && detail.ratio
+                  ? ["Ratio", `cada unidad pasó a ser ${detail.ratio.toLocaleString("es-AR", { maximumFractionDigits: 2 })}`]
+                  : null,
                 detail.price ? ["Precio unitario", money(detail.price, detail.currency)] : null,
-                [detail.type === "exchange" ? "Entregado" : "Monto", money(detail.amount, detail.currency)],
+                detail.type === "split"
+                  ? null
+                  : [detail.type === "exchange" ? "Entregado" : "Monto", money(detail.amount, detail.currency)],
                 detail.type === "exchange" && detail.toAmount !== undefined
                   ? ["Recibido", money(detail.toAmount, detail.toCurrency ?? "USD")]
                   : null,
@@ -331,6 +344,12 @@ export default function Movimientos() {
               Esto cuenta como capital: entra en «capital aportado» y no como ganancia.
             </p>
           )}
+          {detail.type === "split" && (
+            <p className="label mt-3 leading-snug">
+              Un cambio de ratio no mueve plata: las mismas acciones pasan a contarse en
+              más unidades, cada una más barata. El costo total queda igual.
+            </p>
+          )}
           {detail.type === "exchange" && (
             <p className="label mt-3 leading-snug">
               Cambiar pesos por dólares no es capital ni ganancia: es la misma plata en
@@ -349,11 +368,19 @@ export default function Movimientos() {
               {(() => {
                 const pos = portfolio.positions.find((x) => x.assetId === detail.assetId);
                 if (!pos || !detail.price) return "Compra registrada.";
-                const now = pos.price ?? detail.price;
-                const change = now / detail.price - 1;
+                // Si despues hubo un split, el precio de esta compra esta en
+                // otra escala: 9 CEDEARs a $ 50.705 son 22,5 a $ 20.282. Sin
+                // pasarlo a unidades de hoy, un cambio de ratio de 2,5 se leia
+                // como una caida del 60%.
+                const f = unitsFactor(portfolio.splits[detail.assetId!], toDay(detail.date));
+                const pagado = detail.price / f;
+                const now = pos.price ?? pagado;
+                const change = now / pagado - 1;
                 return `Desde esta compra, ${pos.symbol} ${
                   change >= 0 ? "subió" : "bajó"
-                } ${percent(Math.abs(change), { decimals: 1, sign: false })}.`;
+                } ${percent(Math.abs(change), { decimals: 1, sign: false })}${
+                  f !== 1 ? ", contando el cambio de ratio posterior" : ""
+                }.`;
               })()}
             </p>
           )}
