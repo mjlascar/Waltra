@@ -23,6 +23,8 @@ import { EmptyStart } from "@/components/EmptyStart";
 import { MetricsExplainer } from "@/components/MetricsExplainer";
 import { AccountSheet } from "@/components/AccountSheet";
 import { SplitSheet } from "@/components/SplitSheet";
+import { RatioSheet } from "@/components/RatioSheet";
+import type { RatioCheck } from "@/lib/engine/cedear-ratio";
 import { convertToCedear, misloadedCedears } from "@/lib/cedear";
 import { IconWarning } from "@/components/icons";
 
@@ -64,6 +66,7 @@ export default function Overview() {
     date: string | null;
   } | null>(null);
   const [moviendo, setMoviendo] = useState<string | null>(null);
+  const [revisando, setRevisando] = useState<RatioCheck | null>(null);
   // Un mes por defecto y no todo el historial: al abrir la app lo que se
   // quiere saber es como viene esto, no como viene desde el principio. El
   // historico sigue a un toque.
@@ -339,6 +342,44 @@ export default function Overview() {
           </button>
         </div>
       ))}
+      {/* Cambios de ratio de CEDEARs que no cierran con las operaciones y el
+          precio de la accion en Nueva York. Es la verificacion que manda:
+          sale de los datos, no de lo que alguien recordo cargar. */}
+      {p.ratioChecks
+        .filter((c) => c.issues.length > 0)
+        .map((c) => (
+          <div
+            key={c.assetId}
+            className="mb-3 p-2.5"
+            style={{ border: "1px solid var(--color-warn)", background: "var(--color-surface)" }}
+          >
+            <div className="flex items-start gap-2" style={{ color: "var(--color-warn)" }}>
+              <IconWarning size={14} className="mt-0.5 shrink-0" />
+              <div className="text-[12px] leading-snug">
+                <p>
+                  Los cambios de ratio de <strong>{c.symbol}</strong> no cierran con tus
+                  operaciones y el precio de {c.underlying}:
+                </p>
+                <ul className="mt-1 list-disc pl-4">
+                  {c.issues.map((i, k) => (
+                    <li key={k}>
+                      {i.kind === "falta"
+                        ? i.change.onlyLive
+                          ? `desde tu operación del ${shortDate(i.change.lastOld, true)}, cada CEDEAR pasó a ser ${i.change.factor.toLocaleString("es-AR")} y no está cargado`
+                          : `entre el ${shortDate(i.change.lastOld, true)} y el ${shortDate(i.change.firstNew, true)} cada CEDEAR pasó a ser ${i.change.factor.toLocaleString("es-AR")}, y no está cargado`
+                        : i.kind === "ratio"
+                          ? `está cargado ×${i.registered.toLocaleString("es-AR")} y tus operaciones dicen ×${i.change.factor.toLocaleString("es-AR")}`
+                          : `el cargado el ${shortDate(i.split.date, true)} sobra: tus operaciones de antes y de después tienen la misma fracción`}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <button className="btn btn-sm mt-2 w-full" onClick={() => setRevisando(c)}>
+              Revisar y corregir
+            </button>
+          </div>
+        ))}
       {/* Un cambio de ratio con fecha posterior a compras que ya estaban en
           unidades nuevas: el ledger las multiplica y la cartera aparece
           valiendo de mas. Paso con la fecha que proponia la hoja. */}
@@ -615,6 +656,9 @@ export default function Overview() {
           suggestedDate={ratioDe.date}
           onClose={() => setRatioDe(null)}
         />
+      )}
+      {revisando && (
+        <RatioSheet key={revisando.assetId} check={revisando} onClose={() => setRevisando(null)} />
       )}
       <AccountSheet account={account} onClose={() => setAccount(null)} />
     </div>

@@ -131,6 +131,29 @@ sugerido. La mediana se toma sobre las compras hasta la última que no cierra:
 las del precio viejo son siempre las primeras, y con todas, un par de compras
 posteriores al precio nuevo tapaban el split.
 
+**Los cambios de ratio de un CEDEAR salen de las operaciones**
+(`src/lib/engine/cedear-ratio.ts`). Un CEDEAR es una fracción de la acción de
+afuera, y esa fracción es el precio de la acción en Nueva York sobre el del
+CEDEAR en dólares: cada compra y venta dice qué ratio regía ese día, y la
+cotización de hoy dice el de hoy. Así el cambio sale de los datos —cuánto, y
+entre qué dos operaciones— y no de lo que alguien recordó cargar, que fue
+como SPY.BA terminó con un ×3 que era ×2,5 y una fecha tardía. La serie de la
+acción se baja de Yahoo con el id `sub:<activo>` para cada CEDEAR. No se
+deshacen sus splits: si la acción se divide, el cociente salta en lo mismo
+que se multiplicaron las unidades del CEDEAR. El factor se redondea a los
+multiplicadores que existen, y dos operaciones a menos de un 30% son el mismo
+ratio (la brecha entre el MEP y el CCL, la punta, el momento del día). Una
+operación suelta que no coincide con las de los dos lados es un precio mal
+cargado, no dos cambios.
+
+La confirmación la da el usuario con lo único que puede comparar sin hacer
+cuentas: la hoja muestra con cuántos CEDEARs queda antes de aplicar, y el
+botón dice "Coincide con mi broker". Aplicar reemplaza todos los splits
+manuales del activo, porque dejar uno viejo y sumar el nuevo es como se
+multiplica dos veces. Los CEDEARs con esa evidencia no pasan por las
+heurísticas de abajo, que adivinan con mucho menos y quedan para acciones,
+ETFs y CEDEARs sin la serie de la acción.
+
 **La fecha de un split importa.** Una compra hecha después del cambio, pero
 anterior a la fecha cargada, se multiplica por el ratio: pasó con una compra
 de SPY.BA del 15/9 y un cambio de ratio registrado el 24/9 con la fecha que

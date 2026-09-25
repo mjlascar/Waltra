@@ -10,6 +10,7 @@ import {
   unitsFactor,
   type AssetSplit,
 } from "./splits";
+import { checkRatios, ratioChanges, ratioPoints, underlyingId, type RatioCheck } from "./cedear-ratio";
 import {
   applyTransaction,
   emptyLedger,
@@ -187,6 +188,11 @@ export interface Portfolio {
   priceMismatches: PriceMismatch[];
   /** Cambios de ratio cargados despues de compras que ya estaban en unidades nuevas. */
   splitDateIssues: SplitDateIssue[];
+  /**
+   * Lo que dicen las operaciones de cada CEDEAR sobre sus cambios de ratio,
+   * contra el precio de la accion en Nueva York. Ver `engine/cedear-ratio.ts`.
+   */
+  ratioChecks: RatioCheck[];
   accountViews: AccountView[];
   daily: DailyPoint[];
   contributions: { day: DayKey; value: number }[];
@@ -292,6 +298,7 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
     splits: {},
     priceMismatches: [],
     splitDateIssues: [],
+    ratioChecks: [],
     accountViews: [],
     daily: [],
     contributions: [],
@@ -413,6 +420,32 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
   // --- Compras que no cierran con la cotizacion ---------------------------
   // Solo para lo que puede cambiar de ratio: acciones, ETFs y CEDEARs. Una
   // cripto no se divide, y su volatilidad simulada daria falsas alarmas.
+  // --- Ratios de los CEDEARs ----------------------------------------------
+  // Con la serie de la accion de afuera, cada operacion dice que ratio regia
+  // ese dia: los cambios salen de los datos y no de lo que alguien cargo. Los
+  // CEDEARs que tienen esa evidencia no pasan por las heuristicas de abajo,
+  // que adivinan con mucho menos.
+  const ratioChecks: RatioCheck[] = [];
+  for (const asset of input.assets) {
+    if (asset.kind !== "cedear" || asset.source === "manual") continue;
+    if (!prices.has(underlyingId(asset.id))) continue;
+    const points = ratioPoints({
+      asset,
+      transactions: txs,
+      prices,
+      fx,
+      cedearQuote: quoteByAsset.get(asset.id)?.price ?? null,
+      underlyingQuote: quoteByAsset.get(underlyingId(asset.id))?.price ?? null,
+      asOf,
+    });
+    if (points.length < 2) continue;
+    const serie = input.priceSeries.find((ps) => ps.assetId === asset.id)?.points ?? [];
+    ratioChecks.push(
+      checkRatios({ asset, points, changes: ratioChanges(points, serie), splits: splits[asset.id] ?? [] }),
+    );
+  }
+  const conEvidencia = new Set(ratioChecks.map((c) => c.assetId));
+
   const priceMismatches: PriceMismatch[] = [];
   const splitDateIssues: SplitDateIssue[] = [];
   // Ningun dia normal separa lo pagado de la cotizacion en casi el doble.
@@ -422,6 +455,7 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
     const asset = assetsById[pos.assetId];
     if (!asset || asset.source === "manual") continue;
     if (!["stock", "etf", "cedear"].includes(asset.kind)) continue;
+    if (conEvidencia.has(pos.assetId)) continue;
     const muestras: { day: DayKey; paid: number; market: number; r: number }[] = [];
     for (const tx of txs) {
       if (tx.type !== "buy" || tx.assetId !== pos.assetId || !tx.quantity) continue;
@@ -611,6 +645,7 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
     splits,
     priceMismatches,
     splitDateIssues,
+    ratioChecks,
     accountViews,
     daily,
     contributions,

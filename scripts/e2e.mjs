@@ -261,15 +261,25 @@ await page.locator('input[type="file"][accept*="json"]').setInputFiles({
 await page.waitForTimeout(2500);
 await goto("/");
 await page.waitForTimeout(1500);
-check("detecta la compra que no cierra", await has("Tus compras de VOO.BA no cierran con su cotización"), (await text()).slice(0, 600));
-await page.getByRole("button", { name: /Registrar el cambio de ratio/ }).first().click();
+// Con la serie de VOO en Nueva York, la compra dice que cada CEDEAR era 1/8
+// de VOO y la cotizacion de hoy dice 1/20: cada uno paso a ser 2,5.
+check(
+  "detecta el cambio de ratio con el precio de la acción",
+  await has("Los cambios de ratio de VOO.BA no cierran"),
+  (await text()).slice(0, 900),
+);
+check("dice cuánto fue", await has("cada CEDEAR pasó a ser 2,5 y no está cargado"));
+await page
+  .locator("div.mb-3")
+  .filter({ hasText: "Los cambios de ratio de VOO.BA" })
+  .getByRole("button", { name: /Revisar y corregir/ })
+  .click();
 await page.waitForTimeout(500);
-const sugerido = await page.locator('input[placeholder="2,5"]').inputValue();
-check("sugiere el ratio a partir de los precios", sugerido === "2,5", `sugerido: ${sugerido}`);
-check("muestra con cuántas unidades quedás", await has("quedás con 25"));
-await page.getByRole("button", { name: /^Registrar$/ }).click();
+check("propone el ratio", (await page.locator('[role="dialog"] input.num').first().inputValue()) === "2,5");
+check("muestra con cuántas unidades quedás", await has("Con esto tenés 25 VOO.BA"), (await text()).slice(-900));
+await page.getByRole("button", { name: /^Coincide con mi broker$/ }).click();
 await page.waitForTimeout(2000);
-check("el aviso se va después de registrarlo", !(await has("Tus compras de VOO.BA no cierran")));
+check("el aviso se va después de corregirlo", !(await has("Los cambios de ratio de VOO.BA no cierran")));
 await goto("/cartera");
 await page.locator("button").filter({ hasText: "VOO.BA" }).first().click();
 await page.waitForTimeout(800);
@@ -278,40 +288,54 @@ check("el cambio de ratio queda a la vista", await has("cada unidad pasó a ser 
 await page.locator('[aria-label="Cerrar"]').first().click();
 await page.waitForTimeout(300);
 
-// El segundo caso real: el cambio de ratio quedó con la fecha de hoy y
-// después se cargó una compra de hace unos días, ya al precio nuevo. Por
-// quedar antes del split, sus unidades se multiplicaban por 2,5.
-const hace2 = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10);
-const compraNueva = {
+// El segundo caso real: el cambio de ratio quedó con una fecha posterior a
+// una compra que ya se hizo al precio nuevo, y esa compra se multiplicaba.
+// Ahora la compra misma dice en qué ventana cayó el cambio.
+// Fechas del reloj del telefono simulado, no de UTC: pasadas las 21 en
+// Buenos Aires, UTC ya es mañana y un movimiento "de hoy" quedaria en el
+// futuro, donde la app no lo cuenta.
+const diaLocal = (atras) =>
+  page.evaluate((n) => {
+    const d = new Date(Date.now() - n * 86_400_000);
+    const p = (x) => String(x).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }, atras);
+const hace2 = await diaLocal(2);
+const hoy = await diaLocal(0);
+const tarde = {
   ...escalaVieja,
   transactions: [
     { id: "voo-compra-nueva", date: hace2, type: "buy", accountId: "cocos", assetId: "voo-ba", quantity: 10, price: 33750, amount: 337500, currency: "ARS", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    { id: "voo-split-tarde", date: hoy, type: "split", accountId: "cocos", assetId: "voo-ba", ratio: 3, amount: 0, currency: "ARS", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
   ],
 };
 await goto("/ajustes/datos");
 await page.locator('input[type="file"][accept*="json"]').setInputFiles({
   name: "backup-ratio-2.json",
   mimeType: "application/json",
-  buffer: Buffer.from(JSON.stringify(compraNueva), "utf8"),
+  buffer: Buffer.from(JSON.stringify(tarde), "utf8"),
 });
 await page.waitForTimeout(2500);
 await goto("/");
 await page.waitForTimeout(1500);
+// El 2,5 que se corrigió antes ya cae en la ventana que marcan las dos
+// compras; el ×3 de hoy no tiene ningún cambio de fracción que lo explique.
 check(
-  "avisa que el cambio de ratio quedó después de una compra al precio nuevo",
-  await has("El cambio de ratio de VOO.BA está cargado el"),
-  (await text()).slice(0, 900),
+  "ve que el ×3 de hoy sobra",
+  await has("sobra: tus operaciones de antes y de después"),
+  (await text()).slice(0, 1200),
 );
-check("y que no es un split que falta", !(await has("Tus compras de VOO.BA no cierran")));
-await page.getByRole("button", { name: /Mover el cambio de ratio al/ }).first().click();
+await page
+  .locator("div.mb-3")
+  .filter({ hasText: "Los cambios de ratio de VOO.BA" })
+  .getByRole("button", { name: /Revisar y corregir/ })
+  .click();
+await page.waitForTimeout(500);
+check("la compra nueva no se multiplica: 25 + 10", await has("Con esto tenés 35 VOO.BA"), (await text()).slice(-900));
+check("dice qué reemplaza", await has("Se reemplaza por lo de arriba"));
+await page.getByRole("button", { name: /^Coincide con mi broker$/ }).click();
 await page.waitForTimeout(2000);
-check("el aviso se va al moverlo", !(await has("El cambio de ratio de VOO.BA está cargado")));
-await goto("/cartera");
-await page.locator("button").filter({ hasText: "VOO.BA" }).first().click();
-await page.waitForTimeout(800);
-check("la compra nueva no se multiplica: 25 + 10", await has("35"), (await text()).slice(0, 600));
-await page.locator('[aria-label="Cerrar"]').first().click();
-await page.waitForTimeout(300);
+check("queda todo en orden", !(await has("Los cambios de ratio de VOO.BA no cierran")));
 
 console.log("\n2g. Cargar con el total del comprobante y las unidades");
 await goto("/");

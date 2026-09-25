@@ -28,6 +28,7 @@ import { syncMarket, type BackendContext } from "@/lib/backend";
 import { proveedoresCaidos } from "@/lib/market/down";
 import { keyFor, resolveProvider } from "@/lib/insights/providers";
 import { BENCHMARK_ASSET_ID, benchmarkRef } from "@/lib/benchmark";
+import { underlyingId, underlyingSymbol } from "@/lib/engine/cedear-ratio";
 
 export type SyncState =
   | { status: "idle" }
@@ -170,6 +171,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           })
           .map((a) => a.id);
 
+        // La accion de afuera de cada CEDEAR: con su precio, cada operacion
+        // dice que ratio regia ese dia, y los cambios de ratio salen de los
+        // datos. Ver `engine/cedear-ratio.ts`.
+        const underlyings = tradable
+          .filter((a) => a.kind === "cedear")
+          .map((a) => {
+            const symbol = underlyingSymbol(a);
+            return {
+              assetId: underlyingId(a.id),
+              symbol,
+              source: "yahoo" as const,
+              sourceSymbol: symbol,
+              currency: "USD" as const,
+            };
+          });
+        const underlyingHistory = underlyings
+          .filter((ref) => {
+            if (options?.force) return true;
+            const series = byAsset.get(ref.assetId);
+            if (!series || series.points.length === 0) return true;
+            if (toDay(series.updatedAt) < today()) return true;
+            return series.points[0].date > firstDay;
+          })
+          .map((ref) => ref.assetId);
+
         const hadArs = live.some((a) => a.currency === "ARS") || txs.some((t) => t.currency === "ARS");
         const data = await syncMarket(
           {
@@ -182,8 +208,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 currency: a.currency,
               })),
               ...(reference ? [reference] : []),
+              ...underlyings,
             ],
-            history: referenceStale ? [...needHistory, BENCHMARK_ASSET_ID] : needHistory,
+            history: [
+              ...needHistory,
+              ...underlyingHistory,
+              ...(referenceStale ? [BENCHMARK_ASSET_ID] : []),
+            ],
             from: firstDay,
             includeFx: true,
           },
