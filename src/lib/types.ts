@@ -198,6 +198,11 @@ export interface Settings {
   alerts?: import("@/lib/alerts/plan").AlertRules;
   /** Informes que se recuerdan solos. Ver `src/lib/insights/schedule.ts`. */
   schedules?: import("@/lib/insights/schedule").Schedule[];
+  /**
+   * Como entra la plata en la cartera de referencia del grafico de
+   * rendimiento. Ver `src/lib/engine/shadow.ts`. Si falta, "aportes".
+   */
+  compareMethod?: import("@/lib/engine/shadow").CompareMethod;
   /** Avisar con una notificacion cuando sale un APK nuevo. Prendido si falta. */
   updateNotify?: boolean;
 }

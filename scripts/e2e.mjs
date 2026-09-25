@@ -574,7 +574,24 @@ await page.getByRole("button", { name: /^Rendimiento$/ }).click();
 await page.waitForTimeout(900);
 const rend = await text();
 check("muestra la leyenda con las dos series", await has("Tu cartera"), rend.slice(0, 200));
-check("da el veredicto en palabras", /ganaste al|te ganó por|empataste/i.test(rend), rend.slice(0, 300));
+check("da el veredicto en palabras", /ganaste|te ganó por|empataste/i.test(rend), rend.slice(0, 300));
+// Por defecto, la misma plata en las mismas fechas: el veredicto va en plata.
+check(
+  "por defecto compara con la misma plata en las mismas fechas",
+  await has("Con la misma plata en el S&P 500 tendrías"),
+  rend.slice(0, 600),
+);
+check("explica cómo entra la plata", await has("compra S&P 500 con cada ingreso"));
+await page.getByRole("button", { name: /^Mensual$/ }).click();
+await page.waitForTimeout(600);
+check("en cuotas mensuales", await has("en cuotas iguales una vez por mes"));
+check("el veredicto sigue en plata", await has("Con la misma plata en el S&P 500 tendrías"));
+await page.getByRole("button", { name: /^Todo junto$/ }).click();
+await page.waitForTimeout(600);
+check("todo junto es la comparación de siempre", await has("comprando el índice el primer día"));
+check("con el veredicto en puntos", /por [\d,]+ puntos|empataste/i.test(await text()));
+await page.getByRole("button", { name: /^Tus aportes$/ }).click();
+await page.waitForTimeout(400);
 await page.getByRole("button", { name: /^Valor$/ }).click();
 await page.waitForTimeout(500);
 

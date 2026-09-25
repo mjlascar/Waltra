@@ -188,6 +188,18 @@ como pérdida. Con la ventana completa tiene que dar **exactamente** los
 números de siempre, y hay un test que lo fija. Una TIR anualizada sobre menos
 de 90 días es ruido de tres cifras: no se muestra.
 
+**La comparación contra el índice usa la misma plata en las mismas fechas**
+(`src/lib/engine/shadow.ts`). El TWR contra el índice comprado el primer día
+es correcto pero trata a todo el capital como si hubiera entrado al principio,
+y quien aporta de a poco lo lee como injusto. Por defecto el gráfico de
+rendimiento arma una cartera sombra: cada ingreso compra índice al cierre del
+día en que entró y cada retiro vende, y las dos curvas se miden igual,
+ganancia sobre la plata puesta hasta ese día (como una billetera). El
+veredicto va en plata: con el mismo capital, cuánto tendrías en el índice. Un
+selector debajo del gráfico cambia a cuotas mensuales iguales del mismo
+capital total, o a "Todo junto", que es la comparación TWR de siempre
+(`compareMethod` en los ajustes).
+
 **Las fechas son del teléfono, no de UTC.** `today()` usa el reloj local: en
 Argentina, `toISOString()` después de las 21 devuelve mañana. Los tests corren
 en `America/Argentina/Buenos_Aires` (fijado en `vitest.config.ts`) para que

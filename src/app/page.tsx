@@ -16,6 +16,8 @@ import { money, percent, shortDate, TX_SHORT } from "@/lib/format";
 import { rangeStart, type RangeKey } from "@/lib/date";
 import type { AccountView } from "@/lib/engine/portfolio";
 import { periodView } from "@/lib/engine/period";
+import { shadowComparison, type CompareMethod } from "@/lib/engine/shadow";
+import { PriceLookup } from "@/lib/engine/prices";
 import { BENCHMARK_ASSET_ID, BENCHMARK_CHOICES, benchmarkReturns } from "@/lib/benchmark";
 import { getDb } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -56,8 +58,18 @@ const RANGE_LABEL: Record<RangeKey, string> = {
 type ChartMode = "valor" | "rendimiento";
 
 export default function Overview() {
-  const { portfolio: p, transactions, accounts, assets, settings, sync, ready, refresh, saveTransaction } =
-    useStore();
+  const {
+    portfolio: p,
+    transactions,
+    accounts,
+    assets,
+    settings,
+    sync,
+    ready,
+    refresh,
+    saveTransaction,
+    updateSettings,
+  } = useStore();
   const update = useUpdate();
   const [arreglando, setArreglando] = useState<string | null>(null);
   const [ratioDe, setRatioDe] = useState<{
@@ -125,7 +137,30 @@ export default function Overview() {
     [db],
   );
 
+  const metodo: CompareMethod = settings.compareMethod ?? "aportes";
+  const choiceLabel =
+    BENCHMARK_CHOICES.find((c) => c.value === settings.benchmark)?.label ?? settings.benchmark ?? "índice";
+
+  /**
+   * La misma plata, en las mismas fechas, en el indice. Es la comparacion por
+   * defecto: la de siempre (TWR contra el indice comprado el primer dia)
+   * trata a todo el capital como si hubiera entrado al principio, y quien
+   * aporta de a poco la lee como injusta. Ver `engine/shadow.ts`.
+   */
+  const sombra = useMemo(() => {
+    if (metodo === "inicio" || settings.benchmark === "none" || !from || !benchmarkSeries) return null;
+    const ventana = p.daily.filter((d) => d.day >= from).map((d) => ({ ...d }));
+    // El ultimo dia, con el valor en vivo, igual que en el grafico de valor.
+    const ultimo = ventana[ventana.length - 1];
+    if (ultimo && ultimo.day === p.asOf) ultimo.nav = p.totalValueUsd;
+    const lookup = new PriceLookup([benchmarkSeries]);
+    return shadowComparison(ventana, (d) => lookup.at(benchmarkSeries.assetId, d), metodo);
+  }, [metodo, settings.benchmark, from, benchmarkSeries, p.daily, p.asOf, p.totalValueUsd]);
+
   const compare = useMemo(() => {
+    if (sombra) {
+      return { label: choiceLabel, color: "var(--color-s4)", points: sombra.theirs };
+    }
     if (settings.benchmark === "none" || returnData.length === 0) return undefined;
     const points = benchmarkReturns(
       benchmarkSeries,
@@ -138,10 +173,28 @@ export default function Overview() {
       color: "var(--color-s4)",
       points,
     };
-  }, [settings.benchmark, benchmarkSeries, returnData]);
+  }, [sombra, choiceLabel, settings.benchmark, benchmarkSeries, returnData]);
+
+  /** Lo que se grafica como tu cartera: con la sombra, medido igual que ella. */
+  const mineData = sombra ? sombra.mine : returnData;
 
   /** La conclusión en palabras: le ganaste al índice, o no. */
   const verdict = useMemo(() => {
+    // Con la sombra, en plata: el mismo capital, en los dos lados.
+    if (sombra) {
+      const diff = sombra.mineValue - sombra.theirsValue;
+      const tendrias = `Con la misma plata en el ${choiceLabel} tendrías ${money(sombra.theirsValue, "USD")}`;
+      if (Math.abs(diff) < Math.max(1, sombra.capital * 0.005)) {
+        return { text: `${tendrias}: empataste.`, tone: "plain" as const };
+      }
+      return {
+        text:
+          diff > 0
+            ? `${tendrias}: le ganaste por ${money(diff, "USD")}.`
+            : `${tendrias}: te ganó por ${money(-diff, "USD")}.`,
+        tone: diff > 0 ? ("pos" as const) : ("neg" as const),
+      };
+    }
     if (!compare || returnData.length === 0) return null;
     const mine = returnData[returnData.length - 1].value;
     const theirs = compare.points[compare.points.length - 1].value;
@@ -161,7 +214,7 @@ export default function Overview() {
           : `El ${compare.label} te ganó por ${puntos} puntos.`,
       tone: gap > 0 ? ("pos" as const) : ("neg" as const),
     };
-  }, [compare, returnData]);
+  }, [sombra, choiceLabel, compare, returnData]);
 
   const recent = useMemo(
     () =>
@@ -482,7 +535,7 @@ export default function Overview() {
           <ValueChart data={chartData} />
         ) : (
           <>
-            <ReturnChart data={returnData} compare={compare} height={186} tone="var(--color-s1)" />
+            <ReturnChart data={mineData} compare={compare} height={186} tone="var(--color-s1)" />
             {verdict && (
               <p
                 className={`mt-2 text-[13px] font-medium ${
@@ -492,11 +545,30 @@ export default function Overview() {
                 {verdict.text}
               </p>
             )}
+            {settings.benchmark !== "none" && (
+              <div className="mt-3">
+                <span className="eyebrow mb-1.5 block">Cómo entra la plata en el {choiceLabel}</span>
+                <Segmented
+                  value={metodo}
+                  onChange={(v) => void updateSettings({ compareMethod: v })}
+                  options={[
+                    { value: "aportes", label: "Tus aportes" },
+                    { value: "mensual", label: "Mensual" },
+                    { value: "inicio", label: "Todo junto" },
+                  ]}
+                />
+              </div>
+            )}
             <p className="label mt-1.5 leading-snug">
-              Rendimiento sin contar cuándo pusiste la plata.
-              {compare
-                ? " La referencia es lo que habrías conseguido comprando el índice el primer día del período."
-                : ""}
+              {sombra
+                ? metodo === "aportes"
+                  ? `Ganancia sobre la plata puesta hasta cada día. La referencia compra ${choiceLabel} con cada ingreso, el día que entró, y vende con cada retiro.`
+                  : `Ganancia sobre la plata puesta hasta cada día. La referencia pone el mismo capital total en ${choiceLabel}, en cuotas iguales una vez por mes.`
+                : `Rendimiento sin contar cuándo pusiste la plata.${
+                    compare
+                      ? " La referencia es lo que habrías conseguido comprando el índice el primer día del período."
+                      : ""
+                  }`}
             </p>
           </>
         )}

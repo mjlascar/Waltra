@@ -68,3 +68,18 @@ export function rangeStart(range: RangeKey, first: DayKey, end: DayKey = today()
   d.setUTCMonth(d.getUTCMonth() - months);
   return maxDay(first, toDay(d));
 }
+
+/**
+ * El mismo dia, n meses despues. Si ese mes es mas corto (31 de enero mas un
+ * mes), el ultimo dia del mes: saltar al 3 de marzo correria la cuota de mes.
+ */
+export function addMonths(day: DayKey, n: number): DayKey {
+  const [y, m, d] = day.split("-").map(Number);
+  const total = y * 12 + (m - 1) + n;
+  const anio = Math.floor(total / 12);
+  const mes = (total % 12) + 1;
+  const ultimo = new Date(Date.UTC(anio, mes, 0)).getUTCDate();
+  const dia = Math.min(d, ultimo);
+  const p = (v: number) => String(v).padStart(2, "0");
+  return `${anio}-${p(mes)}-${p(dia)}`;
+}
