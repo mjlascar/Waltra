@@ -70,8 +70,33 @@ export interface PriceMismatch {
   paid: number;
   market: number;
   currency: Currency;
-  /** Pagado sobre cotizado, mediana de las compras del activo. */
+  /** Pagado sobre cotizado, mediana de las compras que no cierran. */
   factor: number;
+  /**
+   * Desde cuando rige el cambio de ratio, segun las compras: el dia de la
+   * primera compra al precio nuevo despues de la ultima al viejo. Sin compras
+   * al precio nuevo no se puede saber, y da lo mismo cualquier fecha posterior.
+   */
+  suggestedDate: DayKey | null;
+}
+
+/**
+ * Un cambio de ratio cargado a mano con una fecha posterior a compras que ya
+ * se hicieron en unidades nuevas. El ledger las multiplica por el ratio y la
+ * posicion aparece valiendo de mas: paso con una compra de SPY.BA del 15/9 y
+ * un cambio de ratio registrado el 24/9 con la fecha que proponia la hoja.
+ */
+export interface SplitDateIssue {
+  assetId: string;
+  symbol: string;
+  txId: string;
+  splitDate: DayKey;
+  ratio: number;
+  /** La primera compra que ya estaba en unidades nuevas. */
+  buyDay: DayKey;
+  buys: number;
+  /** A donde moverlo: el dia de esa compra. null si hay compras que lo contradicen. */
+  suggestedDate: DayKey | null;
 }
 
 /** Una posicion que ya se vendio entera: lo que dejo, y como se opero. */
@@ -160,6 +185,8 @@ export interface Portfolio {
   splits: Record<string, AssetSplit[]>;
   /** Activos cuyas compras no cierran con su cotizacion historica. */
   priceMismatches: PriceMismatch[];
+  /** Cambios de ratio cargados despues de compras que ya estaban en unidades nuevas. */
+  splitDateIssues: SplitDateIssue[];
   accountViews: AccountView[];
   daily: DailyPoint[];
   contributions: { day: DayKey; value: number }[];
@@ -264,6 +291,7 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
     closedPositions: [],
     splits: {},
     priceMismatches: [],
+    splitDateIssues: [],
     accountViews: [],
     daily: [],
     contributions: [],
@@ -386,6 +414,10 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
   // Solo para lo que puede cambiar de ratio: acciones, ETFs y CEDEARs. Una
   // cripto no se divide, y su volatilidad simulada daria falsas alarmas.
   const priceMismatches: PriceMismatch[] = [];
+  const splitDateIssues: SplitDateIssue[] = [];
+  // Ningun dia normal separa lo pagado de la cotizacion en casi el doble.
+  const fueraDeRango = (r: number) => r > 1.8 || r < 0.55;
+  const cerca = (a: number, b: number) => Math.abs(a / b - 1) < 0.3;
   for (const pos of positions) {
     const asset = assetsById[pos.assetId];
     if (!asset || asset.source === "manual") continue;
@@ -408,20 +440,63 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
       muestras.push({ day, paid, market, r: paid / market });
     }
     if (muestras.length === 0) continue;
-    const orden = [...muestras].sort((a, b) => a.r - b.r);
-    const mediana = orden[Math.floor(orden.length / 2)];
-    // Ningun dia normal separa lo pagado de la cotizacion en casi el doble.
-    if (mediana.r > 1.8 || mediana.r < 0.55) {
-      priceMismatches.push({
+
+    // Primero, los cambios de ratio cargados a mano con una fecha tardia. Una
+    // compra anterior a uno de ellos que pago 1/ratio de lo esperado se hizo
+    // en unidades nuevas: el split ya habia pasado.
+    const explicadas = new Set<(typeof muestras)[number]>();
+    for (const split of splits[pos.assetId] ?? []) {
+      if (split.source !== "manual" || !split.txId) continue;
+      const antes = muestras.filter((m) => m.day < split.date);
+      const nuevas = antes.filter((m) => fueraDeRango(m.r) && cerca(m.r * split.ratio, 1));
+      if (nuevas.length === 0) continue;
+      for (const m of nuevas) explicadas.add(m);
+      const desde = nuevas.reduce((min, m) => (m.day < min ? m.day : min), nuevas[0].day);
+      // Moverlo a esa compra no puede dejar despues una que si era del
+      // precio viejo: entonces las compras se contradicen y no se adivina.
+      const contradice = antes.some((m) => m.day >= desde && !nuevas.includes(m));
+      splitDateIssues.push({
         assetId: pos.assetId,
         symbol: pos.symbol,
-        day: mediana.day,
-        paid: mediana.paid,
-        market: mediana.market,
-        currency: asset.currency,
-        factor: mediana.r,
+        txId: split.txId,
+        splitDate: split.date,
+        ratio: split.ratio,
+        buyDay: desde,
+        buys: nuevas.length,
+        suggestedDate: contradice ? null : desde,
       });
     }
+
+    // Despues, las que ningun split registrado explica: casi siempre uno que
+    // la app no conoce. Las compras al precio viejo son siempre las primeras,
+    // asi que la mediana se toma hasta la ultima que no cierra: con todas, un
+    // par de compras posteriores al precio nuevo tapaban el split. Y una sola
+    // compra rara entre muchas normales, que es un precio mal tipeado y no un
+    // split, sigue sin disparar el aviso.
+    const libres = muestras.filter((m) => !explicadas.has(m));
+    const raras = libres.filter((m) => fueraDeRango(m.r));
+    if (raras.length === 0) continue;
+    const hasta = raras.reduce((max, m) => (m.day > max ? m.day : max), raras[0].day);
+    const orden = libres.filter((m) => m.day <= hasta).sort((a, b) => a.r - b.r);
+    const mediana = orden[Math.floor(orden.length / 2)];
+    if (!fueraDeRango(mediana.r)) continue;
+    // El split cae despues de la ultima compra al precio viejo y en o antes de
+    // la primera al nuevo que le sigue.
+    const viejas = raras.filter((m) => cerca(m.r, mediana.r));
+    const ultimaVieja = viejas.reduce((max, m) => (m.day > max ? m.day : max), viejas[0].day);
+    const primeraNueva = muestras
+      .filter((m) => m.day > ultimaVieja && cerca(m.r, 1))
+      .reduce<DayKey | null>((min, m) => (min === null || m.day < min ? m.day : min), null);
+    priceMismatches.push({
+      assetId: pos.assetId,
+      symbol: pos.symbol,
+      day: mediana.day,
+      paid: mediana.paid,
+      market: mediana.market,
+      currency: asset.currency,
+      factor: mediana.r,
+      suggestedDate: primeraNueva,
+    });
   }
 
   // Lo que se opero y ya no esta: sin esto, cualquier lectura de como invierte
@@ -535,6 +610,7 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
     closedPositions,
     splits,
     priceMismatches,
+    splitDateIssues,
     accountViews,
     daily,
     contributions,

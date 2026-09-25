@@ -54,10 +54,16 @@ const RANGE_LABEL: Record<RangeKey, string> = {
 type ChartMode = "valor" | "rendimiento";
 
 export default function Overview() {
-  const { portfolio: p, transactions, accounts, assets, settings, sync, ready, refresh } = useStore();
+  const { portfolio: p, transactions, accounts, assets, settings, sync, ready, refresh, saveTransaction } =
+    useStore();
   const update = useUpdate();
   const [arreglando, setArreglando] = useState<string | null>(null);
-  const [ratioDe, setRatioDe] = useState<{ assetId: string; suggested: number } | null>(null);
+  const [ratioDe, setRatioDe] = useState<{
+    assetId: string;
+    suggested: number;
+    date: string | null;
+  } | null>(null);
+  const [moviendo, setMoviendo] = useState<string | null>(null);
   // Un mes por defecto y no todo el historial: al abrir la app lo que se
   // quiere saber es como viene esto, no como viene desde el principio. El
   // historico sigue a un toque.
@@ -325,12 +331,62 @@ export default function Overview() {
           </div>
           <button
             className="btn btn-sm mt-2 w-full"
-            onClick={() => setRatioDe({ assetId: m.assetId, suggested: m.factor })}
+            onClick={() =>
+              setRatioDe({ assetId: m.assetId, suggested: m.factor, date: m.suggestedDate })
+            }
           >
             Registrar el cambio de ratio
           </button>
         </div>
       ))}
+      {/* Un cambio de ratio con fecha posterior a compras que ya estaban en
+          unidades nuevas: el ledger las multiplica y la cartera aparece
+          valiendo de mas. Paso con la fecha que proponia la hoja. */}
+      {p.splitDateIssues.map((d) => {
+        const mover = async () => {
+          const tx = transactions.find((t) => t.id === d.txId);
+          if (!tx || !d.suggestedDate) return;
+          setMoviendo(d.txId);
+          try {
+            await saveTransaction({ ...tx, date: d.suggestedDate });
+          } finally {
+            setMoviendo(null);
+          }
+        };
+        return (
+          <div
+            key={d.txId}
+            className="mb-3 p-2.5"
+            style={{ border: "1px solid var(--color-warn)", background: "var(--color-surface)" }}
+          >
+            <div className="flex items-start gap-2" style={{ color: "var(--color-warn)" }}>
+              <IconWarning size={14} className="mt-0.5 shrink-0" />
+              <p className="text-[12px] leading-snug">
+                El cambio de ratio de <strong>{d.symbol}</strong> está cargado el{" "}
+                {shortDate(d.splitDate, true)}, pero{" "}
+                {d.buys === 1 ? "tu compra" : `${d.buys} compras, desde la`} del{" "}
+                {shortDate(d.buyDay, true)} ya {d.buys === 1 ? "tiene" : "tienen"} el precio
+                nuevo. Así, sus unidades se multiplican por{" "}
+                {d.ratio.toLocaleString("es-AR", { maximumFractionDigits: 2 })} y la cartera
+                aparece valiendo de más.
+                {!d.suggestedDate &&
+                  " Tus compras no dejan ver una fecha que cierre con todas: borrá el cambio de ratio desde Movimientos y cargalo de nuevo con la fecha que figure en tu broker."}
+              </p>
+            </div>
+            {d.suggestedDate && (
+              <button
+                className="btn btn-sm mt-2 w-full"
+                disabled={moviendo !== null}
+                onClick={() => void mover()}
+              >
+                {moviendo === d.txId
+                  ? "Moviendo…"
+                  : `Mover el cambio de ratio al ${shortDate(d.suggestedDate, true)}`}
+              </button>
+            )}
+          </div>
+        );
+      })}
       {enDescubierto.length > 0 && (
         <Notice>
           {enDescubierto.length === 1 ? "La cuenta " : "Las cuentas "}
@@ -556,6 +612,7 @@ export default function Overview() {
         <SplitSheet
           assetId={ratioDe.assetId}
           suggested={ratioDe.suggested}
+          suggestedDate={ratioDe.date}
           onClose={() => setRatioDe(null)}
         />
       )}

@@ -127,7 +127,18 @@ detalle de la posición: las unidades no pueden cambiar sin que se vea por qué.
 `priceMismatches` detecta compras que no cierran con la cotización histórica
 de ese día (pagado sobre cotizado fuera de 0,55–1,8), que casi siempre es un
 split que nadie informó; el inicio lo avisa y ofrece cargarlo con el ratio
-sugerido. Solo para acciones, ETFs y CEDEARs: la cripto no se divide. Las
+sugerido. La mediana se toma sobre las compras hasta la última que no cierra:
+las del precio viejo son siempre las primeras, y con todas, un par de compras
+posteriores al precio nuevo tapaban el split.
+
+**La fecha de un split importa.** Una compra hecha después del cambio, pero
+anterior a la fecha cargada, se multiplica por el ratio: pasó con una compra
+de SPY.BA del 15/9 y un cambio de ratio registrado el 24/9 con la fecha que
+proponía la hoja, "hoy". `splitDateIssues` detecta esas compras —pagaron
+1/ratio de lo esperado— y el inicio ofrece mover el split al día de la
+primera. La hoja propone la fecha que dejan ver las compras
+(`suggestedDate`). En un mismo día, el split va antes que cualquier
+operación (`sortTransactions`): rige desde que abre el mercado. Solo para acciones, ETFs y CEDEARs: la cripto no se divide. Las
 operaciones del historial que va a los insights viajan en unidades de hoy.
 
 **Comprar dólares es un cambio de moneda, no capital** (`type: "exchange"`).

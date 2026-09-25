@@ -36,11 +36,14 @@ const corto = (v: number) => v.toLocaleString("es-AR", { maximumFractionDigits: 
 export function SplitSheet({
   assetId,
   suggested,
+  suggestedDate,
   onClose,
 }: {
   assetId: string | null;
   /** Lo pagado sobre lo cotizado, si viene de una compra que no cierra. */
   suggested?: number;
+  /** Desde cuando rige, segun las compras. Ver `PriceMismatch.suggestedDate`. */
+  suggestedDate?: string | null;
   onClose: () => void;
 }) {
   const { portfolio, saveTransaction, accounts } = useStore();
@@ -48,7 +51,11 @@ export function SplitSheet({
   const [ratioText, setRatioText] = useState(
     suggested ? String(suggestRatio(suggested)).replace(".", ",") : "",
   );
-  const [date, setDate] = useState(today());
+  // La fecha importa: una compra hecha despues del cambio, pero anterior a
+  // la fecha cargada, se multiplica por el ratio. Si las compras la dejan
+  // ver, se propone esa; si no, hoy, que con compras solo al precio viejo da
+  // lo mismo que la real.
+  const [date, setDate] = useState(suggestedDate ?? today());
   const [saving, setSaving] = useState(false);
 
   if (!assetId || !pos) return null;
@@ -113,7 +120,7 @@ export function SplitSheet({
             placeholder="2,5"
           />
         </Field>
-        <Field label="Desde" hint="Si no sabés la fecha, dejá la de hoy.">
+        <Field label="Desde">
           <input
             type="date"
             className="input"
@@ -143,9 +150,15 @@ export function SplitSheet({
           </p>
         )}
         <p className="label mt-2 leading-snug">
+          {suggestedDate
+            ? `La fecha propuesta es la de tu primera compra al precio nuevo. `
+            : ""}
+          La fecha importa si compraste después del cambio: tiene que quedar antes de tu
+          primera compra al precio nuevo, o esas unidades se multiplican por el ratio.
+        </p>
+        <p className="label mt-2 leading-snug">
           Si tu broker te pagó en efectivo la fracción que no llegó a una unidad entera,
-          cargala después como una venta de esa fracción. La fecha casi no cambia nada:
-          con los precios ajustados del proveedor, el valor da lo mismo.
+          cargala después como una venta de esa fracción.
         </p>
       </div>
     </Sheet>

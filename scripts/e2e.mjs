@@ -278,6 +278,41 @@ check("el cambio de ratio queda a la vista", await has("cada unidad pasó a ser 
 await page.locator('[aria-label="Cerrar"]').first().click();
 await page.waitForTimeout(300);
 
+// El segundo caso real: el cambio de ratio quedó con la fecha de hoy y
+// después se cargó una compra de hace unos días, ya al precio nuevo. Por
+// quedar antes del split, sus unidades se multiplicaban por 2,5.
+const hace2 = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10);
+const compraNueva = {
+  ...escalaVieja,
+  transactions: [
+    { id: "voo-compra-nueva", date: hace2, type: "buy", accountId: "cocos", assetId: "voo-ba", quantity: 10, price: 33750, amount: 337500, currency: "ARS", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+  ],
+};
+await goto("/ajustes/datos");
+await page.locator('input[type="file"][accept*="json"]').setInputFiles({
+  name: "backup-ratio-2.json",
+  mimeType: "application/json",
+  buffer: Buffer.from(JSON.stringify(compraNueva), "utf8"),
+});
+await page.waitForTimeout(2500);
+await goto("/");
+await page.waitForTimeout(1500);
+check(
+  "avisa que el cambio de ratio quedó después de una compra al precio nuevo",
+  await has("El cambio de ratio de VOO.BA está cargado el"),
+  (await text()).slice(0, 900),
+);
+check("y que no es un split que falta", !(await has("Tus compras de VOO.BA no cierran")));
+await page.getByRole("button", { name: /Mover el cambio de ratio al/ }).first().click();
+await page.waitForTimeout(2000);
+check("el aviso se va al moverlo", !(await has("El cambio de ratio de VOO.BA está cargado")));
+await goto("/cartera");
+await page.locator("button").filter({ hasText: "VOO.BA" }).first().click();
+await page.waitForTimeout(800);
+check("la compra nueva no se multiplica: 25 + 10", await has("35"), (await text()).slice(0, 600));
+await page.locator('[aria-label="Cerrar"]').first().click();
+await page.waitForTimeout(300);
+
 console.log("\n2g. Cargar con el total del comprobante y las unidades");
 await goto("/");
 await page.getByRole("button", { name: /agregar movimiento/i }).click();

@@ -60,10 +60,19 @@ function bumpPosition(state: LedgerState, accountId: string, assetId: string, de
   if (Math.abs(acc[assetId]) < 1e-12) delete acc[assetId];
 }
 
-/** Ordena cronologicamente y, a igualdad de fecha, respeta el orden de carga. */
+/**
+ * Ordena cronologicamente y, a igualdad de fecha, respeta el orden de carga.
+ *
+ * Salvo los cambios de ratio, que van primero en su dia: rigen desde que abre
+ * el mercado. Una compra de ese mismo dia ya se hizo en unidades nuevas, y si
+ * el split se cargo despues que ella la multiplicaria.
+ */
 export function sortTransactions(txs: Transaction[]): Transaction[] {
   return [...txs].sort((a, b) => {
     if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    const sa = a.type === "split" ? 0 : 1;
+    const sb = b.type === "split" ? 0 : 1;
+    if (sa !== sb) return sa - sb;
     return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0;
   });
 }

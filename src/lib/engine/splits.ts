@@ -31,6 +31,8 @@ export interface AssetSplit {
    * muestra el salto el dia del split, no.
    */
   adjusted: boolean;
+  /** El movimiento, si se cargo a mano: para poder corregirle la fecha. */
+  txId?: string;
 }
 
 /** Dos registros del mismo split: cerca en el tiempo y con el mismo ratio. */
@@ -84,6 +86,7 @@ export function collectSplits(
       ratio: tx.ratio,
       source: "manual",
       adjusted: seriesAdjustedFor(puntos.get(tx.assetId) ?? [], { date, ratio: tx.ratio }),
+      txId: tx.id,
     });
   }
 

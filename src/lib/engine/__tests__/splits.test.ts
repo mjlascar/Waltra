@@ -249,3 +249,80 @@ describe("parseSplits", () => {
     expect(parseSplits({ chart: { result: [] } } as unknown as ChartResponse)).toEqual([]);
   });
 });
+
+describe("un cambio de ratio cargado con fecha tardía", () => {
+  /**
+   * El segundo caso real: el cambio de ratio de SPY.BA se registró con la
+   * fecha que proponía la hoja (hoy, el 24/9), y después se cargó una compra
+   * del 15/9: 16 CEDEARs a US$ 13,24, que ya es el precio con el ratio nuevo.
+   * Por quedar antes del split, la app las multiplicaba por 2,5 y la cartera
+   * subía US$ 318 al cargar una compra de US$ 212.
+   */
+  const conCompraNueva = (fechaSplit: string) => [
+    ...compra,
+    tx({ type: "split", date: fechaSplit, amount: 0, assetId: "spy", ratio: 2.5 }),
+    tx({ type: "deposit", date: "2026-08-01", amount: 300, currency: "USD" }),
+    tx({
+      type: "buy",
+      date: "2026-08-15",
+      amount: 16 * (50_705 / 2.5 / DOLAR),
+      currency: "USD",
+      assetId: "spy",
+      quantity: 16,
+      price: 50_705 / 2.5 / DOLAR,
+    }),
+  ];
+
+  it("se detecta, con la compra que lo delata y a dónde moverlo", () => {
+    const p = correr(conCompraNueva("2026-08-25"), ajustada());
+    expect(p.splitDateIssues).toHaveLength(1);
+    expect(p.splitDateIssues[0]).toMatchObject({
+      symbol: "SPY.BA",
+      splitDate: "2026-08-25",
+      buyDay: "2026-08-15",
+      suggestedDate: "2026-08-15",
+    });
+    // Y no se confunde con un split que falta.
+    expect(p.priceMismatches).toEqual([]);
+  });
+
+  it("movido a la fecha sugerida, la compra no mueve el total", () => {
+    const tarde = correr(conCompraNueva("2026-08-25"), ajustada());
+    const bien = correr(conCompraNueva("2026-08-15"), ajustada());
+    expect(tarde.positions[0].quantity).toBeCloseTo(22.5 + 40, 6);
+    expect(bien.positions[0].quantity).toBeCloseTo(22.5 + 16, 6);
+    expect(bien.totalPnlUsd).toBeCloseTo(0, 2);
+    expect(bien.splitDateIssues).toEqual([]);
+  });
+
+  it("el mismo día, el split va antes que la compra aunque se haya cargado después", () => {
+    const txs = conCompraNueva("2026-08-15");
+    // El split con createdAt posterior al de la compra.
+    txs[2] = { ...txs[2], createdAt: "2026-12-31T00:00:00.000Z" };
+    expect(correr(txs, ajustada()).positions[0].quantity).toBeCloseTo(22.5 + 16, 6);
+  });
+});
+
+describe("un split que falta, con compras de después", () => {
+  it("se detecta aunque haya más compras al precio nuevo que al viejo", () => {
+    const nuevas = [1, 2, 3].map((i) =>
+      tx({
+        type: "buy",
+        date: `2026-08-1${i}`,
+        amount: 50_705 / 2.5,
+        assetId: "spy",
+        quantity: 1,
+        price: 50_705 / 2.5,
+      }),
+    );
+    const p = correr([...compra, ...nuevas], ajustada());
+    expect(p.priceMismatches).toHaveLength(1);
+    expect(p.priceMismatches[0].factor).toBeCloseTo(2.5, 2);
+    // Rige desde la primera compra al precio nuevo.
+    expect(p.priceMismatches[0].suggestedDate).toBe("2026-08-11");
+  });
+
+  it("sin compras al precio nuevo, no inventa una fecha", () => {
+    expect(correr(compra, ajustada()).priceMismatches[0].suggestedDate).toBeNull();
+  });
+});
