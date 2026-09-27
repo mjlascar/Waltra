@@ -196,6 +196,39 @@ export function applyTransaction(
       }
       break;
     }
+    case "adjust": {
+      // Lo que el broker tiene y los movimientos no explican. No toca el
+      // efectivo ni el capital: la plata no cruzo el borde del portafolio.
+      if (!tx.assetId || !tx.quantity) break;
+      const lot = (state.positions[tx.assetId] ??= { quantity: 0, avgCost: 0, avgCostUsd: 0 });
+      if (tx.quantity > 0) {
+        // De mas, como un rendimiento cobrado en el activo: entra al precio
+        // del dia, asi que su costo es ese mismo valor y no aparece como
+        // ganancia sin realizar de un saque. Lo que vale es ingreso.
+        const costLocal = lot.avgCost * lot.quantity + local(tx.amount);
+        const costUsd = lot.avgCostUsd * lot.quantity + usd(tx.amount);
+        lot.quantity += tx.quantity;
+        lot.avgCost = costLocal / lot.quantity;
+        lot.avgCostUsd = costUsd / lot.quantity;
+        state.incomeUsd += usd(tx.amount);
+        state.realizedByAsset[tx.assetId] =
+          (state.realizedByAsset[tx.assetId] ?? 0) + usd(tx.amount);
+      } else {
+        // De menos, como una comision cobrada en el activo: salen al costo
+        // promedio. Lo que habian subido se va con ellas de la ganancia sin
+        // realizar, sin pasar por el realizado: no se vendio nada.
+        const q = Math.min(-tx.quantity, Math.max(lot.quantity, 0));
+        state.feesUsd += lot.avgCostUsd * q;
+        lot.quantity -= q;
+        if (lot.quantity <= 1e-12) {
+          lot.quantity = 0;
+          lot.avgCost = 0;
+          lot.avgCostUsd = 0;
+        }
+      }
+      bumpPosition(state, tx.accountId, tx.assetId, tx.quantity);
+      break;
+    }
     case "exchange": {
       // Salen pesos y entran dolares (o al reves) en la misma cuenta. No toca
       // el capital: la plata no cruzo el borde del portafolio, cambio de forma.

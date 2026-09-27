@@ -520,6 +520,30 @@ await page.waitForTimeout(600);
 await goto("/movimientos");
 check("el ajuste queda anotado como tal", await has("ajuste de saldo"), (await text()).slice(0, 400));
 
+console.log("\n5d. Conciliar las unidades con el broker");
+// Lo que la exportación de Binance no trae: lo que rinde Earn (unidades de
+// más) y las comisiones cobradas en el activo (de menos).
+await goto("/");
+await page.locator("button").filter({ hasText: "Binance" }).first().click();
+await page.waitForTimeout(700);
+await page.getByRole("button", { name: /^Corregir con Binance$/ }).click();
+await page.waitForTimeout(300);
+await page.getByLabel("Unidades de BTC en Binance").fill("1");
+await page.getByLabel("Unidades de ETH en Binance").fill("0");
+await page.waitForTimeout(400);
+check("lo que sobra entra como ingreso", await has("· ingreso"), (await text()).slice(0, 900));
+check("lo que falta sale como comisión", await has("· comisión"));
+check("avisa que un envío a otra billetera es un retiro", await has("eso es un retiro"));
+await page.getByRole("button", { name: /^Registrar 2 ajustes$/ }).click();
+await page.waitForTimeout(1500);
+check("confirma los ajustes", await has("2 ajustes registrados"), (await text()).slice(0, 600));
+await page.keyboard.press("Escape");
+await page.waitForTimeout(600);
+await goto("/movimientos");
+check("quedan anotados como ajustes", await has("conciliado con Binance"), (await text()).slice(0, 600));
+await goto("/cartera");
+check("la cartera ya no tiene ETH", !(await has("ETH ")), (await text()).slice(0, 600));
+
 console.log("\n6. Filtros de movimientos");
 await goto("/movimientos");
 const totalCount = Number(normalize(await text()).match(/(\d+) movimientos/)?.[1] ?? 0);
@@ -589,7 +613,7 @@ check("el veredicto sigue en plata", await has("Con la misma plata en el S&P 500
 await page.getByRole("button", { name: /^Todo junto$/ }).click();
 await page.waitForTimeout(600);
 check("todo junto es la comparación de siempre", await has("comprando el índice el primer día"));
-check("con el veredicto en puntos", /por [\d,]+ puntos|empataste/i.test(await text()));
+check("con el veredicto en puntos", /por [\d.,]+ puntos|empataste/i.test(await text()));
 await page.getByRole("button", { name: /^Tus aportes$/ }).click();
 await page.waitForTimeout(400);
 await page.getByRole("button", { name: /^Valor$/ }).click();

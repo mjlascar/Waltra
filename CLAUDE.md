@@ -164,6 +164,16 @@ primera. La hoja propone la fecha que dejan ver las compras
 operación (`sortTransactions`): rige desde que abre el mercado. Solo para acciones, ETFs y CEDEARs: la cripto no se divide. Las
 operaciones del historial que va a los insights viajan en unidades de hoy.
 
+**Lo que el broker tiene y los movimientos no explican se ajusta**
+(`type: "adjust"`). La exportación de Binance no trae lo que rinde Earn, las
+comisiones cobradas en el activo ni los Convert, y las unidades se separan de
+a poco. En el detalle de cada cuenta, "Corregir con …" pide las unidades que
+muestra el broker y anota la diferencia de hoy: las de más entran al precio
+del día como ingreso (su costo es ese valor, así no aparece ganancia sin
+realizar de un saque), las de menos salen a su costo como comisión. No mueve
+efectivo ni capital, y está en los invariantes. Lo que se mandó a otra
+billetera no es un ajuste: es un retiro, y la pantalla lo dice.
+
 **Comprar dólares es un cambio de moneda, no capital** (`type: "exchange"`).
 Salen `amount` en `currency` y entran `toAmount` en `toCurrency`, en la misma
 cuenta. No mueve el capital aportado ni el rendimiento. Cada lado se valúa al

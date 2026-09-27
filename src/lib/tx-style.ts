@@ -28,6 +28,8 @@ export const TX_COLOR: Record<TxType, string> = {
   exchange: "var(--color-ink-3)",
   // Un cambio de ratio tampoco: son las mismas acciones contadas distinto.
   split: "var(--color-ink-3)",
+  // Un ajuste puede ser un rendimiento o una comision: el signo lo dice.
+  adjust: "var(--color-ink-2)",
 };
 
 export function txColor(type: TxType): string {

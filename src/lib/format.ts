@@ -145,6 +145,7 @@ export const TX_LABEL: Record<string, string> = {
   transfer: "Transferencia",
   exchange: "Cambio de moneda",
   split: "Cambio de ratio",
+  adjust: "Ajuste de tenencia",
 };
 
 export const TX_SHORT: Record<string, string> = {
@@ -158,6 +159,7 @@ export const TX_SHORT: Record<string, string> = {
   transfer: "Traspaso",
   exchange: "Cambio",
   split: "Ratio",
+  adjust: "Ajuste",
 };
 
 export const KIND_LABEL: Record<string, string> = {

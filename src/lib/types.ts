@@ -82,7 +82,15 @@ export type TxType =
    * se dividen. No mueve plata: el costo total queda igual, repartido en mas
    * unidades.
    */
-  | "split";
+  | "split"
+  /**
+   * Ajuste de tenencia: lo que el broker muestra y los movimientos no
+   * explican. `quantity` lleva signo. De mas (Earn, staking, un airdrop)
+   * entran al precio del dia como ingreso; de menos (comisiones cobradas en
+   * el activo) salen a su costo como comision. `amount` es el valor de las
+   * unidades ese dia, en `currency`. No mueve efectivo ni capital.
+   */
+  | "adjust";
 
 export interface Transaction {
   id: string;

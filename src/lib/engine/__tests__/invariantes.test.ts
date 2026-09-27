@@ -307,6 +307,53 @@ describe("rentas y costos", () => {
   });
 });
 
+describe("ajustes de tenencia", () => {
+  /**
+   * Lo que el broker muestra y los movimientos no explican: lo que rindió
+   * Earn o el staking, las comisiones que Binance cobra en el activo. Se
+   * corrige con un ajuste que no mueve efectivo ni capital.
+   */
+  it("unidades de más son ingreso, al precio del día", () => {
+    const p = correr({
+      transactions: [
+        tx("deposit", "2024-01-01", { amount: 1000 }),
+        tx("buy", "2024-01-02", { amount: 600, assetId: "qqq", quantity: 2, price: 300 }),
+        // Medio QQQ que apareció, a 300.
+        tx("adjust", "2024-02-01", { amount: 150, assetId: "qqq", quantity: 0.5 }),
+      ],
+      precios: { qqq: 300 },
+    });
+    verificarIdentidades(p);
+    expect(p.netContributedUsd).toBeCloseTo(1000);
+    expect(p.positions[0].quantity).toBeCloseTo(2.5);
+    expect(p.totalPnlUsd).toBeCloseTo(150);
+    expect(p.incomeUsd).toBeCloseTo(150);
+    // Entró a su precio: no hay ganancia sin realizar inventada.
+    expect(p.unrealizedUsd).toBeCloseTo(0);
+    expect(ganandoPorCausas(p, 0)).toBeCloseTo(p.totalPnlUsd, 6);
+  });
+
+  it("unidades de menos salen a su costo, como una comisión", () => {
+    const p = correr({
+      transactions: [
+        tx("deposit", "2024-01-01", { amount: 1000 }),
+        tx("buy", "2024-01-02", { amount: 600, assetId: "qqq", quantity: 2, price: 300 }),
+        tx("adjust", "2024-02-01", { amount: 200, assetId: "qqq", quantity: -0.5 }),
+      ],
+      // Subió: las que faltan se llevan su parte de la suba sin realizarla.
+      precios: { qqq: 400 },
+    });
+    verificarIdentidades(p);
+    expect(p.netContributedUsd).toBeCloseTo(1000);
+    expect(p.positions[0].quantity).toBeCloseTo(1.5);
+    expect(p.feesUsd).toBeCloseTo(150);
+    expect(p.realizedUsd).toBeCloseTo(0);
+    // 1,5 × 400 + 400 de efectivo − 1.000 = 0.
+    expect(p.totalPnlUsd).toBeCloseTo(0);
+    expect(ganandoPorCausas(p, p.feesUsd)).toBeCloseTo(p.totalPnlUsd, 6);
+  });
+});
+
 describe("la historia entera cierra", () => {
   /** Dos años de uso mezclando todo lo que la app sabe hacer. */
   const vida: Transaction[] = [

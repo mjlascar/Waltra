@@ -128,24 +128,11 @@ export function AccountSheet({
       )}
 
       {held.length > 0 && (
-        <>
-          <div className="eyebrow mb-2">Posiciones ({held.length})</div>
-          <div className="card divide-hairline mb-4">
-            {held.map((pos) => {
-              const qty = pos.accounts.find((a) => a.accountId === account.accountId)?.quantity ?? 0;
-              const share = pos.quantity > 0 ? qty / pos.quantity : 0;
-              return (
-                <div key={pos.assetId} className="flex items-center gap-2 p-3">
-                  <span className="min-w-0 flex-1 truncate text-[13px]">{pos.symbol}</span>
-                  <span className="label shrink-0">{fmtQty(qty, 4)}</span>
-                  <span className="num shrink-0 text-[13px]">
-                    {money(pos.valueUsd * share, "USD", { compact: true })}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </>
+        <Posiciones
+          held={held}
+          accountId={account.accountId}
+          broker={config?.name ?? "tu broker"}
+        />
       )}
 
       <div className="eyebrow mb-2">Ajustar el efectivo</div>
@@ -217,5 +204,158 @@ export function AccountSheet({
         )}
       </div>
     </Sheet>
+  );
+}
+
+/**
+ * Las posiciones de la cuenta, con la conciliacion de unidades.
+ *
+ * La exportacion de Binance no trae lo que rinde Earn ni las comisiones que se
+ * cobran en el activo, y un Convert tampoco aparece: las unidades de la app y
+ * las del broker se separan de a poco. En vez de inventar movimientos que no
+ * se sabe cuando fueron, se anota la diferencia de hoy como un ajuste: de mas
+ * entra como ingreso a su precio, de menos sale a su costo como comision.
+ */
+function Posiciones({
+  held,
+  accountId,
+  broker,
+}: {
+  held: ReturnType<typeof useStore>["portfolio"]["positions"];
+  accountId: string;
+  broker: string;
+}) {
+  const { saveTransaction } = useStore();
+  const [corrigiendo, setCorrigiendo] = useState(false);
+  const [reales, setReales] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [hechos, setHechos] = useState<number | null>(null);
+
+  const filas = held.map((pos) => {
+    const qty = pos.accounts.find((a) => a.accountId === accountId)?.quantity ?? 0;
+    const share = pos.quantity > 0 ? qty / pos.quantity : 0;
+    const real = reales[pos.assetId] !== undefined ? parseLooseNumber(reales[pos.assetId]) : null;
+    const delta = real === null ? null : real - qty;
+    // Una millonesima de la tenencia es redondeo, no una diferencia.
+    const minimo = Math.max(1e-8, Math.abs(qty) * 1e-6);
+    const precio = pos.price ?? pos.avgCost;
+    return {
+      pos,
+      qty,
+      valueUsd: pos.valueUsd * share,
+      delta: delta !== null && Math.abs(delta) >= minimo ? delta : null,
+      deltaUsd: delta !== null && pos.priceUsd !== null ? delta * pos.priceUsd : null,
+      precio,
+    };
+  });
+  const cambios = filas.filter((f) => f.delta !== null);
+
+  async function registrar() {
+    if (saving || cambios.length === 0) return;
+    setSaving(true);
+    try {
+      const now = new Date().toISOString();
+      for (const f of cambios) {
+        await saveTransaction({
+          id: newId(),
+          date: today(),
+          type: "adjust",
+          accountId,
+          assetId: f.pos.assetId,
+          quantity: f.delta!,
+          // El valor de las unidades hoy, en la moneda del activo: es el
+          // ingreso si sobran; si faltan, el ledger usa su costo.
+          amount: Math.abs(f.delta!) * f.precio,
+          price: f.precio,
+          currency: f.pos.currency,
+          note: `conciliado con ${broker}`,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+      setHechos(cambios.length);
+      setReales({});
+      setCorrigiendo(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="mb-2 flex items-baseline justify-between">
+        <span className="eyebrow">Posiciones ({held.length})</span>
+        <button
+          className="label underline"
+          onClick={() => {
+            setCorrigiendo((v) => !v);
+            setHechos(null);
+          }}
+        >
+          {corrigiendo ? "Cancelar" : `Corregir con ${broker}`}
+        </button>
+      </div>
+      {corrigiendo && (
+        <p className="label mb-2 leading-relaxed">
+          Escribí las unidades que ves en {broker}; dejá vacío lo que coincide. Lo que sobra
+          (Earn, staking) entra como ingreso a su precio de hoy; lo que falta (comisiones
+          cobradas en el activo) sale a su costo, como una comisión. Si lo que falta lo
+          mandaste a otra billetera, eso es un retiro: cargalo como retiro.
+        </p>
+      )}
+      <div className="card divide-hairline mb-2">
+        {filas.map((f) => (
+          <div key={f.pos.assetId} className="p-3">
+            <div className="flex items-center gap-2">
+              <span className="min-w-0 flex-1 truncate text-[13px]">{f.pos.symbol}</span>
+              <span className="label shrink-0">{fmtQty(f.qty, 8)}</span>
+              {!corrigiendo && (
+                <span className="num shrink-0 text-[13px]">
+                  {money(f.valueUsd, "USD", { compact: true })}
+                </span>
+              )}
+              {corrigiendo && (
+                <input
+                  className="input num w-[112px] shrink-0 py-1 text-[13px]"
+                  inputMode="decimal"
+                  aria-label={`Unidades de ${f.pos.symbol} en ${broker}`}
+                  value={reales[f.pos.assetId] ?? ""}
+                  placeholder="igual"
+                  onChange={(e) => setReales((r) => ({ ...r, [f.pos.assetId]: e.target.value }))}
+                />
+              )}
+            </div>
+            {corrigiendo && f.delta !== null && (
+              <p className={`num mt-1 text-right text-[11px] ${f.delta > 0 ? "pos" : "neg"}`}>
+                {f.delta > 0 ? "+" : "−"}
+                {fmtQty(Math.abs(f.delta), 8)}
+                {f.deltaUsd !== null && ` · ${money(f.deltaUsd, "USD", { sign: true })}`}
+                {f.delta > 0 ? " · ingreso" : " · comisión"}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+      {corrigiendo && (
+        <button
+          className="btn btn-sm mb-4 w-full"
+          disabled={cambios.length === 0 || saving}
+          onClick={() => void registrar()}
+        >
+          {saving
+            ? "Registrando…"
+            : cambios.length === 0
+              ? "Sin diferencias"
+              : `Registrar ${cambios.length} ${cambios.length === 1 ? "ajuste" : "ajustes"}`}
+        </button>
+      )}
+      {hechos !== null && (
+        <p className="label pos mb-4">
+          {hechos === 1 ? "Ajuste registrado" : `${hechos} ajustes registrados`}. Las unidades ya
+          coinciden con {broker}.
+        </p>
+      )}
+      {!corrigiendo && hechos === null && <div className="mb-2" />}
+    </>
   );
 }

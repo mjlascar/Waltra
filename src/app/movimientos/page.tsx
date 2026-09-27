@@ -178,7 +178,11 @@ export default function Movimientos() {
             <div className="card divide-hairline">
               {rows.map((tx) => {
                 const asset = assetOf(tx);
-                const outflow = tx.type === "withdraw" || tx.type === "buy" || tx.type === "fee";
+                const outflow =
+                  tx.type === "withdraw" ||
+                  tx.type === "buy" ||
+                  tx.type === "fee" ||
+                  (tx.type === "adjust" && (tx.quantity ?? 0) < 0);
                 // El detalle va debajo junto a la fecha: en 360px, una columna
                 // de fecha aparte le come el ancho al dato que importa.
                 // La fecha va primero y sin año: el encabezado del mes ya lo
@@ -195,9 +199,11 @@ export default function Movimientos() {
                   // El simbolo de moneda del precio unitario se omite: es el
                   // mismo del monto que esta a la derecha, y aca cada caracter
                   // se paga en texto cortado.
-                  tx.quantity
-                    ? `${fmtQty(tx.quantity, 6)} @ ${plainNumber(tx.price ?? 0, (tx.price ?? 0) >= 1000 ? 0 : 2)}`
-                    : null,
+                  tx.type === "adjust" && tx.quantity
+                    ? `${tx.quantity > 0 ? "+" : "−"}${fmtQty(Math.abs(tx.quantity), 8)} unidades`
+                    : tx.quantity
+                      ? `${fmtQty(tx.quantity, 6)} @ ${plainNumber(tx.price ?? 0, (tx.price ?? 0) >= 1000 ? 0 : 2)}`
+                      : null,
                   tx.note && tx.note !== "ejemplo" ? tx.note : null,
                 ].filter(Boolean);
                 return (
@@ -285,9 +291,9 @@ export default function Movimientos() {
                 >
                   <IconTrash size={16} /> Borrar
                 </button>
-                {/* Un cambio de ratio se corrige borrandolo y cargandolo de nuevo
-                    desde la posicion: el formulario comun no sabe de ratios. */}
-                {detail.type !== "split" && (
+                {/* Un cambio de ratio o un ajuste se corrigen borrandolos y
+                    cargandolos de nuevo: el formulario comun no sabe de ellos. */}
+                {detail.type !== "split" && detail.type !== "adjust" && (
                   <button
                     className="btn btn-primary flex-1"
                     onClick={() => {
