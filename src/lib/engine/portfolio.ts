@@ -82,6 +82,22 @@ export interface PriceMismatch {
 }
 
 /**
+ * Un activo del que se vendio mas de lo que figura comprado en una cuenta.
+ * Casi siempre es un deposito del activo que no esta cargado (una cripto que
+ * llego de otra billetera): esas unidades salen sin costo conocido y su venta
+ * cuenta entera como ganancia realizada.
+ */
+export interface Oversold {
+  assetId: string;
+  symbol: string;
+  accountId: string;
+  /** El dia de la venta que dejo la tenencia en negativo por primera vez. */
+  day: DayKey;
+  /** Cuantas unidades faltaron, en el peor momento, en unidades de ese dia. */
+  missing: number;
+}
+
+/**
  * Un cambio de ratio cargado a mano con una fecha posterior a compras que ya
  * se hicieron en unidades nuevas. El ledger las multiplica por el ratio y la
  * posicion aparece valiendo de mas: paso con una compra de SPY.BA del 15/9 y
@@ -188,6 +204,8 @@ export interface Portfolio {
   priceMismatches: PriceMismatch[];
   /** Cambios de ratio cargados despues de compras que ya estaban en unidades nuevas. */
   splitDateIssues: SplitDateIssue[];
+  /** Ventas de unidades que no figuran compradas. */
+  oversold: Oversold[];
   /**
    * Lo que dicen las operaciones de cada CEDEAR sobre sus cambios de ratio,
    * contra el precio de la accion en Nueva York. Ver `engine/cedear-ratio.ts`.
@@ -298,6 +316,7 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
     splits: {},
     priceMismatches: [],
     splitDateIssues: [],
+    oversold: [],
     ratioChecks: [],
     accountViews: [],
     daily: [],
@@ -420,6 +439,43 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
   // --- Compras que no cierran con la cotizacion ---------------------------
   // Solo para lo que puede cambiar de ratio: acciones, ETFs y CEDEARs. Una
   // cripto no se divide, y su volatilidad simulada daria falsas alarmas.
+  // --- Ventas de lo que no figura comprado -------------------------------
+  const oversold: Oversold[] = [];
+  {
+    const corrida = new Map<string, { qty: number; min: number; day: DayKey | null }>();
+    for (const tx of txs) {
+      if (!tx.assetId) continue;
+      if (tx.type === "split" && tx.ratio) {
+        for (const [clave, c] of corrida) {
+          if (clave.endsWith(`|${tx.assetId}`)) c.qty *= tx.ratio;
+        }
+        continue;
+      }
+      const delta =
+        tx.type === "buy" ? tx.quantity ?? 0
+        : tx.type === "sell" ? -(tx.quantity ?? 0)
+        : tx.type === "adjust" ? tx.quantity ?? 0
+        : 0;
+      if (!delta) continue;
+      const clave = `${tx.accountId}|${tx.assetId}`;
+      const c = corrida.get(clave) ?? { qty: 0, min: 0, day: null };
+      c.qty += delta;
+      // Una millonesima es redondeo de la exportacion, no una venta de mas.
+      if (c.qty < -1e-9 && c.qty < c.min) {
+        c.min = c.qty;
+        c.day ??= toDay(tx.date);
+      }
+      corrida.set(clave, c);
+    }
+    for (const [clave, c] of corrida) {
+      if (!c.day || -c.min < 1e-8) continue;
+      const [accountId, assetId] = clave.split("|");
+      const asset = assetsById[assetId];
+      if (!asset) continue;
+      oversold.push({ assetId, symbol: asset.symbol, accountId, day: c.day, missing: -c.min });
+    }
+  }
+
   // --- Ratios de los CEDEARs ----------------------------------------------
   // Con la serie de la accion de afuera, cada operacion dice que ratio regia
   // ese dia: los cambios salen de los datos y no de lo que alguien cargo. Los
@@ -645,6 +701,7 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
     splits,
     priceMismatches,
     splitDateIssues,
+    oversold,
     ratioChecks,
     accountViews,
     daily,

@@ -354,6 +354,51 @@ describe("ajustes de tenencia", () => {
   });
 });
 
+describe("vender más de lo que figura comprado", () => {
+  /**
+   * El caso real: un depósito de ETH que no está cargado, parte de ese ETH
+   * vendido, y después más compras. La posición se pisaba en cero al quedar
+   * negativa y la cuenta no, y la cartera terminaba mostrando 0,4822 ETH
+   * donde la cuenta decía 0,4245.
+   */
+  const txs = [
+    tx("deposit", "2024-01-01", { amount: 1000, accountId: "binance" }),
+    // Se venden 0,5 BTC que no figuran comprados.
+    tx("sell", "2024-01-05", { amount: 200, assetId: "btc", quantity: 0.5, price: 400, accountId: "binance" }),
+    tx("buy", "2024-01-10", { amount: 800, assetId: "btc", quantity: 2, price: 400, accountId: "binance" }),
+  ];
+
+  it("la posición y la cuenta dicen lo mismo", () => {
+    const p = correr({ transactions: txs, precios: { btc: 400 } });
+    const pos = p.positions.find((x) => x.assetId === "btc")!;
+    expect(pos.quantity).toBeCloseTo(1.5, 9);
+    expect(pos.accounts.find((a) => a.accountId === "binance")!.quantity).toBeCloseTo(1.5, 9);
+  });
+
+  it("y el modelo cierra: la compra que cubre corrige el resultado de la venta", () => {
+    const p = correr({ transactions: txs, precios: { btc: 400 } });
+    verificarIdentidades(p);
+    // Vendió a 400 lo que después repuso a 400: no ganó nada.
+    expect(p.realizedUsd).toBeCloseTo(0, 6);
+    expect(p.totalPnlUsd).toBeCloseTo(0, 6);
+    expect(ganandoPorCausas(p, 0)).toBeCloseTo(p.totalPnlUsd, 6);
+  });
+
+  it("si subió entre la venta y la reposición, eso es lo que perdió", () => {
+    const p = correr({
+      transactions: [
+        txs[0],
+        txs[1],
+        tx("buy", "2024-01-10", { amount: 1000, assetId: "btc", quantity: 2, price: 500, accountId: "binance" }),
+      ],
+      precios: { btc: 500 },
+    });
+    verificarIdentidades(p);
+    expect(p.realizedUsd).toBeCloseTo(200 - 250, 6);
+    expect(ganandoPorCausas(p, 0)).toBeCloseTo(p.totalPnlUsd, 6);
+  });
+});
+
 describe("la historia entera cierra", () => {
   /** Dos años de uso mezclando todo lo que la app sabe hacer. */
   const vida: Transaction[] = [
@@ -648,5 +693,34 @@ describe("la historia de cada posición", () => {
     expect(p.closedPositions).toHaveLength(1);
     expect(p.closedPositions[0]).toMatchObject({ symbol: "QQQ", realizedUsd: 200 });
     expect(p.closedPositions[0].trades).toHaveLength(2);
+  });
+});
+
+describe("el aviso de lo vendido sin comprar", () => {
+  it("dice qué, dónde, cuándo y cuánto faltó", () => {
+    const p = correr({
+      transactions: [
+        tx("deposit", "2024-01-01", { amount: 1000, accountId: "binance" }),
+        tx("buy", "2024-01-02", { amount: 400, assetId: "btc", quantity: 1, price: 400, accountId: "binance" }),
+        tx("sell", "2024-01-05", { amount: 600, assetId: "btc", quantity: 1.5, price: 400, accountId: "binance" }),
+        tx("buy", "2024-01-10", { amount: 800, assetId: "btc", quantity: 2, price: 400, accountId: "binance" }),
+      ],
+      precios: { btc: 400 },
+    });
+    expect(p.oversold).toEqual([
+      { assetId: "btc", symbol: "BTC", accountId: "binance", day: "2024-01-05", missing: 0.5 },
+    ]);
+  });
+
+  it("sin ventas de más, no hay aviso", () => {
+    const p = correr({
+      transactions: [
+        tx("deposit", "2024-01-01", { amount: 1000 }),
+        tx("buy", "2024-01-02", { amount: 600, assetId: "qqq", quantity: 2, price: 300 }),
+        tx("sell", "2024-01-05", { amount: 600, assetId: "qqq", quantity: 2, price: 300 }),
+      ],
+      precios: { qqq: 300 },
+    });
+    expect(p.oversold).toEqual([]);
   });
 });

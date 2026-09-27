@@ -61,6 +61,64 @@ function bumpPosition(state: LedgerState, accountId: string, assetId: string, de
 }
 
 /**
+ * Suma unidades a una posicion con su costo.
+ *
+ * Si la posicion estaba en negativo (se vendio mas de lo que figura comprado,
+ * casi siempre porque falta un deposito del activo), las primeras unidades la
+ * cubren. Esas se habian vendido sin costo conocido, asi que su resultado se
+ * habia contado entero; ahora que se sabe lo que cuesta reponerlas, ese costo
+ * sale del realizado. Lo que sobra forma la posicion con su costo.
+ *
+ * Antes la posicion se pisaba en cero al quedar negativa y la cuenta no: la
+ * cartera y el detalle de la cuenta terminaban mostrando unidades distintas
+ * del mismo activo.
+ */
+function addUnits(
+  state: LedgerState,
+  assetId: string,
+  quantity: number,
+  costLocal: number,
+  costUsd: number,
+): void {
+  const lot = (state.positions[assetId] ??= { quantity: 0, avgCost: 0, avgCostUsd: 0 });
+  let q = quantity;
+  if (lot.quantity < 0 && q > 0) {
+    const cubre = Math.min(q, -lot.quantity);
+    const parte = cubre / q;
+    state.realizedUsd -= costUsd * parte;
+    state.realizedByAsset[assetId] = (state.realizedByAsset[assetId] ?? 0) - costUsd * parte;
+    lot.quantity += cubre;
+    if (Math.abs(lot.quantity) < 1e-12) lot.quantity = 0;
+    costLocal *= 1 - parte;
+    costUsd *= 1 - parte;
+    q -= cubre;
+  }
+  if (q <= 0) return;
+  const totalLocal = lot.avgCost * lot.quantity + costLocal;
+  const totalUsd = lot.avgCostUsd * lot.quantity + costUsd;
+  lot.quantity += q;
+  lot.avgCost = totalLocal / lot.quantity;
+  lot.avgCostUsd = totalUsd / lot.quantity;
+}
+
+/**
+ * Saca unidades de una posicion. Puede quedar en negativo: la cuenta tambien
+ * queda asi, y las dos tienen que decir lo mismo. Devuelve cuantas de las
+ * que salieron tenian costo conocido.
+ */
+function removeUnits(state: LedgerState, assetId: string, quantity: number): number {
+  const lot = (state.positions[assetId] ??= { quantity: 0, avgCost: 0, avgCostUsd: 0 });
+  const conCosto = Math.min(quantity, Math.max(lot.quantity, 0));
+  lot.quantity -= quantity;
+  if (lot.quantity <= 1e-12) {
+    if (Math.abs(lot.quantity) < 1e-12) lot.quantity = 0;
+    lot.avgCost = 0;
+    lot.avgCostUsd = 0;
+  }
+  return conCosto;
+}
+
+/**
  * Ordena cronologicamente y, a igualdad de fecha, respeta el orden de carga.
  *
  * Salvo los cambios de ratio, que van primero en su dia: rigen desde que abre
@@ -133,12 +191,7 @@ export function applyTransaction(
     case "buy": {
       if (!tx.assetId || !tx.quantity) break;
       bumpCash(state.cash, tx.accountId, tx.currency, -(tx.amount + fee));
-      const lot = (state.positions[tx.assetId] ??= { quantity: 0, avgCost: 0, avgCostUsd: 0 });
-      const costLocal = lot.avgCost * lot.quantity + local(tx.amount + fee);
-      const costUsd = lot.avgCostUsd * lot.quantity + usd(tx.amount + fee);
-      lot.quantity += tx.quantity;
-      lot.avgCost = lot.quantity > 0 ? costLocal / lot.quantity : 0;
-      lot.avgCostUsd = lot.quantity > 0 ? costUsd / lot.quantity : 0;
+      addUnits(state, tx.assetId, tx.quantity, local(tx.amount + fee), usd(tx.amount + fee));
       bumpPosition(state, tx.accountId, tx.assetId, tx.quantity);
       state.feesUsd += usd(fee);
       break;
@@ -146,19 +199,13 @@ export function applyTransaction(
     case "sell": {
       if (!tx.assetId || !tx.quantity) break;
       bumpCash(state.cash, tx.accountId, tx.currency, tx.amount - fee);
-      const lot = (state.positions[tx.assetId] ??= { quantity: 0, avgCost: 0, avgCostUsd: 0 });
-      const sold = Math.min(tx.quantity, Math.max(lot.quantity, 0)) || tx.quantity;
-      const proceedsUsd = usd(tx.amount - fee);
-      const basisUsd = lot.avgCostUsd * sold;
-      const pnl = proceedsUsd - basisUsd;
+      const costoUnidad = state.positions[tx.assetId]?.avgCostUsd ?? 0;
+      // Lo vendido de mas no tiene costo conocido: su resultado se corrige
+      // cuando una compra posterior lo cubre (ver `addUnits`).
+      const conCosto = removeUnits(state, tx.assetId, tx.quantity);
+      const pnl = usd(tx.amount - fee) - costoUnidad * conCosto;
       state.realizedUsd += pnl;
       state.realizedByAsset[tx.assetId] = (state.realizedByAsset[tx.assetId] ?? 0) + pnl;
-      lot.quantity -= tx.quantity;
-      if (lot.quantity <= 1e-12) {
-        lot.quantity = 0;
-        lot.avgCost = 0;
-        lot.avgCostUsd = 0;
-      }
       bumpPosition(state, tx.accountId, tx.assetId, -tx.quantity);
       state.feesUsd += usd(fee);
       break;
@@ -200,16 +247,11 @@ export function applyTransaction(
       // Lo que el broker tiene y los movimientos no explican. No toca el
       // efectivo ni el capital: la plata no cruzo el borde del portafolio.
       if (!tx.assetId || !tx.quantity) break;
-      const lot = (state.positions[tx.assetId] ??= { quantity: 0, avgCost: 0, avgCostUsd: 0 });
       if (tx.quantity > 0) {
         // De mas, como un rendimiento cobrado en el activo: entra al precio
         // del dia, asi que su costo es ese mismo valor y no aparece como
         // ganancia sin realizar de un saque. Lo que vale es ingreso.
-        const costLocal = lot.avgCost * lot.quantity + local(tx.amount);
-        const costUsd = lot.avgCostUsd * lot.quantity + usd(tx.amount);
-        lot.quantity += tx.quantity;
-        lot.avgCost = costLocal / lot.quantity;
-        lot.avgCostUsd = costUsd / lot.quantity;
+        addUnits(state, tx.assetId, tx.quantity, local(tx.amount), usd(tx.amount));
         state.incomeUsd += usd(tx.amount);
         state.realizedByAsset[tx.assetId] =
           (state.realizedByAsset[tx.assetId] ?? 0) + usd(tx.amount);
@@ -217,14 +259,8 @@ export function applyTransaction(
         // De menos, como una comision cobrada en el activo: salen al costo
         // promedio. Lo que habian subido se va con ellas de la ganancia sin
         // realizar, sin pasar por el realizado: no se vendio nada.
-        const q = Math.min(-tx.quantity, Math.max(lot.quantity, 0));
-        state.feesUsd += lot.avgCostUsd * q;
-        lot.quantity -= q;
-        if (lot.quantity <= 1e-12) {
-          lot.quantity = 0;
-          lot.avgCost = 0;
-          lot.avgCostUsd = 0;
-        }
+        const costoUnidad = state.positions[tx.assetId]?.avgCostUsd ?? 0;
+        state.feesUsd += costoUnidad * removeUnits(state, tx.assetId, -tx.quantity);
       }
       bumpPosition(state, tx.accountId, tx.assetId, tx.quantity);
       break;

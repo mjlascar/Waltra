@@ -174,6 +174,16 @@ realizar de un saque), las de menos salen a su costo como comisión. No mueve
 efectivo ni capital, y está en los invariantes. Lo que se mandó a otra
 billetera no es un ajuste: es un retiro, y la pantalla lo dice.
 
+**La posición y la cuenta no pueden decir cosas distintas.** Vender más de lo
+que figura comprado (una cripto que llegó de otra billetera y no está
+cargada) deja la tenencia en negativo. El ledger la pisaba en cero y la
+cuenta no, y la cartera mostraba 0,4822 ETH donde el detalle de la cuenta
+decía 0,4245. Ahora la posición también puede quedar en negativo: lo vendido
+de más sale sin costo conocido, y la compra que después lo cubre corrige ese
+resultado con lo que costó reponerlo (`addUnits` / `removeUnits`, con tests
+en los invariantes). `oversold` lo avisa en el inicio, porque esas ventas
+inflan la ganancia ya realizada hasta que se carga el depósito que faltaba.
+
 **Comprar dólares es un cambio de moneda, no capital** (`type: "exchange"`).
 Salen `amount` en `currency` y entran `toAmount` en `toCurrency`, en la misma
 cuenta. No mueve el capital aportado ni el rendimiento. Cada lado se valúa al

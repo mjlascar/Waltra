@@ -12,7 +12,7 @@ import { Allocation } from "@/components/charts/Allocation";
 import { IconChevron } from "@/components/icons";
 import { useStore } from "@/lib/store";
 import { useUpdate } from "@/lib/use-update";
-import { money, percent, shortDate, TX_SHORT } from "@/lib/format";
+import { money, percent, quantity as fmtQty, shortDate, TX_SHORT } from "@/lib/format";
 import { rangeStart, type RangeKey } from "@/lib/date";
 import type { AccountView } from "@/lib/engine/portfolio";
 import { periodView } from "@/lib/engine/period";
@@ -488,6 +488,27 @@ export default function Overview() {
           {enDescubierto.length === 1 ? "queda" : "quedan"} con efectivo en negativo:
           hay compras por más plata de la que figura ingresada. Los totales no se
           inflan por eso, pero falta cargar algún ingreso o transferencia.
+        </Notice>
+      )}
+      {/* Ventas de unidades que no figuran compradas: casi siempre una cripto
+          que llego de otra billetera y no esta cargada. Salen sin costo, y la
+          ganancia ya realizada queda inflada por lo que valian. */}
+      {p.oversold.length > 0 && (
+        <Notice>
+          Vendiste más de lo que figura comprado:{" "}
+          {p.oversold
+            .slice(0, 4)
+            .map(
+              (o) =>
+                `${fmtQty(o.missing, 8)} ${o.symbol} en ${
+                  accounts.find((a) => a.id === o.accountId)?.name ?? "una cuenta"
+                } el ${shortDate(o.day, true)}`,
+            )
+            .join("; ")}
+          {p.oversold.length > 4 ? ` y ${p.oversold.length - 4} más` : ""}. Suele ser un
+          depósito del activo que no está cargado. Esas unidades cuentan como vendidas
+          sin costo, así que la ganancia ya realizada sale de más: cargalo como un ingreso
+          y una compra antes de esa fecha.
         </Notice>
       )}
       {p.missingPrices.length > 0 && (
