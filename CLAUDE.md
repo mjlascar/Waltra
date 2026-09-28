@@ -284,6 +284,22 @@ las marcas en la misma unidad y saca los decimales del paso: si no, marcas a
 US$ 50 de distancia se escribían iguales. El de rendimiento sí incluye el
 cero, pero porque la ventana arranca ahí por construcción.
 
+La cruceta de los gráficos **se queda donde se la deja**
+(`useStickyCursor`): arrastrar recorre los días, levantar el dedo deja
+marcado el último y tocar de nuevo cerca de ese día vuelve al total. Si el
+gesto termina siendo un scroll, el sistema lo cancela y queda la selección
+de antes. Cambiar de ventana o de billetera remonta el gráfico (por `key`),
+porque el mismo índice ya es otro día.
+
+El gráfico principal se filtra **por billetera**: `scopeToAccount` arma los
+movimientos vistos desde una cuenta, y ahí una transferencia que sale es un
+retiro y una que llega, un ingreso (para la cartera entera no son capital;
+para cada billetera, sí). Las billeteras suman la cartera entera, y hay un
+test que lo fija. Los avisos y la distribución por cuenta siguen mirando la
+cartera entera. El porcentaje de arriba va entre paréntesis con su propio
+color: en una ventana la ganancia en plata y el rendimiento pueden tener
+signos distintos.
+
 El último punto de la serie se pisa con el valor en vivo: la serie diaria usa
 el cierre guardado y el total de arriba la cotización del momento, y ver dos
 números distintos a diez píxeles se lee como un error.

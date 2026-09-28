@@ -59,7 +59,8 @@ type ChartMode = "valor" | "rendimiento";
 
 export default function Overview() {
   const {
-    portfolio: p,
+    portfolio: full,
+    portfolioFor,
     transactions,
     accounts,
     assets,
@@ -71,6 +72,16 @@ export default function Overview() {
     updateSettings,
   } = useStore();
   const update = useUpdate();
+  /**
+   * La billetera que mira el grafico. Filtra lo de arriba (el total, el
+   * grafico, las metricas y la composicion); los avisos y la distribucion por
+   * cuenta siguen mirando la cartera entera, que es donde viven los problemas.
+   */
+  const [billetera, setBilletera] = useState<string>("todas");
+  const p = useMemo(
+    () => (billetera === "todas" ? full : portfolioFor(billetera)),
+    [billetera, full, portfolioFor],
+  );
   const [arreglando, setArreglando] = useState<string | null>(null);
   const [ratioDe, setRatioDe] = useState<{
     assetId: string;
@@ -243,7 +254,7 @@ export default function Overview() {
     );
   }
 
-  if (!p.hasData) return <EmptyStart />;
+  if (!full.hasData) return <EmptyStart />;
 
   // Con la ventana completa el periodo y la historia son lo mismo, pero el
   // encuadre cambia: ahi vale "sobre el capital que pusiste", que es la
@@ -266,7 +277,7 @@ export default function Overview() {
    * ganancia sigue siendo la correcta— pero describe algo que no pudo pasar,
    * asi que la app lo dice en vez de dejarlo escondido en un renglon.
    */
-  const enDescubierto = p.accountViews.filter((a) => a.cashUsd < -0.01);
+  const enDescubierto = full.accountViews.filter((a) => a.cashUsd < -0.01);
 
   /**
    * Acciones de EE.UU. compradas en pesos: son CEDEARs cargados antes de que
@@ -288,9 +299,10 @@ export default function Overview() {
     }
   }
 
-  const activas = p.accountViews.filter(
+  const billeteras = full.accountViews.filter(
     (a) => a.valueUsd > 0.01 || a.netContributedUsd !== 0,
-  ).length;
+  );
+  const activas = billeteras.length;
 
   return (
     <div className="pb-6">
@@ -332,7 +344,7 @@ export default function Overview() {
           precio guardado.
         </Notice>
       )}
-      {p.fxMissing && (
+      {full.fxMissing && (
         <Notice>
           No pude traer el dólar MEP, así que los montos en pesos todavía no están
           contados en los totales. Tocá actualizar cuando tengas señal.
@@ -365,7 +377,7 @@ export default function Overview() {
           cambio de ratio que el proveedor ya aplico a los precios viejos y la
           app no conoce. Sin registrarlo, el grafico muestra una perdida el
           mismo dia de la compra. */}
-      {p.priceMismatches.map((m) => (
+      {full.priceMismatches.map((m) => (
         <div
           key={m.assetId}
           className="mb-3 p-2.5"
@@ -398,7 +410,7 @@ export default function Overview() {
       {/* Cambios de ratio de CEDEARs que no cierran con las operaciones y el
           precio de la accion en Nueva York. Es la verificacion que manda:
           sale de los datos, no de lo que alguien recordo cargar. */}
-      {p.ratioChecks
+      {full.ratioChecks
         .filter((c) => c.issues.length > 0)
         .map((c) => (
           <div
@@ -436,7 +448,7 @@ export default function Overview() {
       {/* Un cambio de ratio con fecha posterior a compras que ya estaban en
           unidades nuevas: el ledger las multiplica y la cartera aparece
           valiendo de mas. Paso con la fecha que proponia la hoja. */}
-      {p.splitDateIssues.map((d) => {
+      {full.splitDateIssues.map((d) => {
         const mover = async () => {
           const tx = transactions.find((t) => t.id === d.txId);
           if (!tx || !d.suggestedDate) return;
@@ -493,10 +505,10 @@ export default function Overview() {
       {/* Ventas de unidades que no figuran compradas: casi siempre una cripto
           que llego de otra billetera y no esta cargada. Salen sin costo, y la
           ganancia ya realizada queda inflada por lo que valian. */}
-      {p.oversold.length > 0 && (
+      {full.oversold.length > 0 && (
         <Notice>
           Vendiste más de lo que figura comprado:{" "}
-          {p.oversold
+          {full.oversold
             .slice(0, 4)
             .map(
               (o) =>
@@ -505,15 +517,15 @@ export default function Overview() {
                 } el ${shortDate(o.day, true)}`,
             )
             .join("; ")}
-          {p.oversold.length > 4 ? ` y ${p.oversold.length - 4} más` : ""}. Suele ser un
+          {full.oversold.length > 4 ? ` y ${full.oversold.length - 4} más` : ""}. Suele ser un
           depósito del activo que no está cargado. Esas unidades cuentan como vendidas
           sin costo, así que la ganancia ya realizada sale de más: cargalo como un ingreso
           y una compra antes de esa fecha.
         </Notice>
       )}
-      {p.missingPrices.length > 0 && (
+      {full.missingPrices.length > 0 && (
         <Notice>
-          Sin cotización para {p.missingPrices.join(", ")}. Esas posiciones están valuadas
+          Sin cotización para {full.missingPrices.join(", ")}. Esas posiciones están valuadas
           al costo, así que la ganancia real puede ser distinta.
         </Notice>
       )}
@@ -521,16 +533,24 @@ export default function Overview() {
       {/* El numero protagonista de la app: cuanto tenes en total. */}
       <section className="mb-5">
         <div className="eyebrow mb-2">
-          Valor total{activas > 1 ? ` · ${activas} cuentas` : ""}
+          {billetera === "todas"
+            ? `Valor total${activas > 1 ? ` · ${activas} cuentas` : ""}`
+            : `Valor en ${accounts.find((a) => a.id === billetera)?.name ?? "la cuenta"}`}
         </div>
         <div className="hero-num">{money(p.totalValueUsd, "USD")}</div>
         <div className="mt-2 flex flex-wrap items-baseline gap-x-2">
           <span className={`num text-[15px] ${pnlTone}`}>
             {money(pnl, "USD", { sign: true })}
           </span>
-          <span className={`num text-[13px] ${pnlTone}`}>
-            {percent(completo ? p.simpleReturn : periodo.twr, { decimals: 1 })}
-          </span>
+          {/* El porcentaje lleva su propio color y va entre parentesis: en
+              una ventana la ganancia en plata y el rendimiento pueden tener
+              signos distintos (se gano plata con aportes que entraron caros),
+              y pintarlos igual mostraba un "-20,9%" en verde. */}
+          {(() => {
+            const pct = completo ? p.simpleReturn : periodo.twr;
+            const tono = pct === null || pct === undefined ? "" : pct >= 0 ? "pos" : "neg";
+            return <span className={`num text-[13px] ${tono}`}>({percent(pct, { decimals: 1 })})</span>;
+          })()}
           <span className="label">
             {completo ? "sobre el capital que pusiste" : desde}
           </span>
@@ -538,6 +558,18 @@ export default function Overview() {
       </section>
 
       <section className="card mb-4 p-3">
+        {billeteras.length > 1 && (
+          <div className="mb-2">
+            <Segmented
+              value={billetera}
+              onChange={setBilletera}
+              options={[
+                { value: "todas", label: "Todas" },
+                ...billeteras.map((v) => ({ value: v.accountId, label: v.name.split(/\s+/)[0] })),
+              ]}
+            />
+          </div>
+        )}
         <div className="mb-2">
           <Segmented
             value={mode}
@@ -553,10 +585,16 @@ export default function Overview() {
         </div>
 
         {mode === "valor" ? (
-          <ValueChart data={chartData} />
+          <ValueChart key={`${range}-${billetera}`} data={chartData} />
         ) : (
           <>
-            <ReturnChart data={mineData} compare={compare} height={186} tone="var(--color-s1)" />
+            <ReturnChart
+              key={`${range}-${billetera}-${metodo}`}
+              data={mineData}
+              compare={compare}
+              height={186}
+              tone="var(--color-s1)"
+            />
             {verdict && (
               <p
                 className={`mt-2 text-[13px] font-medium ${
@@ -647,7 +685,7 @@ export default function Overview() {
       <section className="mb-5">
         <SectionTitle>Distribución por cuenta</SectionTitle>
         <div className="card divide-hairline">
-          {p.accountViews
+          {full.accountViews
             .filter((a) => a.valueUsd > 0.01 || a.netContributedUsd !== 0)
             .sort((a, b) => b.valueUsd - a.valueUsd)
             .map((view) => (

@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { axisMoney, money, shortDate } from "@/lib/format";
 import { bandRuns, fitDomain, linear, linePath, niceTicks, plotArea, stepPath } from "./scale";
 import { useMeasure } from "./useMeasure";
+import { useStickyCursor } from "./useStickyCursor";
 
 export interface ValuePoint {
   day: string;
@@ -18,7 +19,6 @@ export interface ValuePoint {
  */
 export function ValueChart({ data, height = 210 }: { data: ValuePoint[]; height?: number }) {
   const { ref, width } = useMeasure<HTMLDivElement>();
-  const [hover, setHover] = useState<number | null>(null);
 
   const box = { width, height, top: 12, right: 8, bottom: 22, left: 8 };
   const area = plotArea(box);
@@ -56,15 +56,17 @@ export function ValueChart({ data, height = 210 }: { data: ValuePoint[]; height?
     };
   }, [data, width, area.x0, area.x1, area.y0, area.y1]);
 
-  const active = hover !== null ? data[Math.min(hover, data.length - 1)] : data[data.length - 1];
-  const gain = active ? active.value - active.contributed : 0;
+  const { selected: hover, handlers } = useStickyCursor(
+    data.length,
+    (clientX, rect) => {
+      const ratio = (clientX - rect.left - area.x0) / Math.max(1, area.w);
+      return Math.max(0, Math.min(data.length - 1, Math.round(ratio * (data.length - 1))));
+    },
+    (i) => area.x0 + (i / Math.max(1, data.length - 1)) * area.w,
+  );
 
-  function pick(clientX: number, rect: DOMRect) {
-    if (data.length === 0) return;
-    const ratio = (clientX - rect.left - area.x0) / Math.max(1, area.w);
-    const index = Math.round(ratio * (data.length - 1));
-    setHover(Math.max(0, Math.min(data.length - 1, index)));
-  }
+  const active = hover !== null ? data[hover] : data[data.length - 1];
+  const gain = active ? active.value - active.contributed : 0;
 
   // El div que mide el ancho es siempre el mismo nodo: si el componente
   // devolviera otro cuando no hay curva, el observador quedaria mirando un
@@ -129,26 +131,9 @@ export function ValueChart({ data, height = 210 }: { data: ValuePoint[]; height?
           width={width}
           height={height}
           className="touch-pan-y"
-          // El puntero se captura al apoyar el dedo: sin eso, arrastrar hasta
-          // el borde saca el puntero del SVG, dejan de llegar eventos y la
-          // cruceta se queda clavada o desaparece a mitad del gesto. Con la
-          // captura, los eventos siguen llegando aunque el dedo se vaya
-          // afuera, y `pick` ya recorta al rango de datos.
-          onPointerDown={(e) => {
-            e.currentTarget.setPointerCapture(e.pointerId);
-            pick(e.clientX, e.currentTarget.getBoundingClientRect());
-          }}
-          onPointerMove={(e) => {
-            if (e.buttons > 0 || e.pointerType === "mouse") {
-              pick(e.clientX, e.currentTarget.getBoundingClientRect());
-            }
-          }}
-          onPointerUp={() => setHover(null)}
-          // Si el sistema decide que el gesto era un scroll, avisa con
-          // `pointercancel` y no con `pointerup`: sin esto la cruceta queda
-          // colgada hasta el toque siguiente.
-          onPointerCancel={() => setHover(null)}
-          onLostPointerCapture={() => setHover(null)}
+          // Ver `useStickyCursor`: arrastrar recorre los dias, levantar el
+          // dedo deja marcado el ultimo y tocarlo de nuevo vuelve al total.
+          {...handlers}
         >
           {/* Grilla: hairline solida, un paso por encima de la superficie. */}
           {model.ticks.map((t) => (
@@ -270,6 +255,9 @@ export function ValueChart({ data, height = 210 }: { data: ValuePoint[]; height?
             capital {money(data[hover].contributed, "USD", { compact: true })}
           </span>
         </div>
+      )}
+      {hover !== null && (
+        <p className="label mt-0.5 text-[10px]">Tocá el mismo punto para volver al total.</p>
       )}
     </div>
   );

@@ -23,6 +23,7 @@ import type {
 } from "@/lib/types";
 import { DEFAULT_SETTINGS, ensureSeeded, getDb, type WaltraDB } from "@/lib/db";
 import { computePortfolio, type Portfolio } from "@/lib/engine/portfolio";
+import { scopeToAccount } from "@/lib/engine/scope";
 import { addDays, today, toDay } from "@/lib/date";
 import { syncMarket, type BackendContext } from "@/lib/backend";
 import { proveedoresCaidos } from "@/lib/market/down";
@@ -59,6 +60,11 @@ interface StoreValue {
   saveInsight: (report: InsightReport) => Promise<void>;
   /** Lo que la capa de backend necesita para saber con quien hablar. */
   backend: () => BackendContext;
+  /**
+   * La cartera vista desde una sola cuenta, para filtrar el grafico por
+   * billetera. Ver `engine/scope.ts`.
+   */
+  portfolioFor: (accountId: string) => Portfolio;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -316,6 +322,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       db,
       refresh,
       backend,
+      portfolioFor: (accountId) =>
+        computePortfolio({
+          transactions: scopeToAccount(transactions, accountId),
+          assets,
+          accounts: accounts.filter((a) => a.id === accountId),
+          priceSeries,
+          quotes,
+          fxRates,
+        }),
       saveTransaction: async (tx) => {
         await db?.transactions.put({ ...tx, updatedAt: new Date().toISOString() });
       },
@@ -352,7 +367,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (stale.length) await db.insights.bulkDelete(stale);
       },
     }),
-    [ready, accounts, assets, transactions, settings, insights, portfolio, sync, db, refresh, backend],
+    [ready, accounts, assets, transactions, settings, insights, portfolio, sync, db, refresh, backend, priceSeries, quotes, fxRates],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { percent, shortDate } from "@/lib/format";
 import { areaPath, linear, linePath, niceTicks, padDomain, plotArea } from "./scale";
 import { useMeasure } from "./useMeasure";
+import { useStickyCursor } from "./useStickyCursor";
 
 export interface ReturnPoint {
   day: string;
@@ -57,7 +58,6 @@ export function ReturnChart({
   marks?: ReturnMark[];
 }) {
   const { ref, width } = useMeasure<HTMLDivElement>();
-  const [hover, setHover] = useState<number | null>(null);
 
   const box = { width, height, top: 10, right: 8, bottom: 20, left: 8 };
   const area = plotArea(box);
@@ -87,13 +87,18 @@ export function ReturnChart({
     };
   }, [data, compare, level, width, area.x0, area.x1, area.y0, area.y1]);
 
+  const { selected: hover, handlers } = useStickyCursor(
+    data.length,
+    (clientX, rect) => {
+      const ratio = (clientX - rect.left - area.x0) / Math.max(1, area.w);
+      return Math.max(0, Math.min(data.length - 1, Math.round(ratio * (data.length - 1))));
+    },
+    (i) => area.x0 + (i / Math.max(1, data.length - 1)) * area.w,
+  );
+
   const active = hover !== null ? data[hover] : null;
   const activeCompare = hover !== null ? compare?.points[hover] : null;
 
-  function pick(clientX: number, rect: DOMRect) {
-    const ratio = (clientX - rect.left - area.x0) / Math.max(1, area.w);
-    setHover(Math.max(0, Math.min(data.length - 1, Math.round(ratio * (data.length - 1)))));
-  }
 
   return (
     <div ref={ref} className="w-full select-none">
@@ -125,19 +130,8 @@ export function ReturnChart({
           // Horizontal es de la cruceta, vertical sigue siendo scroll de la
           // pagina. Sin esto el navegador puede quedarse con las dos.
           className="touch-pan-y"
-          // Ver el comentario en ValueChart: la captura del puntero es lo que
-          // evita que la cruceta se cuelgue al arrastrar hasta el borde.
-          onPointerDown={(e) => {
-            e.currentTarget.setPointerCapture(e.pointerId);
-            pick(e.clientX, e.currentTarget.getBoundingClientRect());
-          }}
-          onPointerMove={(e) => {
-            if (e.buttons === 0 && e.pointerType !== "mouse") return;
-            pick(e.clientX, e.currentTarget.getBoundingClientRect());
-          }}
-          onPointerUp={() => setHover(null)}
-          onPointerCancel={() => setHover(null)}
-          onLostPointerCapture={() => setHover(null)}
+          // Ver `useStickyCursor`: el dia queda marcado al levantar el dedo.
+          {...handlers}
         >
           {model.ticks.map((t) => (
             <line
@@ -333,6 +327,9 @@ export function ReturnChart({
             )}
           </span>
         </div>
+      )}
+      {active && (
+        <p className="label mt-0.5 text-[10px]">Tocá el mismo punto para volver al total.</p>
       )}
     </div>
   );

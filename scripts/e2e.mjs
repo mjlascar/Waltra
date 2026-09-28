@@ -524,7 +524,8 @@ console.log("\n5d. Conciliar las unidades con el broker");
 // Lo que la exportación de Binance no trae: lo que rinde Earn (unidades de
 // más) y las comisiones cobradas en el activo (de menos).
 await goto("/");
-await page.locator("button").filter({ hasText: "Binance" }).first().click();
+// El renglón de la cuenta, no el filtro de billetera del gráfico.
+await page.locator("button").filter({ hasText: "Binance" }).filter({ hasText: "invertido" }).first().click();
 await page.waitForTimeout(700);
 await page.getByRole("button", { name: /^Corregir con Binance$/ }).click();
 await page.waitForTimeout(300);
@@ -656,16 +657,43 @@ await page.waitForTimeout(400);
 // Lo que sigue mide sobre el gráfico del inicio: hay que volver ahí.
 await goto("/");
 
+console.log("\n7d. Filtrar por billetera");
+await goto("/");
+check("el porcentaje va entre paréntesis", /\([+-]?[\d.,]+%\)/.test(await text()));
+await page.getByRole("button", { name: /^Binance$/ }).first().click();
+await page.waitForTimeout(700);
+check("el total pasa a ser el de la billetera", await has("Valor en Binance"), (await text()).slice(0, 300));
+await page.getByRole("button", { name: /^Todas$/ }).first().click();
+await page.waitForTimeout(500);
+check("y vuelve al total", await has("Valor total"));
+// Lo que sigue mide sobre el gráfico del inicio: hay que volver ahí.
+await goto("/");
+
 console.log("\n8. Cruceta del gráfico");
-const svg = page.locator("svg").nth(2);
+const svg = page.locator("svg.touch-pan-y").first();
+await svg.scrollIntoViewIfNeeded();
 const box = await svg.boundingBox();
 if (box) {
   await page.mouse.move(box.x + box.width * 0.4, box.y + box.height / 2);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.6, box.y + box.height / 2);
   await page.waitForTimeout(400);
-  check("la cruceta muestra el capital del día", await has("capital"));
+  check("la cruceta muestra el día elegido", await has("Tocá el mismo punto para volver"));
   await page.mouse.up();
+  await page.waitForTimeout(300);
+  // Al levantar el dedo el día queda marcado; tocarlo de nuevo vuelve al total.
+  check("el día queda marcado al soltar", await has("Tocá el mismo punto para volver"));
+  await page.mouse.move(box.x + box.width * 0.6 + 4, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  check("tocarlo de nuevo lo desmarca", !(await has("Tocá el mismo punto para volver")));
+  // Tocar lejos marca otro día en vez de desmarcar.
+  await page.mouse.move(box.x + box.width * 0.2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  check("un toque en otro lado marca ese día", await has("Tocá el mismo punto para volver"));
 } else {
   check("la cruceta muestra el capital del día", false, "no encontré el gráfico");
 }
