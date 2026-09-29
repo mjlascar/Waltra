@@ -30,6 +30,7 @@ export function MetricsExplainer({
   // Los numeros que se explican tienen que ser los mismos que el usuario
   // acaba de tocar: si arriba dice la ganancia del mes y aca la de siempre,
   // la explicacion confunde mas de lo que aclara.
+  const display = p.base;
   const completo = !periodo || periodo.full;
   const capital = completo ? p.netContributedUsd : periodo.contributedUsd;
   const ganancia = completo ? p.totalPnlUsd : periodo.pnlUsd;
@@ -39,17 +40,17 @@ export function MetricsExplainer({
   const entradas = [
     {
       titulo: completo ? "Capital aportado" : "Capital que entró",
-      valor: money(capital, "USD"),
+      valor: money(capital, display),
       cuerpo: completo
-        ? `Todo lo que ingresaste menos todo lo que retiraste: ${money(p.depositedUsd, "USD")} de ingresos y ${money(p.withdrawnUsd, "USD")} de retiros. Transferir de Cocos a Binance no suma acá: no es capital nuevo, solo cambia de lugar. Comprar tampoco: convertís efectivo en un activo, pero el patrimonio es el mismo.`
-        : `Lo que ingresaste menos lo que retiraste ${desde}. Transferir de Cocos a Binance no suma acá: no es capital nuevo, solo cambia de lugar. Comprar tampoco: convertís efectivo en un activo, pero el patrimonio es el mismo. En total, desde el primer movimiento, llevás ${money(p.netContributedUsd, "USD")}.`,
+        ? `Todo lo que ingresaste menos todo lo que retiraste: ${money(p.depositedUsd, display)} de ingresos y ${money(p.withdrawnUsd, display)} de retiros. Transferir de Cocos a Binance no suma acá: no es capital nuevo, solo cambia de lugar. Comprar tampoco: convertís efectivo en un activo, pero el patrimonio es el mismo.`
+        : `Lo que ingresaste menos lo que retiraste ${desde}. Transferir de Cocos a Binance no suma acá: no es capital nuevo, solo cambia de lugar. Comprar tampoco: convertís efectivo en un activo, pero el patrimonio es el mismo. En total, desde el primer movimiento, llevás ${money(p.netContributedUsd, display)}.`,
     },
     {
       titulo: "Ganancia",
-      valor: money(ganancia, "USD", { sign: true }),
+      valor: money(ganancia, display, { sign: true }),
       cuerpo: completo
-        ? `Lo que vale hoy la cartera (${money(p.totalValueUsd, "USD")}) menos el capital aportado (${money(p.netContributedUsd, "USD")}). Incluye lo que subieron tus posiciones${p.realizedUsd !== 0 ? `, lo que ya realizaste al vender (${money(p.realizedUsd, "USD", { sign: true })})` : ""}${p.incomeUsd > 0 ? ` y lo que cobraste en dividendos e intereses (${money(p.incomeUsd, "USD")})` : ""}${p.feesUsd > 0 ? `, descontando ${money(p.feesUsd, "USD")} de comisiones` : ""}.`
-        : `Lo que vale hoy la cartera (${money(periodo.endValueUsd, "USD")}) menos lo que valía al empezar el período (${money(periodo.startValueUsd, "USD")}), descontando los ${money(periodo.netFlowUsd, "USD")} de capital que entraron en el medio. Esa resta es la razón de ser de la app: sin ella, un ingreso de plata se vería como si lo hubieras ganado.`,
+        ? `Lo que vale hoy la cartera (${money(p.totalValueUsd, display)}) menos el capital aportado (${money(p.netContributedUsd, display)}). Incluye lo que subieron tus posiciones${p.realizedUsd !== 0 ? `, lo que ya realizaste al vender (${money(p.realizedUsd, display, { sign: true })})` : ""}${p.incomeUsd > 0 ? ` y lo que cobraste en dividendos e intereses (${money(p.incomeUsd, display)})` : ""}${p.feesUsd > 0 ? `, descontando ${money(p.feesUsd, display)} de comisiones` : ""}.`
+        : `Lo que vale hoy la cartera (${money(periodo.endValueUsd, display)}) menos lo que valía al empezar el período (${money(periodo.startValueUsd, display)}), descontando los ${money(periodo.netFlowUsd, display)} de capital que entraron en el medio. Esa resta es la razón de ser de la app: sin ella, un ingreso de plata se vería como si lo hubieras ganado.`,
     },
     {
       titulo: "Rendimiento real (TWR)",

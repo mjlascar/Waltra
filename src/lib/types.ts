@@ -178,6 +178,10 @@ export interface FxRate {
 
 export interface Settings {
   id: "settings";
+  /**
+   * En que moneda se muestra toda la app; se cambia desde el inicio. En pesos
+   * no es la cuenta en dolares por el dolar de hoy: ver `PortfolioInput.base`.
+   */
   baseCurrency: Currency;
   /** Perfil declarado por el usuario, alimenta los insights. */
   riskProfile: "conservador" | "moderado" | "agresivo";

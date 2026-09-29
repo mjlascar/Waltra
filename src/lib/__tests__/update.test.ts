@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { APK_URL, isNewer, parseRelease, releaseBuild } from "@/lib/update";
+import { APK_URL, isNewer, parseRelease, releaseBuild, updateErrorText } from "@/lib/update";
 
 describe("la versión publicada", () => {
   it("sale del título que arma CI", () => {
@@ -36,5 +36,21 @@ describe("isNewer", () => {
   it("sin saber qué hay instalado, no ofrece nada", () => {
     expect(isNewer(r, null)).toBe(false);
     expect(isNewer(null, { build: 1, version: "1.0" })).toBe(false);
+  });
+});
+
+describe("por qué no se pudo consultar", () => {
+  it("un 404 es un release sin publicar, no la conexión", () => {
+    expect(updateErrorText(new Error("HTTP 404"))).toMatch(/publicando/);
+    expect(updateErrorText(new Error("HTTP 404"))).not.toMatch(/conexión/);
+  });
+
+  it("un 403 es el límite de GitHub", () => {
+    expect(updateErrorText(new Error("HTTP 403"))).toMatch(/limita/);
+  });
+
+  it("sin respuesta, sí es la conexión", () => {
+    expect(updateErrorText(new TypeError("Failed to fetch"))).toMatch(/conexión/);
+    expect(updateErrorText(new Error("no respondió en 12 s"))).toMatch(/conexión/);
   });
 });

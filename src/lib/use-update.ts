@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { NATIVE } from "@/lib/platform";
-import { installedApp, isNewer, latestRelease, type InstalledApp, type ReleaseInfo } from "@/lib/update";
+import {
+  installedApp,
+  isNewer,
+  latestRelease,
+  updateErrorText,
+  type InstalledApp,
+  type ReleaseInfo,
+} from "@/lib/update";
 
 export interface UpdateStatus {
   installed: InstalledApp | null;
@@ -40,9 +47,8 @@ function consultar(force: boolean): Promise<Resultado> {
     try {
       release = await latestRelease();
       if (!release) error = "el release no dice qué versión es";
-    } catch {
-      // "Failed to fetch" no le dice nada a nadie: casi siempre es la señal.
-      error = "GitHub no respondió, revisá la conexión y probá de nuevo";
+    } catch (err) {
+      error = updateErrorText(err);
     }
     ultimo = { installed, release, error, at: Date.now() };
     return ultimo;

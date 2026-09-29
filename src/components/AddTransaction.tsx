@@ -104,7 +104,7 @@ export function AddTransaction({
   editing?: Transaction | null;
 }) {
   const {
-    accounts, assets, transactions, portfolio,
+    accounts, assets, transactions, portfolio, portfolioUsd,
     saveTransaction, saveAsset, refresh, settings, backend,
   } = useStore();
 
@@ -393,10 +393,10 @@ export function AddTransaction({
       draft.type === "transfer" ||
       draft.type === "fee";
     if (gastaEfectivo && computed.amount !== undefined && computed.amount > 0) {
-      const cuenta = portfolio.accountViews.find((v) => v.accountId === draft.accountId);
+      const cuenta = portfolioUsd.accountViews.find((v) => v.accountId === draft.accountId);
       // En pesos hace falta el dolar para comparar contra un saldo en dolares.
       // Sin cotizacion no se avisa, antes que avisar con un numero inventado.
-      const fx = portfolio.fxLatest;
+      const fx = portfolioUsd.fxLatest;
       const montoUsd =
         draft.currency === "ARS" ? (fx > 0 ? computed.amount / fx : null) : computed.amount;
       // Al editar, el movimiento que se esta tocando ya esta contado en el
@@ -434,7 +434,7 @@ export function AddTransaction({
     }
 
     return out;
-  }, [draft, computed, portfolio.positions, portfolio.accountViews, portfolio.fxLatest, transactions, editing]);
+  }, [draft, computed, portfolio.positions, portfolioUsd, transactions, editing]);
 
   /** Resumen en una linea de lo que se va a guardar. */
   const summary = useMemo(() => {
@@ -1172,7 +1172,7 @@ export function AddTransaction({
 
           {settings.baseCurrency === "USD" && draft.currency === "ARS" && (
             <p className="text-[11px]" style={{ color: "var(--color-ink-3)" }}>
-              Todo se muestra en dólares. Los pesos se convierten al MEP de cada fecha.
+              La app está en dólares: los pesos se convierten al MEP de cada fecha.
             </p>
           )}
         </div>

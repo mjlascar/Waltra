@@ -19,6 +19,7 @@ export function PositionSheet({
   onClose: () => void;
 }) {
   const { transactions, accounts, assets, portfolio } = useStore();
+  const display = portfolio.base;
   const [cargandoRatio, setCargandoRatio] = useState(false);
   const db = getDb();
   const assetId = position?.assetId;
@@ -43,15 +44,17 @@ export function PositionSheet({
    * grafico dice como se movio el precio y no dice nada sobre vos.
    */
   const avgCost = position?.avgCost;
-  const moneda = position?.currency;
+  // La linea va donde cae el costo contra la curva, en la moneda del activo;
+  // el rotulo, en la moneda en que se ve la app, como el resto de la hoja.
+  const costoVisto = position?.avgCostUsd;
   const nivelCosto = useMemo(() => {
     const base = series?.points[0]?.close;
-    if (!base || !avgCost || !moneda) return undefined;
+    if (!base || !avgCost || costoVisto === undefined) return undefined;
     return {
       value: avgCost / base - 1,
-      label: `costo ${money(avgCost, moneda, { compact: true })}`,
+      label: `costo ${money(costoVisto, display, { compact: true })}`,
     };
-  }, [series, avgCost, moneda]);
+  }, [series, avgCost, costoVisto, display]);
 
   /**
    * Cada compra y cada venta, ubicadas en el dia que pasaron.
@@ -114,10 +117,10 @@ export function PositionSheet({
         <div className="eyebrow mb-1.5">
           {position.name} · {KIND_LABEL[position.kind] ?? position.kind}
         </div>
-        <div className="num text-[26px] leading-none">{money(position.valueUsd, "USD")}</div>
+        <div className="num text-[26px] leading-none">{money(position.valueUsd, display)}</div>
         <div className="mt-1.5 flex items-baseline gap-2">
           <span className={`num text-[13px] ${position.unrealizedUsd >= 0 ? "pos" : "neg"}`}>
-            {money(position.unrealizedUsd, "USD", { sign: true })}
+            {money(position.unrealizedUsd, display, { sign: true })}
           </span>
           <span className={`num text-[12px] ${position.unrealizedUsd >= 0 ? "pos" : "neg"}`}>
             {percent(position.unrealizedPct, { decimals: 1 })}
@@ -129,13 +132,13 @@ export function PositionSheet({
       <div className="card mb-4 grid grid-cols-2" style={{ gap: 1, background: "var(--color-line)" }}>
         {[
           ["Cantidad", fmtQty(position.quantity, asset?.precision ?? 6)],
-          ["Precio actual", position.price === null ? "sin dato" : money(position.price, position.currency)],
-          ["Costo promedio", money(position.avgCost, position.currency)],
-          ["Invertido", money(position.costUsd, "USD")],
+          ["Precio actual", position.priceUsd === null ? "sin dato" : money(position.priceUsd, display)],
+          ["Costo promedio", money(position.avgCostUsd, display)],
+          ["Invertido", money(position.costUsd, display)],
           ["Peso en cartera", percent(position.weight, { decimals: 1, sign: false })],
           [
             "Realizado",
-            position.realizedUsd === 0 ? "—" : money(position.realizedUsd, "USD", { sign: true }),
+            position.realizedUsd === 0 ? "—" : money(position.realizedUsd, display, { sign: true }),
           ],
         ].map(([label, value]) => (
           <div key={label} style={{ background: "var(--color-surface)" }} className="p-3">

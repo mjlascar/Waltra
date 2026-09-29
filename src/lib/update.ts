@@ -63,6 +63,25 @@ export function parseRelease(json: GithubRelease): ReleaseInfo | null {
   };
 }
 
+/**
+ * Por que no se pudo consultar, en palabras. Un 404 no es falta de señal: es
+ * que el release no esta publicado (CI lo esta rehaciendo, o quedo en
+ * borrador), y decir "revisá la conexión" mandaba a buscar el problema donde
+ * no estaba. Un 403 es el limite de GitHub: 60 consultas por hora por red.
+ */
+export function updateErrorText(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  const status = Number(msg.match(/HTTP (\d{3})/)?.[1] ?? 0);
+  if (status === 404) {
+    return "GitHub no tiene publicada ninguna versión en este momento. Suele ser que se está publicando una nueva: probá en unos minutos";
+  }
+  if (status === 403 || status === 429) {
+    return "GitHub limita las consultas por hora desde una misma red. Probá de nuevo en un rato";
+  }
+  if (status >= 500) return "GitHub está con problemas. Probá de nuevo en un rato";
+  return "GitHub no respondió, revisá la conexión y probá de nuevo";
+}
+
 /** Lo publicado. Lanza si GitHub no contesta: quien llama decide que decir. */
 export async function latestRelease(): Promise<ReleaseInfo | null> {
   const json = await getJson<GithubRelease>(RELEASE_API, {

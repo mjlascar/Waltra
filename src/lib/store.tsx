@@ -24,7 +24,8 @@ import type {
 import { DEFAULT_SETTINGS, ensureSeeded, getDb, type WaltraDB } from "@/lib/db";
 import { computePortfolio, type Portfolio } from "@/lib/engine/portfolio";
 import { scopeToAccount } from "@/lib/engine/scope";
-import { addDays, today, toDay } from "@/lib/date";
+import { addDays, today, toDay, type DayKey } from "@/lib/date";
+import { FxTable } from "@/lib/engine/fx";
 import { syncMarket, type BackendContext } from "@/lib/backend";
 import { proveedoresCaidos } from "@/lib/market/down";
 import { keyFor, resolveProvider } from "@/lib/insights/providers";
@@ -45,7 +46,14 @@ interface StoreValue {
   transactions: Transaction[];
   settings: Settings;
   insights: InsightReport[];
+  /** La cartera en la moneda que eligio el usuario (`settings.baseCurrency`). */
   portfolio: Portfolio;
+  /**
+   * La misma cartera, siempre en dolares. La usan los que no muestran nada:
+   * el plan del vigia, el pedido a los insights y el aviso de efectivo al
+   * cargar un movimiento, que tienen que decir lo mismo en cualquier vista.
+   */
+  portfolioUsd: Portfolio;
   sync: SyncState;
   db: WaltraDB | null;
 
@@ -65,6 +73,8 @@ interface StoreValue {
    * billetera. Ver `engine/scope.ts`.
    */
   portfolioFor: (accountId: string) => Portfolio;
+  /** El dolar MEP de un dia (0 si no hay), para pasar el indice a pesos. */
+  fxAt: (day: DayKey) => number;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -114,7 +124,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [settingsRow],
   );
 
-  const portfolio = useMemo(
+  const base = settings.baseCurrency ?? "USD";
+  const portfolioUsd = useMemo(
     () =>
       computePortfolio({
         transactions,
@@ -126,6 +137,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }),
     [transactions, assets, accounts, priceSeries, quotes, fxRates],
   );
+  const portfolioArs = useMemo(
+    () =>
+      base === "ARS"
+        ? computePortfolio({
+            transactions,
+            assets,
+            accounts,
+            priceSeries,
+            quotes,
+            fxRates,
+            base: "ARS",
+          })
+        : null,
+    [base, transactions, assets, accounts, priceSeries, quotes, fxRates],
+  );
+  const portfolio = portfolioArs ?? portfolioUsd;
+  const fxTable = useMemo(() => new FxTable(fxRates, 0), [fxRates]);
 
   const backend = useCallback(
     (): BackendContext => ({
@@ -324,10 +352,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       settings,
       insights,
       portfolio,
+      portfolioUsd,
       sync,
       db,
       refresh,
       backend,
+      fxAt: (day) => fxTable.at(day),
       portfolioFor: (accountId) =>
         computePortfolio({
           transactions: scopeToAccount(transactions, accountId),
@@ -336,6 +366,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           priceSeries,
           quotes,
           fxRates,
+          base,
         }),
       saveTransaction: async (tx) => {
         await db?.transactions.put({ ...tx, updatedAt: new Date().toISOString() });
@@ -373,7 +404,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (stale.length) await db.insights.bulkDelete(stale);
       },
     }),
-    [ready, accounts, assets, transactions, settings, insights, portfolio, sync, db, refresh, backend, priceSeries, quotes, fxRates],
+    [ready, accounts, assets, transactions, settings, insights, portfolio, portfolioUsd, base, fxTable, sync, db, refresh, backend, priceSeries, quotes, fxRates],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

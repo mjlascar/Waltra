@@ -1,7 +1,7 @@
 import type { Account, Asset, Currency, FxRate, PriceSeries, Quote, Transaction } from "@/lib/types";
 import type { DayKey } from "@/lib/date";
 import { addDays, daysBetween, maxDay, toDay, today } from "@/lib/date";
-import { FxTable, toUsd } from "./fx";
+import { FxTable, toBase, toUsd } from "./fx";
 import { PriceLookup } from "./prices";
 import {
   collectSplits,
@@ -17,6 +17,7 @@ import {
   externalFlowUsd,
   sortTransactions,
   type LedgerState,
+  type Sale,
 } from "./ledger";
 import {
   annualize,
@@ -30,7 +31,7 @@ import {
 } from "./returns";
 
 /**
- * Una compra o una venta, en dolares del dia en que paso.
+ * Una compra o una venta, en la moneda base al dolar del dia en que paso.
  *
  * Es la historia que hace falta para analizar una posicion y no solo mirarla:
  * cuando entro, a que precio, si promedio a la baja o persiguio la suba. Cada
@@ -179,6 +180,8 @@ export interface PortfolioMetrics {
 
 export interface Portfolio {
   asOf: DayKey;
+  /** La moneda de todos los campos `*Usd`. Ver `PortfolioInput.base`. */
+  base: Currency;
   hasData: boolean;
   firstDay: DayKey | null;
   totalValueUsd: number;
@@ -198,6 +201,8 @@ export interface Portfolio {
   positions: PositionView[];
   /** Lo que se tuvo y se vendio entero. Sin esto, el analisis solo ve a los que quedaron. */
   closedPositions: ClosedPositionView[];
+  /** Cada venta con lo que dejo contra su costo, en la moneda base. */
+  sales: Sale[];
   /** Splits de cada activo, manuales y del proveedor. Ver `engine/splits.ts`. */
   splits: Record<string, AssetSplit[]>;
   /** Activos cuyas compras no cierran con su cotizacion historica. */
@@ -234,9 +239,17 @@ export interface PortfolioInput {
   quotes: Quote[];
   fxRates: FxRate[];
   asOf?: DayKey;
+  /**
+   * La moneda en que se llevan las cuentas. Todos los campos `*Usd` salen en
+   * esta: el nombre quedo de cuando solo habia dolares. En pesos, cada aporte
+   * cuenta los pesos que entraron ese dia y el valor, los de hoy: la ganancia
+   * en pesos incluye lo que subio el dolar, que es como la ve quien piensa en
+   * pesos. No es la de dolares multiplicada por el dolar de hoy.
+   */
+  base?: Currency;
 }
 
-/** Valor de mercado del estado del ledger en un dia dado, en USD. */
+/** Valor de mercado del estado del ledger en un dia dado, en la moneda base. */
 function valueAt(
   state: LedgerState,
   day: DayKey,
@@ -244,6 +257,7 @@ function valueAt(
   prices: PriceLookup,
   fx: FxTable,
   splits: Record<string, AssetSplit[]> = {},
+  base: Currency = "USD",
 ): { nav: number; invested: number; cash: number } {
   const rate = fx.at(day);
   let invested = 0;
@@ -261,12 +275,12 @@ function valueAt(
         : (asset.manualPrice ?? null);
     // Sin precio, valuamos al costo: subestimar es mejor que inventar.
     const unit = close ?? lot.avgCost;
-    invested += toUsd(unit * lot.quantity, asset.currency, rate);
+    invested += toBase(unit * lot.quantity, asset.currency, rate, base);
   }
   let cash = 0;
   for (const acc of Object.values(state.cash)) {
     for (const [cur, amount] of Object.entries(acc)) {
-      cash += toUsd(amount ?? 0, cur as Currency, rate);
+      cash += toBase(amount ?? 0, cur as Currency, rate, base);
     }
   }
   return { nav: invested + cash, invested, cash };
@@ -274,6 +288,7 @@ function valueAt(
 
 export function computePortfolio(input: PortfolioInput): Portfolio {
   const asOf = input.asOf ?? today();
+  const base = input.base ?? "USD";
   const assetsById: Record<string, Asset> = Object.fromEntries(
     input.assets.map((a) => [a.id, a]),
   );
@@ -297,6 +312,7 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
 
   const empty: Portfolio = {
     asOf,
+    base,
     hasData: false,
     firstDay: null,
     totalValueUsd: 0,
@@ -313,6 +329,7 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
     simpleReturn: null,
     positions: [],
     closedPositions: [],
+    sales: [],
     splits: {},
     priceMismatches: [],
     splitDateIssues: [],
@@ -336,10 +353,12 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
   };
   if (txs.length === 0) return empty;
 
-  const hasArs =
-    txs.some((t) => t.currency === "ARS" && !(t.fxRate && t.fxRate > 0)) ||
-    input.assets.some((a) => a.currency === "ARS");
-  const fxMissing = fx.isEmpty && hasArs;
+  // Sin dolar, lo que esta en la otra moneda queda afuera de los totales.
+  const otra: Currency = base === "USD" ? "ARS" : "USD";
+  const hasOtra =
+    txs.some((t) => t.currency === otra && !(t.fxRate && t.fxRate > 0)) ||
+    input.assets.some((a) => a.currency === otra);
+  const fxMissing = fx.isEmpty && hasOtra;
 
   const firstDay = toDay(txs[0].date);
   const lastDay = maxDay(firstDay, asOf);
@@ -355,11 +374,11 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
     let flow = 0;
     while (cursor < txs.length && toDay(txs[cursor].date) <= day) {
       const tx = txs[cursor++];
-      flow += externalFlowUsd(tx, fx);
-      applyTransaction(state, tx, assetsById, fx);
+      flow += externalFlowUsd(tx, fx, base);
+      applyTransaction(state, tx, assetsById, fx, base);
     }
     contributed += flow;
-    const { nav } = valueAt(state, day, assetsById, prices, fx, splits);
+    const { nav } = valueAt(state, day, assetsById, prices, fx, splits, base);
     daily.push({ day, nav, flow });
     contributions.push({ day, value: contributed });
     if (day === lastDay) break;
@@ -379,7 +398,8 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
     const rate = tx.fxRate && tx.fxRate > 0 ? tx.fxRate : fx.at(toDay(tx.date));
     // En pesos sin dolar conocido no hay precio en dolares: se dice que no hay
     // en vez de mandar pesos como si fueran dolares.
-    const amountUsd = tx.currency === "ARS" && !(rate > 0) ? null : toUsd(tx.amount, tx.currency, rate);
+    const amountUsd =
+      tx.currency !== base && !(rate > 0) ? null : toBase(tx.amount, tx.currency, rate, base);
     const day = toDay(tx.date);
     const f = unitsFactor(splits[tx.assetId], day);
     (tradesByAsset[tx.assetId] ??= []).push({
@@ -400,7 +420,7 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
     const price = quote?.price ?? prices.at(assetId, asOf) ?? asset.manualPrice ?? null;
     const priceMissing = price === null;
     const unit = price ?? lot.avgCost;
-    const valueUsd = toUsd(unit * lot.quantity, asset.currency, fxNow);
+    const valueUsd = toBase(unit * lot.quantity, asset.currency, fxNow, base);
     const costUsd = lot.avgCostUsd * lot.quantity;
     const unrealizedUsd = valueUsd - costUsd;
     const realized = state.realizedByAsset[assetId] ?? 0;
@@ -414,7 +434,7 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
       currency: asset.currency,
       quantity: lot.quantity,
       price,
-      priceUsd: price === null ? null : toUsd(price, asset.currency, fxNow),
+      priceUsd: price === null ? null : toBase(price, asset.currency, fxNow, base),
       avgCost: lot.avgCost,
       avgCostUsd: lot.avgCostUsd,
       costUsd,
@@ -606,7 +626,7 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
   let cashUsd = 0;
   for (const acc of Object.values(state.cash)) {
     for (const [cur, amount] of Object.entries(acc)) {
-      cashUsd += toUsd(amount ?? 0, cur as Currency, fxNow);
+      cashUsd += toBase(amount ?? 0, cur as Currency, fxNow, base);
     }
   }
 
@@ -617,14 +637,14 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
   // --- Vistas por cuenta --------------------------------------------------
   const contribByAccount: Record<string, number> = {};
   for (const tx of txs) {
-    const f = externalFlowUsd(tx, fx);
+    const f = externalFlowUsd(tx, fx, base);
     if (f !== 0) contribByAccount[tx.accountId] = (contribByAccount[tx.accountId] ?? 0) + f;
     if (tx.type === "transfer" && tx.counterAccountId) {
       // Una transferencia interna no es capital nuevo, pero si mueve de que
       // cuenta "viene" la plata: la reasignamos para que el P&L por cuenta
       // no quede deformado.
       const rate = tx.fxRate && tx.fxRate > 0 ? tx.fxRate : fx.at(toDay(tx.date));
-      const v = toUsd(tx.amount, tx.currency, rate);
+      const v = toBase(tx.amount, tx.currency, rate, base);
       contribByAccount[tx.accountId] = (contribByAccount[tx.accountId] ?? 0) - v;
       contribByAccount[tx.counterAccountId] =
         (contribByAccount[tx.counterAccountId] ?? 0) + v;
@@ -644,12 +664,12 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
         asset.manualPrice ??
         state.positions[assetId]?.avgCost ??
         0;
-      invested += toUsd(price * qty, asset.currency, fxNow);
+      invested += toBase(price * qty, asset.currency, fxNow, base);
     }
     const cashByCurrency = state.cash[account.id] ?? {};
     let cash = 0;
     for (const [cur, amount] of Object.entries(cashByCurrency)) {
-      cash += toUsd(amount ?? 0, cur as Currency, fxNow);
+      cash += toBase(amount ?? 0, cur as Currency, fxNow, base);
     }
     const value = invested + cash;
     const net = contribByAccount[account.id] ?? 0;
@@ -674,13 +694,14 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
   const ageDays = daysBetween(firstDay, lastDay);
   const flows: CashFlow[] = [];
   for (const tx of txs) {
-    const f = externalFlowUsd(tx, fx);
+    const f = externalFlowUsd(tx, fx, base);
     if (f !== 0) flows.push({ day: toDay(tx.date), amount: -f });
   }
   if (totalValueUsd > 0) flows.push({ day: lastDay, amount: totalValueUsd });
 
   return {
     asOf,
+    base,
     hasData: true,
     firstDay,
     totalValueUsd,
@@ -698,6 +719,7 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
       state.netContributedUsd > 0 ? totalPnlUsd / state.netContributedUsd : null,
     positions,
     closedPositions,
+    sales: state.sales,
     splits,
     priceMismatches,
     splitDateIssues,

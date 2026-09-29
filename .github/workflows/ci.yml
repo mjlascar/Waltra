@@ -189,10 +189,32 @@ jobs:
             "Version 1.0.${GITHUB_RUN_NUMBER}, de ${GITHUB_SHA:0:8} en ${GITHUB_REF_NAME}." \
             "$firma" \
             "Descarga waltra.apk de aca abajo y abrilo en el telefono. Android va a pedirte permitir instalar desde el navegador: es el paso normal para algo que no viene de Play.")
-          gh release delete apk-latest --yes --cleanup-tag 2>/dev/null || true
+          # Puede haber mas de uno con la etiqueta (borradores que quedaron de
+          # corridas anteriores): se borran todos.
+          for _ in 1 2 3 4 5; do
+            gh release delete apk-latest --yes --cleanup-tag 2>/dev/null || break
+          done
           gh release create apk-latest waltra.apk \
             --prerelease \
             --target "$GITHUB_SHA" \
             --title "Waltra 1.0.${GITHUB_RUN_NUMBER}" \
             --notes "$notas"
+          # `gh release create` arma un borrador, sube el APK y recien ahi lo
+          # publica. Con la etiqueta recien borrada, ese ultimo paso puede no
+          # tomar y el release queda en borrador sin un solo error: la API
+          # publica contesta 404, la app dice que GitHub no respondio y el
+          # enlace de descarga no anda. Se publica a mano y se verifica.
+          publicado=no
+          for espera in 2 4 8 16 32; do
+            gh release edit apk-latest --draft=false --prerelease >/dev/null 2>&1 || true
+            if curl -fsS -o /dev/null "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/apk-latest"; then
+              publicado=si
+              break
+            fi
+            sleep "$espera"
+          done
+          if [ "$publicado" != "si" ]; then
+            echo "::error::El release apk-latest quedo en borrador: ni la app ni el enlace de descarga lo ven."
+            exit 1
+          fi
           echo "Descarga directa: https://github.com/${GITHUB_REPOSITORY}/releases/download/apk-latest/waltra.apk"

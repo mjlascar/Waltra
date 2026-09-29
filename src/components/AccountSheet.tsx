@@ -27,6 +27,7 @@ export function AccountSheet({
   onClose: () => void;
 }) {
   const { portfolio, accounts, saveTransaction } = useStore();
+  const display = portfolio.base;
   const [realText, setRealText] = useState("");
   const [currency, setCurrency] = useState<Currency>("USD");
   const [saving, setSaving] = useState(false);
@@ -81,10 +82,10 @@ export function AccountSheet({
     <Sheet open onClose={onClose} title={account.name}>
       <div className="mb-4">
         <div className="eyebrow mb-1.5">Valor de la cuenta</div>
-        <div className="num text-[26px] leading-none">{money(account.valueUsd, "USD")}</div>
+        <div className="num text-[26px] leading-none">{money(account.valueUsd, display)}</div>
         <div className="mt-1.5 flex items-baseline gap-2">
           <span className={`num text-[13px] ${account.pnlUsd >= 0 ? "pos" : "neg"}`}>
-            {money(account.pnlUsd, "USD", { sign: true })}
+            {money(account.pnlUsd, display, { sign: true })}
           </span>
           {account.pnlPct !== null && (
             <span className={`num text-[12px] ${account.pnlUsd >= 0 ? "pos" : "neg"}`}>
@@ -97,11 +98,11 @@ export function AccountSheet({
 
       <div className="card mb-4 grid grid-cols-2" style={{ gap: 1, background: "var(--color-line)" }}>
         {[
-          ["Invertido", money(account.investedUsd, "USD"), false],
+          ["Invertido", money(account.investedUsd, display), false],
           // Un efectivo negativo es plata que se gastó sin haber entrado:
           // no rompe los totales, pero significa que falta un movimiento.
-          ["Efectivo", money(account.cashUsd, "USD"), account.cashUsd < -0.01],
-          ["Capital aportado", money(account.netContributedUsd, "USD"), false],
+          ["Efectivo", money(account.cashUsd, display), account.cashUsd < -0.01],
+          ["Capital aportado", money(account.netContributedUsd, display), false],
           ["Peso en la cartera", percent(account.weight, { decimals: 0, sign: false }), false],
         ].map(([label, value, alerta]) => (
           <div key={String(label)} style={{ background: "var(--color-surface)" }} className="p-3">
@@ -225,7 +226,8 @@ function Posiciones({
   accountId: string;
   broker: string;
 }) {
-  const { saveTransaction } = useStore();
+  const { saveTransaction, portfolio } = useStore();
+  const display = portfolio.base;
   const [corrigiendo, setCorrigiendo] = useState(false);
   const [reales, setReales] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -311,7 +313,7 @@ function Posiciones({
               <span className="label shrink-0">{fmtQty(f.qty, 8)}</span>
               {!corrigiendo && (
                 <span className="num shrink-0 text-[13px]">
-                  {money(f.valueUsd, "USD", { compact: true })}
+                  {money(f.valueUsd, display, { compact: true })}
                 </span>
               )}
               {corrigiendo && (
@@ -329,7 +331,7 @@ function Posiciones({
               <p className={`num mt-1 text-right text-[11px] ${f.delta > 0 ? "pos" : "neg"}`}>
                 {f.delta > 0 ? "+" : "−"}
                 {fmtQty(Math.abs(f.delta), 8)}
-                {f.deltaUsd !== null && ` · ${money(f.deltaUsd, "USD", { sign: true })}`}
+                {f.deltaUsd !== null && ` · ${money(f.deltaUsd, display, { sign: true })}`}
                 {f.delta > 0 ? " · ingreso" : " · comisión"}
               </p>
             )}

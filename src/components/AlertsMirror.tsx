@@ -18,7 +18,7 @@ import { installedApp } from "@/lib/update";
  * eso, escribiriamos en disco en cada render.
  */
 export function AlertsMirror() {
-  const { portfolio, assets, settings, ready } = useStore();
+  const { portfolioUsd: portfolio, assets, settings, ready } = useStore();
   const ultimo = useRef<string | null>(null);
   // La version instalada: el vigia la necesita para saber si la publicada es
   // mas nueva, y desde su motor no la puede preguntar.

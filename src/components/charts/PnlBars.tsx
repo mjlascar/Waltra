@@ -1,6 +1,7 @@
 "use client";
 
 import { money, percent } from "@/lib/format";
+import type { Currency } from "@/lib/types";
 
 export interface PnlRow {
   key: string;
@@ -14,7 +15,7 @@ export interface PnlRow {
  * La ganancia y la perdida ya se distinguen por el lado de la barra y por el
  * signo del numero; el color solo refuerza lo que ya esta dicho.
  */
-export function PnlBars({ rows }: { rows: PnlRow[] }) {
+export function PnlBars({ rows, currency = "USD" }: { rows: PnlRow[]; currency?: Currency }) {
   if (rows.length === 0) return <p className="label py-6 text-center">Sin resultados que mostrar.</p>;
   const max = Math.max(...rows.map((r) => Math.abs(r.value)), 1);
 
@@ -29,7 +30,7 @@ export function PnlBars({ rows }: { rows: PnlRow[] }) {
               <span className="truncate text-[13px] font-medium">{row.label}</span>
               <span className="flex items-baseline gap-2">
                 <span className={`num text-[12px] ${positive ? "pos" : "neg"}`}>
-                  {money(row.value, "USD", { compact: true, sign: true })}
+                  {money(row.value, currency, { compact: true, sign: true })}
                 </span>
                 <span className="num w-12 text-right text-[11px]" style={{ color: "var(--color-ink-3)" }}>
                   {percent(row.pct, { decimals: 0 })}

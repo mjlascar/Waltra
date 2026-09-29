@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { axisMoney, money, shortDate } from "@/lib/format";
+import type { Currency } from "@/lib/types";
 import { bandRuns, fitDomain, linear, linePath, niceTicks, plotArea, stepPath } from "./scale";
 import { useMeasure } from "./useMeasure";
 import { useStickyCursor } from "./useStickyCursor";
@@ -17,7 +18,15 @@ export interface ValuePoint {
  * pusiste. La distancia entre las dos lineas es, literalmente, lo que ganaste
  * o perdiste. Es la vista que los brokers no dan y que motivo toda la app.
  */
-export function ValueChart({ data, height = 210 }: { data: ValuePoint[]; height?: number }) {
+export function ValueChart({
+  data,
+  height = 210,
+  currency = "USD",
+}: {
+  data: ValuePoint[];
+  height?: number;
+  currency?: Currency;
+}) {
   const { ref, width } = useMeasure<HTMLDivElement>();
 
   const box = { width, height, top: 12, right: 8, bottom: 22, left: 8 };
@@ -111,9 +120,9 @@ export function ValueChart({ data, height = 210 }: { data: ValuePoint[]; height?
         </div>
         {active && (
           <div className="text-right">
-            <div className="num text-[13px] leading-tight">{money(active.value, "USD", { compact: true })}</div>
+            <div className="num text-[13px] leading-tight">{money(active.value, currency, { compact: true })}</div>
             <div className={`num text-[11px] leading-tight ${gain >= 0 ? "pos" : "neg"}`}>
-              {money(gain, "USD", { compact: true, sign: true })}
+              {money(gain, currency, { compact: true, sign: true })}
             </div>
             {/* Este numero es la distancia entre las dos lineas, o sea la
                 ganancia acumulada al dia que se mira. Las metricas de abajo
@@ -181,7 +190,7 @@ export function ValueChart({ data, height = 210 }: { data: ValuePoint[]; height?
               superficie: dibujadas antes, la linea de datos las cruza y no se
               lee ninguna de las dos. */}
           {model.ticks.map((t) => {
-            const text = axisMoney(t, model.step, model.largest);
+            const text = axisMoney(t, model.step, model.largest, currency);
             const w = text.length * 5.4 + 6;
             return (
               <g key={`label-${t}`}>
@@ -252,7 +261,7 @@ export function ValueChart({ data, height = 210 }: { data: ValuePoint[]; height?
         <div className="mt-1 flex items-center justify-between">
           <span className="eyebrow">{shortDate(data[hover].day, true)}</span>
           <span className="num text-[11px]" style={{ color: "var(--color-ink-2)" }}>
-            capital {money(data[hover].contributed, "USD", { compact: true })}
+            capital {money(data[hover].contributed, currency, { compact: true })}
           </span>
         </div>
       )}

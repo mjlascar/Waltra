@@ -15,10 +15,11 @@ import { useUpdate } from "@/lib/use-update";
 import { money, percent, quantity as fmtQty, shortDate, TX_SHORT } from "@/lib/format";
 import { rangeStart, type RangeKey } from "@/lib/date";
 import type { AccountView } from "@/lib/engine/portfolio";
+import type { Currency } from "@/lib/types";
 import { periodView } from "@/lib/engine/period";
 import { shadowComparison, type CompareMethod } from "@/lib/engine/shadow";
 import { PriceLookup } from "@/lib/engine/prices";
-import { BENCHMARK_ASSET_ID, BENCHMARK_CHOICES, benchmarkReturns } from "@/lib/benchmark";
+import { BENCHMARK_ASSET_ID, BENCHMARK_CHOICES, benchmarkReturns, seriesIn } from "@/lib/benchmark";
 import { getDb } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 import { EmptyStart } from "@/components/EmptyStart";
@@ -63,6 +64,7 @@ export default function Overview() {
   const {
     portfolio: full,
     portfolioFor,
+    fxAt,
     transactions,
     accounts,
     assets,
@@ -84,6 +86,8 @@ export default function Overview() {
     () => (billetera === "todas" ? full : portfolioFor(billetera)),
     [billetera, full, portfolioFor],
   );
+  /** Toda la app en dolares o en pesos. Ver `PortfolioInput.base`. */
+  const display = full.base;
   const [arreglando, setArreglando] = useState<string | null>(null);
   const [ratioDe, setRatioDe] = useState<{
     assetId: string;
@@ -145,9 +149,14 @@ export default function Overview() {
     [p.daily, p.twr, from],
   );
 
-  const benchmarkSeries = useLiveQuery(
+  const benchmarkRaw = useLiveQuery(
     async () => (db ? db.priceSeries.get(BENCHMARK_ASSET_ID) : undefined),
     [db],
+  );
+  // En la moneda de la cartera: en pesos, el indice comprado con pesos.
+  const benchmarkSeries = useMemo(
+    () => seriesIn(benchmarkRaw, display, fxAt),
+    [benchmarkRaw, display, fxAt],
   );
 
   const metodo: CompareMethod = settings.compareMethod ?? "aportes";
@@ -196,15 +205,15 @@ export default function Overview() {
     // Con la sombra, en plata: el mismo capital, en los dos lados.
     if (sombra) {
       const diff = sombra.mineValue - sombra.theirsValue;
-      const tendrias = `Con la misma plata en el ${choiceLabel} tendrías ${money(sombra.theirsValue, "USD")}`;
+      const tendrias = `Con la misma plata en el ${choiceLabel} tendrías ${money(sombra.theirsValue, display)}`;
       if (Math.abs(diff) < Math.max(1, sombra.capital * 0.005)) {
         return { text: `${tendrias}: empataste.`, tone: "plain" as const };
       }
       return {
         text:
           diff > 0
-            ? `${tendrias}: le ganaste por ${money(diff, "USD")}.`
-            : `${tendrias}: te ganó por ${money(-diff, "USD")}.`,
+            ? `${tendrias}: le ganaste por ${money(diff, display)}.`
+            : `${tendrias}: te ganó por ${money(-diff, display)}.`,
         tone: diff > 0 ? ("pos" as const) : ("neg" as const),
       };
     }
@@ -227,7 +236,7 @@ export default function Overview() {
           : `El ${compare.label} te ganó por ${puntos} puntos.`,
       tone: gap > 0 ? ("pos" as const) : ("neg" as const),
     };
-  }, [sombra, choiceLabel, compare, returnData]);
+  }, [sombra, choiceLabel, compare, returnData, display]);
 
   const recent = useMemo(
     () =>
@@ -366,8 +375,9 @@ export default function Overview() {
       )}
       {full.fxMissing && (
         <Notice>
-          No pude traer el dólar MEP, así que los montos en pesos todavía no están
-          contados en los totales. Tocá actualizar cuando tengas señal.
+          No pude traer el dólar MEP, así que los montos en{" "}
+          {display === "USD" ? "pesos" : "dólares"} todavía no están contados en los totales.
+          Tocá actualizar cuando tengas señal.
         </Notice>
       )}
       {bonosRepetidos.map((grupo) => (
@@ -572,15 +582,21 @@ export default function Overview() {
 
       {/* El numero protagonista de la app: cuanto tenes en total. */}
       <section className="mb-5">
-        <div className="eyebrow mb-2">
-          {billetera === "todas"
-            ? `Valor total${activas > 1 ? ` · ${activas} cuentas` : ""}`
-            : `Valor en ${accounts.find((a) => a.id === billetera)?.name ?? "la cuenta"}`}
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <div className="eyebrow">
+            {billetera === "todas"
+              ? `Valor total${activas > 1 ? ` · ${activas} cuentas` : ""}`
+              : `Valor en ${accounts.find((a) => a.id === billetera)?.name ?? "la cuenta"}`}
+          </div>
+          <CurrencyToggle
+            value={display}
+            onChange={(c) => void updateSettings({ baseCurrency: c })}
+          />
         </div>
-        <div className="hero-num">{money(p.totalValueUsd, "USD")}</div>
+        <div className="hero-num">{money(p.totalValueUsd, display)}</div>
         <div className="mt-2 flex flex-wrap items-baseline gap-x-2">
           <span className={`num text-[15px] ${pnlTone}`}>
-            {money(pnl, "USD", { sign: true })}
+            {money(pnl, display, { sign: true })}
           </span>
           {/* El porcentaje lleva su propio color y va entre parentesis: en
               una ventana la ganancia en plata y el rendimiento pueden tener
@@ -625,11 +641,11 @@ export default function Overview() {
         </div>
 
         {mode === "valor" ? (
-          <ValueChart key={`${range}-${billetera}`} data={chartData} />
+          <ValueChart key={`${range}-${billetera}-${display}`} data={chartData} currency={display} />
         ) : (
           <>
             <ReturnChart
-              key={`${range}-${billetera}-${metodo}`}
+              key={`${range}-${billetera}-${metodo}-${display}`}
               data={mineData}
               compare={compare}
               height={186}
@@ -685,13 +701,13 @@ export default function Overview() {
         <div style={{ background: "var(--color-surface)" }}>
           <Stat
             label={completo ? "Capital aportado" : "Capital que entró"}
-            value={money(capitalPeriodo, "USD", { compact: true })}
+            value={money(capitalPeriodo, display, { compact: true })}
           />
         </div>
         <div style={{ background: "var(--color-surface)" }}>
           <Stat
             label="Ganancia"
-            value={money(pnl, "USD", { compact: true, sign: true })}
+            value={money(pnl, display, { compact: true, sign: true })}
             tone={pnlTone}
           />
         </div>
@@ -737,18 +753,18 @@ export default function Overview() {
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[14px] font-medium">{view.name}</div>
                   <div className="label mt-0.5">
-                    {money(view.investedUsd, "USD", { compact: true })} invertido ·{" "}
+                    {money(view.investedUsd, display, { compact: true })} invertido ·{" "}
                     {/* Un saldo negativo se marca donde se lee, no solo en el
                         aviso de arriba: es el renglon que lo explica. */}
                     <span style={view.cashUsd < -0.01 ? { color: "var(--color-warn)" } : undefined}>
-                      {money(view.cashUsd, "USD", { compact: true })} líquido
+                      {money(view.cashUsd, display, { compact: true })} líquido
                     </span>
                   </div>
                 </div>
                 <div className="shrink-0 text-right">
-                  <div className="num text-[14px]">{money(view.valueUsd, "USD", { compact: true })}</div>
+                  <div className="num text-[14px]">{money(view.valueUsd, display, { compact: true })}</div>
                   <div className={`num text-[11px] ${view.pnlUsd >= 0 ? "pos" : "neg"}`}>
-                    {money(view.pnlUsd, "USD", { compact: true, sign: true })}
+                    {money(view.pnlUsd, display, { compact: true, sign: true })}
                     {view.pnlPct !== null && ` · ${percent(view.pnlPct, { decimals: 0 })}`}
                   </div>
                 </div>
@@ -769,10 +785,10 @@ export default function Overview() {
           Composición
         </SectionTitle>
         <div className="card p-3">
-          <Allocation slices={slices} total={p.investedUsd} />
+          <Allocation slices={slices} total={p.investedUsd} currency={display} />
           {p.cashUsd > 0.01 && (
             <p className="hairline mt-2 pt-2 text-[11px]" style={{ color: "var(--color-ink-3)" }}>
-              {money(p.cashUsd, "USD")} sin invertir
+              {money(p.cashUsd, display)} sin invertir
               {p.totalValueUsd > 0 && `, un ${percent(p.cashUsd / p.totalValueUsd, { decimals: 0, sign: false })} del total`}.
             </p>
           )}
@@ -832,6 +848,45 @@ export default function Overview() {
         <RatioSheet key={revisando.assetId} check={revisando} onClose={() => setRevisando(null)} />
       )}
       <AccountSheet account={account} onClose={() => setAccount(null)} />
+    </div>
+  );
+}
+
+/**
+ * Dolares o pesos, para toda la app. Cambia la moneda de las cuentas, no solo
+ * el simbolo: en pesos el capital son los pesos de cada dia y la ganancia
+ * incluye lo que subio el dolar. Ver `PortfolioInput.base`.
+ */
+function CurrencyToggle({
+  value,
+  onChange,
+}: {
+  value: Currency;
+  onChange: (c: Currency) => void;
+}) {
+  const opciones: { value: Currency; label: string; aria: string }[] = [
+    { value: "USD", label: "US$", aria: "Ver todo en dólares" },
+    { value: "ARS", label: "$", aria: "Ver todo en pesos" },
+  ];
+  return (
+    <div className="flex shrink-0 border" style={{ borderColor: "var(--color-line)" }}>
+      {opciones.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          aria-label={o.aria}
+          aria-pressed={value === o.value}
+          onClick={() => onChange(o.value)}
+          className="num min-w-[40px] px-2 py-1 text-[12px]"
+          style={
+            value === o.value
+              ? { background: "var(--color-ink)", color: "var(--color-bg)" }
+              : { color: "var(--color-ink-3)" }
+          }
+        >
+          {o.label}
+        </button>
+      ))}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { Segmented } from "@/components/ui/Field";
 import { PnlBars } from "@/components/charts/PnlBars";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { PositionSheet } from "@/components/PositionSheet";
+import { SalesList } from "@/components/SalesList";
 import { AssetEditor } from "@/components/AssetEditor";
 import { EmptyStart } from "@/components/EmptyStart";
 import { IconChevron } from "@/components/icons";
@@ -21,6 +22,7 @@ type Group = "activo" | "cuenta" | "tipo";
 
 export default function Cartera() {
   const { portfolio: p, accounts, assets, ready, saveAsset, refresh } = useStore();
+  const display = p.base;
   const [group, setGroup] = useState<Group>("activo");
   const [selected, setSelected] = useState<PositionView | null>(null);
   const [fixing, setFixing] = useState<Asset | null>(null);
@@ -98,17 +100,17 @@ export default function Cartera() {
 
       <section className="mb-4">
         <div className="eyebrow mb-2">Invertido</div>
-        <div className="hero-num">{money(p.investedUsd, "USD")}</div>
+        <div className="hero-num">{money(p.investedUsd, display)}</div>
         <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <span className={`num text-[14px] ${p.unrealizedUsd >= 0 ? "pos" : "neg"}`}>
-            {money(p.unrealizedUsd, "USD", { sign: true })}
+            {money(p.unrealizedUsd, display, { sign: true })}
           </span>
           <span className="label">sin realizar</span>
           {p.realizedUsd !== 0 && (
             <>
               <span className="label">·</span>
               <span className={`num text-[13px] ${p.realizedUsd >= 0 ? "pos" : "neg"}`}>
-                {money(p.realizedUsd, "USD", { sign: true })}
+                {money(p.realizedUsd, display, { sign: true })}
               </span>
               <span className="label">ya realizado</span>
             </>
@@ -116,7 +118,7 @@ export default function Cartera() {
         </div>
         {p.cashUsd > 0.01 && (
           <p className="label mt-2">
-            {money(p.cashUsd, "USD")} en efectivo sin invertir.
+            {money(p.cashUsd, display)} en efectivo sin invertir.
           </p>
         )}
       </section>
@@ -149,7 +151,7 @@ export default function Cartera() {
                   </span>
                 </div>
                 <div className="label mt-0.5 truncate">
-                  {fmtQty(pos.quantity, 4)} · costo {money(pos.avgCost, pos.currency)}
+                  {fmtQty(pos.quantity, 4)} · costo {money(pos.avgCostUsd, display)}
                 </div>
               </div>
 
@@ -159,7 +161,7 @@ export default function Cartera() {
               />
 
               <div className="shrink-0 text-right">
-                <div className="num text-[13px]">{money(pos.valueUsd, "USD", { compact: true })}</div>
+                <div className="num text-[13px]">{money(pos.valueUsd, display, { compact: true })}</div>
                 <div className={`num text-[11px] ${pos.unrealizedUsd >= 0 ? "pos" : "neg"}`}>
                   {percent(pos.unrealizedPct, { decimals: 1 })}
                 </div>
@@ -188,15 +190,15 @@ export default function Cartera() {
                       <div className="text-[14px] font-medium">{account.name}</div>
                       <div className="label mt-0.5">
                         {held.length} {held.length === 1 ? "posición" : "posiciones"} ·{" "}
-                        {money(account.cashUsd, "USD", { compact: true })} líquido
+                        {money(account.cashUsd, display, { compact: true })} líquido
                       </div>
                     </div>
                     <div className="text-right">
                       <div className="num text-[14px]">
-                        {money(account.valueUsd, "USD", { compact: true })}
+                        {money(account.valueUsd, display, { compact: true })}
                       </div>
                       <div className={`num text-[11px] ${account.pnlUsd >= 0 ? "pos" : "neg"}`}>
-                        {money(account.pnlUsd, "USD", { compact: true, sign: true })}
+                        {money(account.pnlUsd, display, { compact: true, sign: true })}
                       </div>
                     </div>
                   </div>
@@ -215,7 +217,7 @@ export default function Cartera() {
                             <span className="min-w-0 flex-1 truncate text-[13px]">{pos.symbol}</span>
                             <span className="label shrink-0">{fmtQty(qty, 4)}</span>
                             <span className="num shrink-0 text-[12px]">
-                              {money(pos.valueUsd * share, "USD", { compact: true })}
+                              {money(pos.valueUsd * share, display, { compact: true })}
                             </span>
                           </button>
                         );
@@ -236,20 +238,22 @@ export default function Cartera() {
               <span className="num text-[12px]" style={{ color: "var(--color-ink-3)" }}>
                 {percent(p.investedUsd > 0 ? value / p.investedUsd : 0, { decimals: 0, sign: false })}
               </span>
-              <span className="num text-[13px]">{money(value, "USD", { compact: true })}</span>
+              <span className="num text-[13px]">{money(value, display, { compact: true })}</span>
             </div>
           ))}
         </section>
       )}
 
       {pnlRows.length > 0 && (
-        <section>
+        <section className="mb-5">
           <SectionTitle>Qué te dio y qué te sacó</SectionTitle>
           <div className="card p-3">
-            <PnlBars rows={pnlRows} />
+            <PnlBars rows={pnlRows} currency={display} />
           </div>
         </section>
       )}
+
+      <SalesList portfolio={p} />
 
       {accounts.length === 0 && <p className="label">No hay cuentas configuradas.</p>}
 

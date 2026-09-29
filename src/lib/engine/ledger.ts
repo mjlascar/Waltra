@@ -1,7 +1,7 @@
 import type { Asset, Currency, Transaction } from "@/lib/types";
 import type { DayKey } from "@/lib/date";
 import { toDay } from "@/lib/date";
-import { FxTable, toUsd } from "./fx";
+import { FxTable, toBase, toUsd } from "./fx";
 
 /** Efectivo por cuenta y moneda. */
 export type CashBook = Record<string, Partial<Record<Currency, number>>>;
@@ -10,8 +10,33 @@ export interface Lot {
   quantity: number;
   /** Costo promedio por unidad, en la moneda del activo. */
   avgCost: number;
-  /** Costo promedio por unidad convertido a USD al momento de cada compra. */
+  /** Costo promedio por unidad convertido a la moneda base al momento de cada compra. */
   avgCostUsd: number;
+  /** Desde cuando se tiene: el dia en que la posicion paso de cero a positiva. */
+  since?: DayKey;
+}
+
+/**
+ * Una venta con su resultado: lo que dejo contra lo que habia costado. Es el
+ * "par" compra-venta que se mira para saber si se vendio bien. Con costo
+ * promedio no hay compra puntual que la empareje: el costo es el de todas las
+ * compras que habia, y el plazo se cuenta desde que se abrio la posicion.
+ */
+export interface Sale {
+  txId: string;
+  assetId: string;
+  accountId: string;
+  day: DayKey;
+  quantity: number;
+  /** Lo cobrado, neto de comision, en la moneda base. */
+  proceeds: number;
+  /** El costo de las unidades vendidas que tenian costo conocido, en la base. */
+  cost: number;
+  pnl: number;
+  /** Unidades vendidas sin costo conocido (se vendio mas de lo cargado). */
+  uncovered: number;
+  /** Desde cuando se tenia la posicion. */
+  since?: DayKey;
 }
 
 export interface LedgerState {
@@ -32,6 +57,8 @@ export interface LedgerState {
   netContributedUsd: number;
   depositedUsd: number;
   withdrawnUsd: number;
+  /** Cada venta con su resultado, en orden. */
+  sales: Sale[];
 }
 
 export function emptyLedger(): LedgerState {
@@ -46,6 +73,7 @@ export function emptyLedger(): LedgerState {
     netContributedUsd: 0,
     depositedUsd: 0,
     withdrawnUsd: 0,
+    sales: [],
   };
 }
 
@@ -79,6 +107,7 @@ function addUnits(
   quantity: number,
   costLocal: number,
   costUsd: number,
+  day?: DayKey,
 ): void {
   const lot = (state.positions[assetId] ??= { quantity: 0, avgCost: 0, avgCostUsd: 0 });
   let q = quantity;
@@ -94,6 +123,7 @@ function addUnits(
     q -= cubre;
   }
   if (q <= 0) return;
+  if (lot.quantity <= 0) lot.since = day;
   const totalLocal = lot.avgCost * lot.quantity + costLocal;
   const totalUsd = lot.avgCostUsd * lot.quantity + costUsd;
   lot.quantity += q;
@@ -114,6 +144,7 @@ function removeUnits(state: LedgerState, assetId: string, quantity: number): num
     if (Math.abs(lot.quantity) < 1e-12) lot.quantity = 0;
     lot.avgCost = 0;
     lot.avgCostUsd = 0;
+    lot.since = undefined;
   }
   return conCosto;
 }
@@ -145,10 +176,12 @@ export function applyTransaction(
   tx: Transaction,
   assets: Record<string, Asset>,
   fx: FxTable,
+  /** La moneda en que se llevan las cuentas. Los campos `*Usd` quedan en esta. */
+  base: "USD" | "ARS" = "USD",
 ): void {
   const day = toDay(tx.date);
   const rate = tx.fxRate && tx.fxRate > 0 ? tx.fxRate : fx.at(day);
-  const usd = (v: number) => toUsd(v, tx.currency, rate);
+  const usd = (v: number) => toBase(v, tx.currency, rate, base);
   const fee = tx.fee ?? 0;
   /**
    * Un monto de la operacion, en la moneda del activo.
@@ -162,7 +195,8 @@ export function applyTransaction(
   const asset = tx.assetId ? assets[tx.assetId] : undefined;
   const local = (v: number): number => {
     if (!asset || asset.currency === tx.currency) return v;
-    return asset.currency === "USD" ? usd(v) : usd(v) * rate;
+    const enUsd = toUsd(v, tx.currency, rate);
+    return asset.currency === "USD" ? enUsd : enUsd * rate;
   };
 
   switch (tx.type) {
@@ -191,7 +225,7 @@ export function applyTransaction(
     case "buy": {
       if (!tx.assetId || !tx.quantity) break;
       bumpCash(state.cash, tx.accountId, tx.currency, -(tx.amount + fee));
-      addUnits(state, tx.assetId, tx.quantity, local(tx.amount + fee), usd(tx.amount + fee));
+      addUnits(state, tx.assetId, tx.quantity, local(tx.amount + fee), usd(tx.amount + fee), day);
       bumpPosition(state, tx.accountId, tx.assetId, tx.quantity);
       state.feesUsd += usd(fee);
       break;
@@ -200,10 +234,23 @@ export function applyTransaction(
       if (!tx.assetId || !tx.quantity) break;
       bumpCash(state.cash, tx.accountId, tx.currency, tx.amount - fee);
       const costoUnidad = state.positions[tx.assetId]?.avgCostUsd ?? 0;
+      const desde = state.positions[tx.assetId]?.since;
       // Lo vendido de mas no tiene costo conocido: su resultado se corrige
       // cuando una compra posterior lo cubre (ver `addUnits`).
       const conCosto = removeUnits(state, tx.assetId, tx.quantity);
       const pnl = usd(tx.amount - fee) - costoUnidad * conCosto;
+      state.sales.push({
+        txId: tx.id,
+        assetId: tx.assetId,
+        accountId: tx.accountId,
+        day,
+        quantity: tx.quantity,
+        proceeds: usd(tx.amount - fee),
+        cost: costoUnidad * conCosto,
+        pnl,
+        uncovered: tx.quantity - conCosto,
+        since: desde,
+      });
       state.realizedUsd += pnl;
       state.realizedByAsset[tx.assetId] = (state.realizedByAsset[tx.assetId] ?? 0) + pnl;
       bumpPosition(state, tx.accountId, tx.assetId, -tx.quantity);
@@ -251,7 +298,7 @@ export function applyTransaction(
         // De mas, como un rendimiento cobrado en el activo: entra al precio
         // del dia, asi que su costo es ese mismo valor y no aparece como
         // ganancia sin realizar de un saque. Lo que vale es ingreso.
-        addUnits(state, tx.assetId, tx.quantity, local(tx.amount), usd(tx.amount));
+        addUnits(state, tx.assetId, tx.quantity, local(tx.amount), usd(tx.amount), day);
         state.incomeUsd += usd(tx.amount);
         state.realizedByAsset[tx.assetId] =
           (state.realizedByAsset[tx.assetId] ?? 0) + usd(tx.amount);
@@ -279,11 +326,11 @@ export function applyTransaction(
   }
 }
 
-/** Flujo de capital externo del dia, en USD (positivo = entra plata nueva). */
-export function externalFlowUsd(tx: Transaction, fx: FxTable): number {
+/** Flujo de capital externo del dia, en la moneda base (positivo = entra plata nueva). */
+export function externalFlowUsd(tx: Transaction, fx: FxTable, base: "USD" | "ARS" = "USD"): number {
   const rate = tx.fxRate && tx.fxRate > 0 ? tx.fxRate : fx.at(toDay(tx.date));
-  if (tx.type === "deposit") return toUsd(tx.amount, tx.currency, rate);
-  if (tx.type === "withdraw") return -toUsd(tx.amount, tx.currency, rate);
+  if (tx.type === "deposit") return toBase(tx.amount, tx.currency, rate, base);
+  if (tx.type === "withdraw") return -toBase(tx.amount, tx.currency, rate, base);
   return 0;
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { money, percent } from "@/lib/format";
+import type { Currency } from "@/lib/types";
 
 export interface Slice {
   key: string;
@@ -26,7 +27,15 @@ const REST = "var(--color-ink-3)";
  * la proporcion de un vistazo y la lista da el numero exacto; cada tramo
  * queda identificado por texto, asi que el color nunca es el unico canal.
  */
-export function Allocation({ slices, total }: { slices: Slice[]; total: number }) {
+export function Allocation({
+  slices,
+  total,
+  currency = "USD",
+}: {
+  slices: Slice[];
+  total: number;
+  currency?: Currency;
+}) {
   if (slices.length === 0 || total <= 0) {
     return <p className="label py-6 text-center">Todavía no hay posiciones.</p>;
   }
@@ -69,7 +78,7 @@ export function Allocation({ slices, total }: { slices: Slice[]; total: number }
             <span className="min-w-0 flex-1 truncate text-[13px]">{row.label}</span>
             {row.sub && <span className="label shrink-0">{row.sub}</span>}
             <span className="num shrink-0 text-[12px]" style={{ color: "var(--color-ink-2)" }}>
-              {money(row.value, "USD", { compact: true })}
+              {money(row.value, currency, { compact: true })}
             </span>
             <span className="num w-11 shrink-0 text-right text-[12px]">
               {percent(row.value / total, { decimals: 0, sign: false })}

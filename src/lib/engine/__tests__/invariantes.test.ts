@@ -35,9 +35,16 @@ interface Escenario {
   precios?: Record<string, number>;
   asOf?: string;
   fxRates?: { date: string; arsPerUsd: number }[];
+  base?: "USD" | "ARS";
 }
 
-function correr({ transactions, precios = {}, asOf = "2024-03-01", fxRates = [] }: Escenario) {
+function correr({
+  transactions,
+  precios = {},
+  asOf = "2024-03-01",
+  fxRates = [],
+  base,
+}: Escenario) {
   return computePortfolio({
     transactions,
     assets,
@@ -55,6 +62,7 @@ function correr({ transactions, precios = {}, asOf = "2024-03-01", fxRates = [] 
     })),
     fxRates,
     asOf,
+    base,
   });
 }
 
@@ -541,6 +549,110 @@ describe("pesos", () => {
     // Preferimos no contarlo y decirlo, antes que contar 100.000 dólares.
     expect(p.fxMissing).toBe(true);
     expect(p.netContributedUsd).toBeCloseTo(0);
+  });
+});
+
+describe("con las cuentas en pesos", () => {
+  // El dólar sube a lo largo de la historia: es lo que separa una vista de la
+  // otra, y lo que haría aparecer plata de la nada si algo convierte mal.
+  const fxRates = [
+    { date: "2024-01-01", arsPerUsd: 1000 },
+    { date: "2024-02-01", arsPerUsd: 1100 },
+    { date: "2024-03-01", arsPerUsd: 1250 },
+  ];
+  const vida: Transaction[] = [
+    tx("deposit", "2024-01-01", { amount: 1000, accountId: "cocos" }),
+    tx("deposit", "2024-01-02", { amount: 300_000, currency: "ARS", accountId: "cocos" }),
+    tx("buy", "2024-01-03", { amount: 600, assetId: "qqq", quantity: 2, price: 300, fee: 2 }),
+    tx("transfer", "2024-01-10", { amount: 300, accountId: "cocos", counterAccountId: "binance" }),
+    tx("buy", "2024-01-11", {
+      amount: 250,
+      assetId: "btc",
+      quantity: 0.005,
+      price: 50000,
+      accountId: "binance",
+    }),
+    tx("exchange", "2024-01-15", {
+      amount: 110_000,
+      currency: "ARS",
+      toAmount: 100,
+      toCurrency: "USD",
+    }),
+    tx("dividend", "2024-02-01", { amount: 8, assetId: "qqq" }),
+    tx("sell", "2024-02-20", { amount: 350, assetId: "qqq", quantity: 1, price: 350, fee: 1 }),
+    tx("fee", "2024-02-21", { amount: 3 }),
+    tx("withdraw", "2024-02-28", { amount: 50_000, currency: "ARS", accountId: "cocos" }),
+  ];
+  const precios = { qqq: 360, btc: 56000 };
+
+  it("las dos identidades valen", () => {
+    const p = correr({ transactions: vida, precios, fxRates, base: "ARS" });
+    expect(p.base).toBe("ARS");
+    verificarIdentidades(p);
+  });
+
+  it("el capital son los pesos de cada día, no los de hoy", () => {
+    const p = correr({ transactions: vida, precios, fxRates, base: "ARS" });
+    // US$ 1000 al dólar de ese día, más los pesos tal cual.
+    expect(p.depositedUsd).toBeCloseTo(1000 * 1000 + 300_000);
+    expect(p.netContributedUsd).toBeCloseTo(1000 * 1000 + 300_000 - 50_000);
+  });
+
+  it("el valor es el de dólares al dólar de hoy", () => {
+    const pesos = correr({ transactions: vida, precios, fxRates, base: "ARS" });
+    const dolares = correr({ transactions: vida, precios, fxRates });
+    expect(pesos.totalValueUsd).toBeCloseTo(dolares.totalValueUsd * 1250, 4);
+  });
+
+  it("el efectivo en dólares se valúa al dólar de hoy y el de pesos, tal cual", () => {
+    const p = correr({ transactions: vida, precios, fxRates, base: "ARS" });
+    const efectivoUsd = 1000 - 602 + 100 + 8 + 349 - 3 - 250;
+    const efectivoArs = 300_000 - 110_000 - 50_000;
+    const conDolarDeHoy = efectivoUsd * 1250 + efectivoArs;
+    expect(p.cashUsd).toBeCloseTo(conDolarDeHoy, 4);
+    verificarIdentidades(p);
+  });
+
+  it("la suma de las cuentas es la cartera", () => {
+    const p = correr({ transactions: vida, precios, fxRates, base: "ARS" });
+    const suma = p.accountViews.reduce((s, v) => s + v.valueUsd, 0);
+    expect(suma).toBeCloseTo(p.totalValueUsd, 4);
+    const capital = p.accountViews.reduce((s, v) => s + v.netContributedUsd, 0);
+    expect(capital).toBeCloseTo(p.netContributedUsd, 4);
+  });
+
+  it("la serie diaria termina donde termina la cartera", () => {
+    const p = correr({ transactions: vida, precios, fxRates, base: "ARS" });
+    expect(p.daily[p.daily.length - 1].nav).toBeCloseTo(p.totalValueUsd, 4);
+  });
+
+  it("guardar dólares gana pesos cuando sube el dólar", () => {
+    const p = correr({
+      transactions: [tx("deposit", "2024-01-01", { amount: 100 })],
+      fxRates,
+      base: "ARS",
+    });
+    expect(p.totalPnlUsd).toBeCloseTo(100 * 250);
+    expect(p.realizedUsd).toBeCloseTo(0);
+  });
+
+  it("el costo de una compra en dólares queda en pesos de ese día", () => {
+    const p = correr({ transactions: vida, precios, fxRates, base: "ARS" });
+    const btc = p.positions.find((x) => x.assetId === "btc")!;
+    expect(btc.costUsd).toBeCloseTo(250 * 1000);
+    expect(btc.valueUsd).toBeCloseTo(0.005 * 56000 * 1250);
+  });
+
+  it("cada venta queda registrada con su resultado", () => {
+    const p = correr({ transactions: vida, precios, fxRates, base: "ARS" });
+    expect(p.sales).toHaveLength(1);
+    const v = p.sales[0];
+    expect(v.assetId).toBe("qqq");
+    expect(v.proceeds).toBeCloseTo(349 * 1100);
+    expect(v.cost).toBeCloseTo(301 * 1000);
+    expect(v.pnl).toBeCloseTo(349 * 1100 - 301 * 1000);
+    expect(v.since).toBe("2024-01-03");
+    expect(p.realizedUsd).toBeCloseTo(v.pnl);
   });
 });
 

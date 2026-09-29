@@ -52,7 +52,7 @@ function historial(trades: TradeView[]) {
 
 export default function Insights() {
   const {
-    portfolio: p, transactions, accounts, settings, insights,
+    portfolioUsd: p, transactions, accounts, settings, insights,
     saveInsight, updateSettings, backend, ready,
   } = useStore();
   const agenda = useMemo(() => schedules(settings), [settings]);

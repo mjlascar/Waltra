@@ -1,4 +1,4 @@
-import type { PriceSeries } from "@/lib/types";
+import type { Currency, PriceSeries } from "@/lib/types";
 import type { DayKey } from "@/lib/date";
 import { lookupCatalog } from "@/lib/catalog";
 import { PriceLookup } from "@/lib/engine/prices";
@@ -31,6 +31,30 @@ export function benchmarkRef(symbol: string | undefined): BenchmarkRef | null {
     sourceSymbol: entry.sourceSymbol,
     currency: entry.currency,
   };
+}
+
+/**
+ * La serie del indice en la moneda en que se muestra la app.
+ *
+ * Con la app en pesos la cartera rinde en pesos, y eso incluye lo que subio el
+ * dolar: compararla contra el S&P 500 en dolares le daria de regalo toda la
+ * devaluacion. El indice se pasa a pesos al dolar de cada dia, que es lo que
+ * habria rendido comprarlo con pesos. Sin dolar ese dia, el punto no esta.
+ */
+export function seriesIn(
+  series: PriceSeries | undefined,
+  base: Currency,
+  fxAt: (day: DayKey) => number,
+): PriceSeries | undefined {
+  if (!series || series.currency === base) return series;
+  const points = series.points
+    .map((pt) => {
+      const fx = fxAt(pt.date);
+      if (!(fx > 0)) return null;
+      return { date: pt.date, close: base === "ARS" ? pt.close * fx : pt.close / fx };
+    })
+    .filter((pt): pt is { date: string; close: number } => pt !== null);
+  return { ...series, currency: base, points };
 }
 
 /**

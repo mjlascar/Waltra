@@ -207,6 +207,29 @@ cuenta. No mueve el capital aportado ni el rendimiento. Cada lado se valúa al
 dólar del día, así que si se pagó más caro que ese dólar la diferencia aparece
 como una pérdida chica, que es lo que fue; está fijado en los invariantes.
 
+**Dólares o pesos es la moneda de las cuentas, no un símbolo**
+(`settings.baseCurrency`, el botón US$ / $ del inicio). `computePortfolio`
+recibe `base` y todos los campos `*Usd` salen en esa moneda: el nombre quedó
+de cuando solo había dólares, y renombrarlos no valía el diff. En pesos, cada
+aporte cuenta los pesos de ese día y el valor, los de hoy, así que la
+ganancia incluye lo que subió el dólar; **no** es la cuenta en dólares por el
+dólar de hoy. El costo promedio en la moneda del activo sigue calculándose
+aparte (`local()` en el ledger usa `toUsd`, no la base), porque es contra su
+cotización que se compara. El índice de referencia se pasa a pesos al dólar
+de cada día (`seriesIn`): comparar una cartera en pesos contra el S&P en
+dólares le regalaría la devaluación. Lo que no se muestra —el plan del vigía,
+el pedido a los insights, el aviso de efectivo al cargar— usa
+`portfolioUsd`, que es siempre en dólares. Ningún monto de cartera va con
+`"USD"` fijo: va con `portfolio.base`. Los movimientos sí se muestran en la
+moneda en que se cargaron: son el registro de lo que pasó. Hay invariantes
+en pesos en `invariantes.test.ts`.
+
+**Cada venta queda con su resultado** (`portfolio.sales`, `SalesList` en
+Cartera). Con costo promedio no hay una compra que empareje a cada venta: el
+costo es el promedio de lo que se tenía, como lo cuenta el broker, y el plazo
+se cuenta desde que la posición pasó de cero a positiva (`Lot.since`). Lo
+vendido sin costo conocido se marca: ese resultado está inflado.
+
 **Nunca inventar un número.** Sin cotización, una posición se valúa al costo y
 la app lo dice (`missingPrices`). Sin dólar MEP, los montos en pesos quedan
 sin convertir y la app lo dice (`fxMissing`); el fallback de la tabla de
@@ -484,6 +507,14 @@ Sin **permiso de notificaciones** (Android 13 o más), el vigía manda el
 aviso y Android lo descarta sin decir nada. Antes solo se pedía al prender
 las alertas o desde Actualizaciones, y a quien nunca pasó por ahí no le
 llegaba ninguna versión nueva. `NotifPrompt` lo ofrece una vez en el inicio.
+
+`gh release create` arma un borrador, sube el APK y recién ahí lo publica;
+con la etiqueta recién borrada ese último paso a veces no toma y el release
+queda en **borrador sin un solo error**: la API pública contesta 404, la app
+decía "GitHub no respondió" y el enlace de descarga tampoco andaba. CI lo
+publica a mano y verifica contra la API pública; si no se ve, falla. La app
+distingue el 404 (no hay versión publicada) y el 403 (límite de consultas)
+de la falta de señal (`updateErrorText`).
 
 El número sale del **título del release**, `Waltra 1.0.<corrida>`, que arma
 CI (y de las notas, como respaldo). Si cambia ese formato, la app deja de

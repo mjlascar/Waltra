@@ -43,6 +43,18 @@ export class FxTable {
   }
 }
 
+/**
+ * Convierte un monto a la moneda base de las cuentas. `fx` es ARS por USD en
+ * esa fecha. Con base en pesos, todo se lleva cuenta en pesos desde el
+ * principio: un ingreso de pesos es lo que entro, no dolares vueltos a pasar
+ * a pesos al dolar de hoy. Sin dolar conocido, 0: mejor que un numero falso.
+ */
+export function toBase(amount: number, currency: "USD" | "ARS", fx: number, base: "USD" | "ARS"): number {
+  if (currency === base) return amount;
+  if (base === "USD") return fx > 0 ? amount / fx : 0;
+  return fx > 0 ? amount * fx : 0;
+}
+
 /** Convierte un monto a USD. `fx` es ARS por USD en esa fecha. */
 export function toUsd(amount: number, currency: "USD" | "ARS", fx: number): number {
   if (currency === "USD") return amount;

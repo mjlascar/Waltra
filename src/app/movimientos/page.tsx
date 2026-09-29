@@ -165,7 +165,7 @@ export default function Movimientos() {
       <p className="label mb-3">
         {filtered.length} {filtered.length === 1 ? "movimiento" : "movimientos"}
         {filter === "capital" &&
-          ` · neto ${money(portfolio.netContributedUsd, "USD", { compact: true })}`}
+          ` · neto ${money(portfolio.netContributedUsd, portfolio.base, { compact: true })}`}
       </p>
 
       {months.map(([key, rows]) => {

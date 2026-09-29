@@ -764,6 +764,34 @@ check("el total pasa a ser el de la billetera", await has("Valor en Binance"), (
 await page.getByRole("button", { name: /^Todas$/ }).first().click();
 await page.waitForTimeout(500);
 check("y vuelve al total", await has("Valor total"));
+
+console.log("\n7e. Dólares o pesos, en toda la app");
+const heroNum = () => page.locator(".hero-num").first().innerText();
+check("arranca en dólares", (await heroNum()).includes("US$"), await heroNum());
+await page.getByRole("button", { name: "Ver todo en pesos" }).click();
+await page.waitForTimeout(1200);
+check("el total pasa a pesos", /^\$/.test((await heroNum()).trim()), await heroNum());
+check(
+  "el botón dice cuál está elegido",
+  (await page.getByRole("button", { name: "Ver todo en pesos" }).getAttribute("aria-pressed")) === "true",
+);
+await goto("/cartera");
+{
+  // Ningún monto de la cartera queda en dólares: antes el costo de cada
+  // posición salía en la moneda del activo y se mezclaban.
+  const cartera = normalize(await text());
+  const posiciones = cartera.slice(0, cartera.indexOf("cómo te fue en cada venta") >>> 0);
+  check("la cartera entera en pesos", !posiciones.includes("us$"), posiciones.match(/.{0,40}us\$.{0,20}/)?.[0] ?? "");
+}
+check("la lista de ventas", await has("Cómo te fue en cada venta"));
+check("cada venta con su resultado", /\(([+-])?[\d.,]+%\)/.test(await text()));
+await page.getByRole("button", { name: /^SPY/ }).last().click();
+await page.waitForTimeout(400);
+check("el detalle de una venta", await has("Te habían costado"), (await text()).slice(-600));
+await goto("/");
+await page.getByRole("button", { name: "Ver todo en dólares" }).click();
+await page.waitForTimeout(1200);
+check("y vuelve a dólares", (await heroNum()).includes("US$"), await heroNum());
 // Lo que sigue mide sobre el gráfico del inicio: hay que volver ahí.
 await goto("/");
 
