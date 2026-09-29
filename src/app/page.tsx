@@ -28,7 +28,8 @@ import { SplitSheet } from "@/components/SplitSheet";
 import { RatioSheet } from "@/components/RatioSheet";
 import { NotifPrompt } from "@/components/NotifPrompt";
 import type { RatioCheck } from "@/lib/engine/cedear-ratio";
-import { convertToCedear, misloadedCedears } from "@/lib/cedear";
+import { convertToCedear, mergeAssets, misloadedCedears } from "@/lib/cedear";
+import { duplicateBonds } from "@/lib/bonds";
 import { IconWarning } from "@/components/icons";
 
 const RANGES: { value: RangeKey; label: string }[] = [
@@ -288,6 +289,23 @@ export default function Overview() {
    */
   const malCargados = misloadedCedears(assets, transactions, accounts);
 
+  /**
+   * La misma ON cargada con dos letras de moneda (VSCYO y VSCYD): es una
+   * sola tenencia comprada de dos maneras, y verla partida en dos confunde.
+   */
+  const bonosRepetidos = duplicateBonds(assets);
+
+  async function unificar(grupo: typeof assets) {
+    if (!db || arreglando) return;
+    setArreglando(grupo[0].id);
+    try {
+      await mergeAssets(db, grupo[0], grupo.slice(1));
+      await refresh({ force: true });
+    } finally {
+      setArreglando(null);
+    }
+  }
+
   async function corregir(assetId: string) {
     const asset = assets.find((a) => a.id === assetId);
     if (!db || !asset || arreglando) return;
@@ -352,6 +370,26 @@ export default function Overview() {
           contados en los totales. Tocá actualizar cuando tengas señal.
         </Notice>
       )}
+      {bonosRepetidos.map((grupo) => (
+        <div
+          key={grupo[0].id}
+          className="mb-3 p-2.5"
+          style={{ border: "1px solid var(--color-line-strong)", background: "var(--color-surface)" }}
+        >
+          <p className="text-[12px] leading-snug">
+            <strong>{grupo.map((a) => a.symbol).join(" y ")}</strong> son la misma especie: la
+            última letra solo dice en qué moneda se opera. Unificadas quedan como una sola
+            tenencia, en {grupo[0].symbol}; las compras en dólares se pasan al dólar de ese día.
+          </p>
+          <button
+            className="btn btn-sm mt-2 w-full"
+            disabled={arreglando !== null}
+            onClick={() => void unificar(grupo)}
+          >
+            {arreglando === grupo[0].id ? "Unificando…" : `Unificar en ${grupo[0].symbol}`}
+          </button>
+        </div>
+      ))}
       {malCargados.map((asset) => (
         <div
           key={asset.id}

@@ -194,6 +194,13 @@ nominal: todo lo demás sigue siendo unidades por precio. El vigía recibe la
 unidad en el plan (`u`) para no contar cien veces de más. Los precios salen
 de los paneles `arg_corp` (ON) y `arg_notes` (letras) de data912.
 
+La **última letra del ticker es la moneda, no la especie**: VSCYO y VSCYD
+son la misma ON (O pesos, D dólar MEP, C cable), igual que AL30 y AL30D.
+`bondBase` las junta: al cargar la D con la O ya cargada se suma a la O, y
+las que ya estaban repetidas el inicio ofrece unificarlas (`mergeAssets`),
+quedándose con la de pesos. Una compra en dólares de un bono en pesos se
+pasa al dólar de ese día, igual que un CEDEAR comprado en dólares.
+
 **Comprar dólares es un cambio de moneda, no capital** (`type: "exchange"`).
 Salen `amount` en `currency` y entran `toAmount` en `toCurrency`, en la misma
 cuenta. No mueve el capital aportado ni el rendimiento. Cada lado se valúa al
@@ -263,6 +270,13 @@ La paleta de datos (`--color-s1` a `--color-s6`) está validada para banda de
 luminosidad, croma, separación bajo daltonismo y contraste ≥ 3:1 contra la
 superficie oscura. **El orden es la garantía, no una preferencia**: no se cicla
 ni se reordena. Más de 5 series se pliegan a "Otros".
+
+Hay un **modo blanco y negro** (Ajustes → Apariencia, `data-theme="mono"`
+en `<html>`) para quien usa el teléfono en escala de grises: ahí el verde y
+el rojo son el mismo gris. Redefine los tokens en `globals.css`, sube los
+contrastes y marca la ganancia en negrita y la pérdida en negrita
+subrayada, además del signo. Un script en el `<head>` lo pone antes de pintar
+para que no se vea un instante en color.
 
 Ninguna información depende del color solo: siempre hay signo, etiqueta o
 ícono al lado. Con dos o más series hay leyenda; con una, no.

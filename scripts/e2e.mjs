@@ -379,6 +379,24 @@ await page.waitForTimeout(2000);
 await goto("/cartera");
 check("la ON queda en la cartera", await has("VSCYO"));
 
+// La misma ON en dólares (VSCYD) es la misma tenencia: se suma a VSCYO.
+await goto("/");
+await page.getByRole("button", { name: /agregar movimiento/i }).click();
+await page.waitForTimeout(400);
+await page.getByRole("button", { name: /^Compré Acciones/ }).click();
+await page.waitForTimeout(400);
+await page.locator('input[placeholder="QQQ, BTC, GGAL…"]').fill("VSCYD");
+await page.waitForTimeout(300);
+await page.getByRole("button", { name: /Buscar «VSCYD»/ }).click();
+await page.waitForTimeout(1500);
+await page.getByRole("button", { name: /VSCYD · bono u ON/ }).click();
+await page.waitForTimeout(300);
+check(
+  "la D se carga en la misma ON que la O",
+  (await page.locator('input[placeholder="QQQ, BTC, GGAL…"]').inputValue()) === "VSCYO",
+);
+await cerrarHoja();
+
 console.log("\n2h. Comprar dólares en la cuenta");
 await goto("/");
 await page.getByRole("button", { name: /agregar movimiento/i }).click();
@@ -612,6 +630,18 @@ await goto("/movimientos");
 check("quedan anotados como ajustes", await has("conciliado con Binance"), (await text()).slice(0, 600));
 await goto("/cartera");
 check("la cartera ya no tiene ETH", !(await has("ETH ")), (await text()).slice(0, 600));
+
+console.log("\n5e. Blanco y negro");
+await goto("/ajustes/apariencia");
+await page.getByRole("button", { name: /^Blanco y negro$/ }).click();
+await page.waitForTimeout(500);
+check("se aplica el modo blanco y negro", (await page.evaluate(() => document.documentElement.dataset.theme)) === "mono");
+await goto("/");
+check("y queda al volver a abrir", (await page.evaluate(() => document.documentElement.dataset.theme)) === "mono");
+await goto("/ajustes/apariencia");
+await page.getByRole("button", { name: /^Color$/ }).click();
+await page.waitForTimeout(500);
+check("vuelve a color", (await page.evaluate(() => document.documentElement.dataset.theme)) !== "mono");
 
 console.log("\n6. Filtros de movimientos");
 await goto("/movimientos");

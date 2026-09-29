@@ -10,7 +10,7 @@ import { parseQuickEntry } from "@/lib/parse/quick-add";
 import { parseLooseNumber } from "@/lib/parse/number";
 import { lookupCatalog, searchCatalog, type CatalogEntry } from "@/lib/catalog";
 import { lastUsedAccountId } from "@/lib/assets";
-import { bondCandidate } from "@/lib/bonds";
+import { bondCandidate, sameBond } from "@/lib/bonds";
 import { cedearSymbol, isUsListing, resolveTradeAsset, tradesAsCedear } from "@/lib/cedear";
 import { longDate, money, quantity as fmtQty, TX_LABEL } from "@/lib/format";
 import { txColor } from "@/lib/tx-style";
@@ -637,6 +637,15 @@ export function AddTransaction({
   function elegirHallado(hit: SymbolHit) {
     setCatalogHit(null);
     setHallados(null);
+    // La misma ON con otra letra de moneda (VSCYD cuando ya esta VSCYO) es
+    // la misma tenencia: se suma ahi en vez de crear un bono nuevo.
+    const mismo = hit.kind === "bond" ? sameBond(assets, hit.symbol) : undefined;
+    if (mismo) {
+      encontrado.current = null;
+      setUnidadHallada(null);
+      set({ symbol: mismo.symbol, assetId: mismo.id, currency: hit.currency });
+      return;
+    }
     set({ symbol: hit.symbol, assetId: "", currency: hit.currency });
     // El activo se crea al guardar; `resolveAsset` mira el catalogo y, si no
     // esta, arma uno con lo que le pasemos. Guardamos el hallazgo para eso.

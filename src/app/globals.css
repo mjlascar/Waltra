@@ -330,3 +330,55 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/*
+ * Blanco y negro, para telefonos en escala de grises.
+ *
+ * El verde de la ganancia y el rojo de la perdida se vuelven el mismo gris, y
+ * la app decia mucho con color. Aca lo dicen el peso y la forma: la ganancia
+ * va en negrita y la perdida en negrita subrayada, ademas del signo que ya
+ * llevaban. Los textos secundarios suben de contraste y las series de los
+ * graficos se separan por niveles de gris bien distintos, alternados para que
+ * dos vecinas nunca se parezcan.
+ */
+html[data-theme="mono"] {
+  --color-bg: #000000;
+  --color-surface: #0b0b0b;
+  --color-surface-2: #161616;
+  --color-surface-3: #262626;
+  --color-line: #3a3a3a;
+  --color-line-strong: #6e6e6e;
+  --color-ink: #ffffff;
+  --color-ink-2: #d6d6d6;
+  --color-ink-3: #ababab;
+  --color-pos: #ffffff;
+  --color-pos-soft: #bdbdbd;
+  --color-neg: #ffffff;
+  --color-warn: #ffffff;
+  --color-s1: #ffffff;
+  --color-s2: #8a8a8a;
+  --color-s3: #d0d0d0;
+  --color-s4: #6f6f6f;
+  --color-s5: #b3b3b3;
+  --color-s6: #575757;
+}
+
+html[data-theme="mono"] .pos {
+  font-weight: 700;
+}
+
+html[data-theme="mono"] .neg {
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+html[data-theme="mono"] .label,
+html[data-theme="mono"] .eyebrow {
+  font-weight: 500;
+}
+
+html[data-theme="mono"] .num {
+  font-weight: 500;
+}

@@ -174,3 +174,20 @@ export async function convertToCedear(db: WaltraDB, asset: Asset, assets: Asset[
   });
   return resultado!;
 }
+
+/**
+ * Junta en el primero los bonos de un grupo que son la misma especie: sus
+ * movimientos pasan a ese activo y los demas se borran con sus precios. Ver
+ * `duplicateBonds` en `bonds.ts`.
+ */
+export async function mergeAssets(db: WaltraDB, keep: Asset, others: Asset[]): Promise<void> {
+  await db.transaction("rw", [db.assets, db.transactions, db.priceSeries, db.quotes], async () => {
+    for (const o of others) {
+      if (o.id === keep.id) continue;
+      await db.transactions.where("assetId").equals(o.id).modify({ assetId: keep.id });
+      await db.assets.delete(o.id);
+      await db.priceSeries.delete(o.id);
+      await db.quotes.delete(o.id);
+    }
+  });
+}

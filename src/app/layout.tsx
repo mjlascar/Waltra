@@ -9,6 +9,11 @@ import { ServiceWorker } from "@/components/ServiceWorker";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { NativeShell } from "@/components/NativeShell";
 import { AlertsMirror } from "@/components/AlertsMirror";
+import { ThemeSync } from "@/components/ThemeSync";
+
+// Pone el tema antes de que se pinte nada: sin esto, quien usa blanco y negro
+// ve la app en color un instante al abrirla. La clave es la de `ThemeSync`.
+const TEMA_TEMPRANO = `try{if(localStorage.getItem("waltra.theme")==="mono")document.documentElement.dataset.theme="mono"}catch(e){}`;
 
 export const metadata: Metadata = {
   title: "Waltra",
@@ -46,7 +51,12 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es-AR" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+    // El script de abajo cambia un atributo de <html> antes de que React
+    // hidrate; sin esto, React lo toma por un error.
+    <html lang="es-AR" className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: TEMA_TEMPRANO }} />
+      </head>
       <body>
         <StoreProvider>
           <PullToRefresh />
@@ -55,6 +65,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <ServiceWorker />
           <NativeShell />
           <AlertsMirror />
+          <ThemeSync />
         </StoreProvider>
       </body>
     </html>

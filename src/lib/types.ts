@@ -221,6 +221,8 @@ export interface Settings {
   updateNotify?: boolean;
   /** Ya se ofrecio activar las notificaciones en el inicio (se ofrece una vez). */
   notifAsked?: boolean;
+  /** Colores de la interfaz. "mono" es blanco y negro, para pantallas en grises. */
+  theme?: "color" | "mono";
 }
 
 export interface InsightSource {

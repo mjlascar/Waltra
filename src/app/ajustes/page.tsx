@@ -85,6 +85,13 @@ export default function Ajustes() {
         ]
       : []),
     {
+      href: "/ajustes/apariencia",
+      titulo: "Apariencia",
+      detalle: "Color o blanco y negro",
+      estado: settings.theme === "mono" ? "blanco y negro" : "color",
+      alerta: null,
+    },
+    {
       href: "/ajustes/diagnostico",
       titulo: "Diagnóstico",
       detalle: "Probar las fuentes de precios",
