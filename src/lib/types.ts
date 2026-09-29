@@ -239,6 +239,10 @@ export interface InsightReport {
    * clases no lo tienen, y ahi se asume "cartera", que es lo que eran.
    */
   kind?: import("@/lib/insights/schedule").ReportKind;
+  /** La pregunta puntual que acompañó el pedido, si hubo. */
+  question?: string;
+  /** El activo o el monto del pedido, en los informes que lo piden. */
+  focus?: string;
   /** Resumen del mercado en 2-3 frases. */
   marketBrief: string;
   signals: InsightSignal[];

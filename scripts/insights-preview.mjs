@@ -110,13 +110,13 @@ async function inject(report) {
 await inject(REPORT);
 await page.goto(`${BASE}/insights`, { waitUntil: "networkidle" });
 await page.waitForTimeout(1500);
-await page.screenshot({ path: "screenshots/insights-completo.png", fullPage: true });
+await page.screenshot({ path: "screenshots/insights-lista.png", fullPage: true });
+console.log("· screenshots/insights-lista.png");
+// El informe se abre desde la lista de pedidos, en su propia hoja.
+await page.getByRole("button", { name: /Análisis de tu cartera/ }).last().click();
+await page.waitForTimeout(700);
+await page.screenshot({ path: "screenshots/insights-completo.png" });
 console.log("· screenshots/insights-completo.png");
-// Version recortada para el README: la completa es muy larga para leerla.
-// Bajamos hasta el informe: arriba esta la tarjeta de generar, que no es lo
-// que hay que mostrar en el README.
-await page.evaluate(() => window.scrollTo(0, 430));
-await page.waitForTimeout(500);
 await page.screenshot({ path: "docs/img/insights.png" });
 console.log("· docs/img/insights.png");
 

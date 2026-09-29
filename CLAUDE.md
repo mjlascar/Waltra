@@ -395,6 +395,15 @@ de ahí es lo que un proceso programado leería, y lo que se pega es lo que
 escribiría. Sin credenciales nuevas y sin que la app dependa de que ese proceso
 exista.
 
+La pantalla es **un formulario arriba y los pedidos abajo**. Pedir no traba
+nada: el pedido entra a la lista como "analizando" (`src/lib/insights/queue.ts`,
+fuera de la pantalla para que cambiar de pestaña no lo pierda) y, al llegar,
+queda como un informe que se abre en su propia hoja (`ReportView`). La
+pregunta puntual viaja con el análisis elegido y el informe la contesta
+primero (`focoTexto`): antes se validaba y no llegaba al modelo. "Sin clave
+de API" solo aparece sin clave, y los informes que se repiten viven detrás
+del botón "Informe semanal".
+
 El cuerpo del pedido lo arma un solo memo en la pantalla de Insights
 (`datosCartera`) que usan los dos caminos. Armarlos por separado terminaría en
 que dicen cosas distintas.

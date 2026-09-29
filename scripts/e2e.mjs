@@ -490,6 +490,48 @@ for (const [path, marker] of [
   check(`${path} renderiza`, await has(marker));
 }
 
+console.log("\n5a. Insights: pedidos en lista, informe aparte");
+await page.evaluate(
+  (row) =>
+    new Promise((resolve, reject) => {
+      const open = indexedDB.open("waltra");
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const tx = open.result.transaction("insights", "readwrite");
+        tx.objectStore("insights").put(row);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => reject(tx.error);
+      };
+    }),
+  {
+    id: "e2e-informe",
+    createdAt: new Date().toISOString(),
+    model: "muestra",
+    kind: "cartera",
+    question: "¿Conviene sumar más?",
+    marketBrief: "Contexto de prueba para el recorrido.",
+    signals: [],
+    profileRead: { summary: "", observations: [], risks: [], suggestions: [] },
+    sources: [],
+    portfolioDigest: "",
+  },
+);
+await goto("/insights");
+check("los pedidos van en una lista", await has("Tus pedidos"), (await text()).slice(0, 600));
+check("la pregunta dice que se suma al análisis", await has("Se suma al análisis de arriba"));
+check("el informe no se apila debajo del formulario", !(await has("Contexto de prueba para el recorrido")));
+await page.getByRole("button", { name: /Análisis de tu cartera/ }).last().click();
+await page.waitForTimeout(600);
+check("el informe se abre desde la lista", await has("Contexto de prueba para el recorrido"));
+check("con la pregunta que lo acompañó", await has("¿Conviene sumar más?"));
+await page.keyboard.press("Escape");
+await page.waitForTimeout(400);
+await page.getByRole("button", { name: /^Informe semanal/ }).click();
+await page.waitForTimeout(500);
+check("el informe semanal se configura aparte", await has("activar"), (await text()).slice(-500));
+await page.keyboard.press("Escape");
+await page.waitForTimeout(400);
+
 console.log("\n5b. Explicación de las métricas");
 await goto("/");
 await page.getByRole("button", { name: /¿Cómo se calcula\?/ }).click();

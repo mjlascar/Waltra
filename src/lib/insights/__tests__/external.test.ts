@@ -110,3 +110,15 @@ describe("lo que se pega de vuelta", () => {
     expect(parseExternalReport("  nada  ")).toBeNull();
   });
 });
+
+describe("la pregunta puntual", () => {
+  it("llega al pedido, y se pide contestarla primero", () => {
+    const texto = buildExternalRequest({ ...CARTERA, question: "¿Conviene vender QQQ?" }, "cartera");
+    expect(texto).toContain("¿Conviene vender QQQ?");
+    expect(texto).toMatch(/Contestala primero/);
+  });
+
+  it("sin pregunta, no aparece nada", () => {
+    expect(buildExternalRequest(CARTERA, "cartera")).not.toMatch(/pregunta puntualmente/);
+  });
+});

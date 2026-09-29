@@ -86,13 +86,23 @@ export const CONSIGNA_TITULO: Record<ReportKind, string> = {
   decision: "Recomenda que hacer con un monto nuevo",
 };
 
-/** El foco, cuando el informe lo necesita. */
+/**
+ * El foco, cuando el informe lo necesita, y la pregunta puntual si la hay.
+ *
+ * La pregunta se validaba y despues no llegaba a ningun lado: el informe
+ * salia igual que sin ella. Va aca porque este texto lo usan los dos caminos,
+ * el informe de la app y el pedido que se copia para hacer afuera.
+ */
 export function focoTexto(body: InsightRequest): string {
   const foco = body.focus?.trim();
-  if (!foco) return "";
-  if (body.kind === "posicion") return `\n\nActivo a analizar: ${foco}`;
-  if (body.kind === "decision") return `\n\nMonto disponible para invertir: ${foco}`;
-  return "";
+  let out = "";
+  if (foco && body.kind === "posicion") out += `\n\nActivo a analizar: ${foco}`;
+  if (foco && body.kind === "decision") out += `\n\nMonto disponible para invertir: ${foco}`;
+  const pregunta = body.question?.trim();
+  if (pregunta) {
+    out += `\n\nAdemas, la persona pregunta puntualmente: "${pregunta}". Contestala primero, en el resumen del principio, y despues segui con el resto del informe.`;
+  }
+  return out;
 }
 
 /**
