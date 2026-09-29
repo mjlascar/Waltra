@@ -155,7 +155,8 @@ export async function insights(
  */
 export async function searchSymbols(q: string, ctx: BackendContext): Promise<SymbolHit[]> {
   if (!ON_DEVICE) {
-    const { hits } = await post<{ hits: SymbolHit[] }>("/api/search", { q }, ctx);
+    const { hits, error } = await post<{ hits: SymbolHit[]; error?: string }>("/api/search", { q }, ctx);
+    if (error && !hits?.length) throw new BackendError(error, "provider_error");
     return hits ?? [];
   }
   return wrap(async () => {

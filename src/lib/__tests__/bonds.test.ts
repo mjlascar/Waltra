@@ -1,0 +1,50 @@
+import { describe, expect, it } from "vitest";
+import { bondCandidate, looksLikeBymaTicker } from "@/lib/bonds";
+import { assetFromSymbol } from "@/lib/assets";
+import { computePortfolio } from "@/lib/engine/portfolio";
+
+describe("bonos y ON", () => {
+  it("VSCYO se puede cargar: pesos, cada 100 nominales", () => {
+    expect(bondCandidate("vscyo")).toMatchObject({
+      symbol: "VSCYO",
+      kind: "bond",
+      currency: "ARS",
+      source: "byma",
+      priceUnit: 100,
+    });
+  });
+
+  it("la especie en dólares se opera en dólares", () => {
+    expect(bondCandidate("VSCYD")?.currency).toBe("USD");
+    expect(bondCandidate("GD30C")?.currency).toBe("USD");
+  });
+
+  it("un nombre no es un ticker", () => {
+    expect(looksLikeBymaTicker("Vista Energy")).toBe(false);
+    expect(bondCandidate("ab")).toBeNull();
+  });
+
+  it("el activo se crea con su unidad de cotización", () => {
+    const c = bondCandidate("VSCYO")!;
+    expect(assetFromSymbol("VSCYO", "x", { catalog: { ...c, aliases: [] } }).priceUnit).toBe(100);
+  });
+
+  it("valuado con el precio por nominal, 1.000 nominales a $ 108.000 cada 100 son $ 1.080.000", () => {
+    const asset = { ...assetFromSymbol("VSCYO", "vsc", { catalog: { ...bondCandidate("VSCYO")!, aliases: [] } }) };
+    const p = computePortfolio({
+      transactions: [
+        { id: "d", date: "2026-09-01", type: "deposit", accountId: "cocos", amount: 1_080_000, currency: "ARS", createdAt: "1", updatedAt: "" },
+        { id: "b", date: "2026-09-02", type: "buy", accountId: "cocos", assetId: "vsc", quantity: 1000, price: 1080, amount: 1_080_000, currency: "ARS", createdAt: "2", updatedAt: "" },
+      ],
+      assets: [asset],
+      accounts: [{ id: "cocos", name: "Cocos", broker: "cocos", currency: "USD", createdAt: "" }],
+      priceSeries: [],
+      // La cotizacion ya guardada por nominal, como la deja la sincronizacion.
+      quotes: [{ assetId: "vsc", price: 1080, currency: "ARS", at: "2026-09-29", source: "byma" }],
+      fxRates: [{ date: "2026-01-01", arsPerUsd: 1500 }],
+      asOf: "2026-09-29",
+    });
+    expect(p.totalValueUsd).toBeCloseTo(1_080_000 / 1500, 6);
+    expect(p.totalPnlUsd).toBeCloseTo(0, 6);
+  });
+});

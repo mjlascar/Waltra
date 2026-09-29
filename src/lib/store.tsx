@@ -229,10 +229,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
         // Una cotizacion sin precio es un proveedor que fallo, no un precio
         // de cero: se descarta en vez de guardarse.
+        // Los bonos y las ON cotizan cada 100 nominales: se guardan por
+        // nominal, asi todo lo demas sigue siendo unidades por precio.
+        const unidad = new Map(live.map((a) => [a.id, a.priceUnit && a.priceUnit > 1 ? a.priceUnit : 1]));
         const goodQuotes: Quote[] = [];
         for (const q of data.quotes) {
           if (q.price === null || q.assetId === BENCHMARK_ASSET_ID) continue;
-          goodQuotes.push({ ...q, price: q.price });
+          goodQuotes.push({ ...q, price: q.price / (unidad.get(q.assetId) ?? 1) });
         }
         if (goodQuotes.length) await db.quotes.bulkPut(goodQuotes);
 
@@ -242,7 +245,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           .map((h) => ({
             assetId: h.assetId,
             currency: h.currency,
-            points: h.points,
+            points:
+              (unidad.get(h.assetId) ?? 1) > 1
+                ? h.points.map((pt) => ({ ...pt, close: pt.close / (unidad.get(h.assetId) ?? 1) }))
+                : h.points,
             // La serie y sus splits vienen de la misma respuesta: guardarlos
             // juntos es lo que garantiza que se lean de manera coherente.
             splits: h.splits?.length ? h.splits : undefined,

@@ -23,6 +23,8 @@ export interface SymbolHit {
   precision: number;
   /** Donde cotiza, para desempatar entre homonimos. */
   exchange?: string;
+  /** Cuantas unidades cubre la cotizacion: 100 en bonos y ON. */
+  priceUnit?: number;
 }
 
 interface YahooQuote {

@@ -190,7 +190,8 @@ function precioYahoo(assets) {
 
 function precioByma(assets) {
   if (assets.length === 0) return Promise.resolve({});
-  var feeds = ["arg_stocks", "arg_cedears", "arg_bonds"];
+  // arg_corp son las ON y arg_notes las letras, igual que en la app.
+  var feeds = ["arg_stocks", "arg_cedears", "arg_bonds", "arg_corp", "arg_notes"];
   var tablero = {};
   var tareas = feeds.map(function (feed) {
     return traerJson("https://data912.com/live/" + feed)
@@ -289,8 +290,11 @@ function decidir(plan, precios, estado, ahora) {
     var aDolar = a.cur === "ARS" ? (plan.arsPerUsd > 0 ? 1 / plan.arsPerUsd : 0) : 1;
     var cambio = typeof q.changePct === "number" ? q.changePct : 0;
     var anterior = q.price / (1 + cambio / 100);
-    totalHoy += a.qty * q.price * aDolar;
-    totalAyer += a.qty * anterior * aDolar;
+    // Los bonos y las ON cotizan cada 100 nominales; la cantidad es en
+    // nominales, asi que para el total el precio va por nominal.
+    var unidad = a.u > 1 ? a.u : 1;
+    totalHoy += (a.qty * q.price * aDolar) / unidad;
+    totalAyer += (a.qty * anterior * aDolar) / unidad;
 
     if (!(a.pct > 0)) continue;
     var magnitud = Math.abs(cambio);

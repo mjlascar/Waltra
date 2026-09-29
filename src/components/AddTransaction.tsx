@@ -10,6 +10,7 @@ import { parseQuickEntry } from "@/lib/parse/quick-add";
 import { parseLooseNumber } from "@/lib/parse/number";
 import { lookupCatalog, searchCatalog, type CatalogEntry } from "@/lib/catalog";
 import { lastUsedAccountId } from "@/lib/assets";
+import { bondCandidate } from "@/lib/bonds";
 import { cedearSymbol, isUsListing, resolveTradeAsset, tradesAsCedear } from "@/lib/cedear";
 import { longDate, money, quantity as fmtQty, TX_LABEL } from "@/lib/format";
 import { txColor } from "@/lib/tx-style";
@@ -136,6 +137,9 @@ export function AddTransaction({
   const positionsRef = useRef(portfolio.positions);
   /** El resultado de busqueda elegido, para crear el activo al guardar. */
   const encontrado = useRef<SymbolHit | null>(null);
+  // Lo mismo que el ref, pero para pintar: cuantas unidades cubre el precio
+  // del hallazgo elegido (100 en un bono u ON).
+  const [unidadHallada, setUnidadHallada] = useState<number | null>(null);
   useEffect(() => {
     positionsRef.current = portfolio.positions;
   }, [portfolio.positions]);
@@ -164,7 +168,9 @@ export function AddTransaction({
         symbol: asset?.symbol ?? "",
         assetId: editing.assetId ?? "",
         quantityText: editing.quantity ? String(editing.quantity) : "",
-        priceText: editing.price ? String(editing.price) : "",
+        // Un bono se muestra como lo da el broker, cada 100 nominales; el
+        // movimiento guarda el precio por nominal.
+        priceText: editing.price ? String(editing.price * (asset?.priceUnit ?? 1)) : "",
         amountText: String(editing.amount),
         currency: editing.currency,
         feeText: editing.fee ? String(editing.fee) : "",
@@ -279,6 +285,17 @@ export function AddTransaction({
   }, [isExchange, draft.amountText, draft.toAmountText, draft.currency]);
   const isTrade = draft.type === "buy" || draft.type === "sell";
 
+  /**
+   * Cuantas unidades cubre el precio que se escribe: 100 en bonos y ON, que
+   * el broker muestra cada 100 nominales. El movimiento guarda el precio por
+   * nominal, como todo lo demas.
+   */
+  const unidad =
+    (draft.assetId ? assets.find((a) => a.id === draft.assetId)?.priceUnit : undefined) ??
+    unidadHallada ??
+    catalogHit?.priceUnit ??
+    1;
+
   /** Monto y cantidad se derivan uno del otro segun como lo hayas dicho. */
   const computed = useMemo(() => {
     if (draft.basis === "total") {
@@ -297,7 +314,8 @@ export function AddTransaction({
         price: amount !== undefined && qty !== undefined && qty > 0 ? amount / qty : undefined,
       };
     }
-    const price = num(draft.priceText);
+    const escrito = num(draft.priceText);
+    const price = escrito === undefined ? undefined : escrito / unidad;
     if (draft.basis === "quantity") {
       const qty = num(draft.quantityText);
       return { quantity: qty, price, amount: qty !== undefined && price !== undefined ? qty * price : num(draft.amountText) };
@@ -308,7 +326,7 @@ export function AddTransaction({
       price,
       quantity: amount !== undefined && price !== undefined && price > 0 ? amount / price : num(draft.quantityText),
     };
-  }, [draft.basis, draft.type, draft.quantityText, draft.priceText, draft.amountText, draft.feeText]);
+  }, [draft.basis, draft.type, draft.quantityText, draft.priceText, draft.amountText, draft.feeText, unidad]);
 
   const suggestions = useMemo(() => {
     if (!needsAsset || draft.assetId || draft.symbol.length < 1) return [];
@@ -600,7 +618,11 @@ export function AddTransaction({
     setBuscando(true);
     setError(null);
     try {
-      const hits = await searchSymbols(q, backend());
+      const encontrados = await searchSymbols(q, backend()).catch(() => []);
+      // Yahoo no conoce las ON ni los bonos locales: si lo escrito tiene
+      // forma de ticker de BYMA, se ofrece cargarlo como tal.
+      const bono = bondCandidate(q);
+      const hits = bono && !encontrados.some((h) => h.symbol === bono.symbol) ? [...encontrados, bono] : encontrados;
       setHallados(hits);
       if (hits.length === 0) {
         setError(`No encontré ningún activo que se llame «${q}». Probá con el ticker.`);
@@ -619,6 +641,7 @@ export function AddTransaction({
     // El activo se crea al guardar; `resolveAsset` mira el catalogo y, si no
     // esta, arma uno con lo que le pasemos. Guardamos el hallazgo para eso.
     encontrado.current = hit;
+    setUnidadHallada(hit.priceUnit && hit.priceUnit > 1 ? hit.priceUnit : null);
   }
 
   function elegirTipo(value: TxType) {
@@ -816,6 +839,7 @@ export function AddTransaction({
                     setCatalogHit(lookupCatalog(value) ?? null);
                     setHallados(null);
                     encontrado.current = null;
+                    setUnidadHallada(null);
                     set({ symbol: value, assetId: match?.id ?? "" });
                   }}
                 />
@@ -1010,7 +1034,7 @@ export function AddTransaction({
                     placeholder={draft.basis === "amount" ? "50" : "0,01"}
                   />
                 </Field>
-                <Field label="Precio unitario">
+                <Field label={unidad > 1 ? `Precio cada ${unidad} VN` : "Precio unitario"}>
                   <input
                     className="input num"
                     inputMode="decimal"
@@ -1023,7 +1047,7 @@ export function AddTransaction({
               )}
               <p className="text-[11px]" style={{ color: "var(--color-ink-3)" }}>
                 {draft.basis === "amount"
-                  ? `Equivale a ${computed.quantity !== undefined ? fmtQty(computed.quantity, 8) : "—"} unidades.`
+                  ? `Equivale a ${computed.quantity !== undefined ? fmtQty(computed.quantity, 8) : "—"} ${unidad > 1 ? "nominales" : "unidades"}.`
                   : draft.basis === "quantity"
                     ? `Total: ${computed.amount !== undefined ? money(computed.amount, draft.currency) : "—"}.`
                     : `Precio por unidad: ${computed.price !== undefined ? money(computed.price, draft.currency) : "—"}${num(draft.feeText) ? ", sin la comisión" : ""}.`}

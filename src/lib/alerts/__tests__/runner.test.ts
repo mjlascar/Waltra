@@ -664,3 +664,22 @@ describe("versiones nuevas del APK", () => {
     });
   });
 });
+
+describe("bonos y ON en el vigía", () => {
+  it("el total cuenta el precio por nominal, no cada 100", () => {
+    const r = runner.decidir(
+      plan({
+        arsPerUsd: 1000,
+        portfolioPct: 0,
+        digestHour: 0,
+        cashUsd: 0,
+        assets: [{ sym: "VSCYO", src: "byma", ss: "VSCYO", cur: "ARS", qty: 1000, pct: 0, u: 100 }],
+      }),
+      { "byma|VSCYO": { price: 108000, changePct: 0 } },
+      {},
+      new Date(2026, 8, 29, 12, 0),
+    );
+    // 1.000 nominales a $ 1.080 cada uno, a 1.000 el dólar: US$ 1.080.
+    expect(r.avisos[0].title).toContain("1.080");
+  });
+});

@@ -26,6 +26,7 @@ import { MetricsExplainer } from "@/components/MetricsExplainer";
 import { AccountSheet } from "@/components/AccountSheet";
 import { SplitSheet } from "@/components/SplitSheet";
 import { RatioSheet } from "@/components/RatioSheet";
+import { NotifPrompt } from "@/components/NotifPrompt";
 import type { RatioCheck } from "@/lib/engine/cedear-ratio";
 import { convertToCedear, misloadedCedears } from "@/lib/cedear";
 import { IconWarning } from "@/components/icons";
@@ -307,6 +308,7 @@ export default function Overview() {
   return (
     <div className="pb-6">
       <Header title="Resumen" />
+      <NotifPrompt />
 
       {update.available && update.release && (
         <Link

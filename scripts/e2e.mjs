@@ -353,6 +353,32 @@ await page.waitForTimeout(400);
 check("deduce el precio por unidad", await has("Precio por unidad: US$ 500,00"), (await text()).slice(0, 500));
 await cerrarHoja();
 
+console.log("\n2g2. Una ON de BYMA, cada 100 nominales");
+// VSCYO no está en el catálogo ni en Yahoo: no había forma de cargarla.
+await goto("/");
+await page.getByRole("button", { name: /agregar movimiento/i }).click();
+await page.waitForTimeout(400);
+await page.getByRole("button", { name: /^Compré Acciones/ }).click();
+await page.waitForTimeout(400);
+await page.locator('input[placeholder="QQQ, BTC, GGAL…"]').fill("VSCYO");
+await page.waitForTimeout(300);
+await page.getByRole("button", { name: /Buscar «VSCYO»/ }).click();
+await page.waitForTimeout(1500);
+check("ofrece cargarla como bono u ON", await has("VSCYO · bono u ON"), (await text()).slice(0, 700));
+await page.getByRole("button", { name: /VSCYO · bono u ON/ }).click();
+await page.waitForTimeout(300);
+check("pide el precio cada 100 nominales", await has("Precio cada 100 VN"));
+await page.getByRole("button", { name: /^Unidades$/ }).click();
+await page.waitForTimeout(200);
+await page.locator('input[placeholder="0,01"]').fill("1000");
+await page.locator('input[placeholder="480"]').fill("108000");
+await page.waitForTimeout(400);
+check("1.000 nominales a $ 108.000 cada 100 son $ 1.080.000", await has("Total: $ 1.080.000"), (await text()).slice(-800));
+await page.getByRole("button", { name: /^Agregar$/ }).click();
+await page.waitForTimeout(2000);
+await goto("/cartera");
+check("la ON queda en la cartera", await has("VSCYO"));
+
 console.log("\n2h. Comprar dólares en la cuenta");
 await goto("/");
 await page.getByRole("button", { name: /agregar movimiento/i }).click();

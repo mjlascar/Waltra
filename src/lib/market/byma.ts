@@ -20,7 +20,9 @@ interface LiveRow {
   variation?: number;
 }
 
-const FEEDS = ["arg_stocks", "arg_cedears", "arg_bonds"] as const;
+// arg_corp son las obligaciones negociables y arg_notes las letras: sin
+// ellos, una ON como VSCYO no tenia de donde sacar precio.
+const FEEDS = ["arg_stocks", "arg_cedears", "arg_bonds", "arg_corp", "arg_notes"] as const;
 
 function rowPrice(row: LiveRow): number | null {
   const direct = row.c ?? row.close ?? row.last;

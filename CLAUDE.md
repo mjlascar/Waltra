@@ -184,6 +184,16 @@ resultado con lo que costó reponerlo (`addUnits` / `removeUnits`, con tests
 en los invariantes). `oversold` lo avisa en el inicio, porque esas ventas
 inflan la ganancia ya realizada hasta que se carga el depósito que faltaba.
 
+**Los bonos y las ON cotizan cada 100 nominales** (`src/lib/bonds.ts`). No
+están en el catálogo ni en Yahoo, así que una ON como VSCYO no había forma de
+cargarla: ahora "Buscar" ofrece cargar como bono u ON cualquier cosa con
+forma de ticker de BYMA (la última letra dice la moneda: D y C son dólares).
+El activo lleva `priceUnit: 100`, la sincronización guarda la cotización
+**por nominal** y el formulario pide "Precio cada 100 VN" y guarda por
+nominal: todo lo demás sigue siendo unidades por precio. El vigía recibe la
+unidad en el plan (`u`) para no contar cien veces de más. Los precios salen
+de los paneles `arg_corp` (ON) y `arg_notes` (letras) de data912.
+
 **Comprar dólares es un cambio de moneda, no capital** (`type: "exchange"`).
 Salen `amount` en `currency` y entran `toAmount` en `toCurrency`, en la misma
 cuenta. No mueve el capital aportado ni el rendimiento. Cada lado se valúa al
@@ -455,6 +465,11 @@ con el del release `apk-latest`, que la API de GitHub da sin credenciales, y
 Ajustes → Actualizaciones ofrece bajar el APK con un enlace: lo baja el
 navegador y Android pide confirmar. Instalar desde adentro pediría el permiso
 de instalar paquetes y código nativo propio para ahorrarse un toque.
+
+Sin **permiso de notificaciones** (Android 13 o más), el vigía manda el
+aviso y Android lo descarta sin decir nada. Antes solo se pedía al prender
+las alertas o desde Actualizaciones, y a quien nunca pasó por ahí no le
+llegaba ninguna versión nueva. `NotifPrompt` lo ofrece una vez en el inicio.
 
 El número sale del **título del release**, `Waltra 1.0.<corrida>`, que arma
 CI (y de las notas, como respaldo). Si cambia ese formato, la app deja de

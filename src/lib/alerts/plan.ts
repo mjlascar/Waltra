@@ -53,6 +53,8 @@ export interface AlertPlanAsset {
   cur: Currency;
   qty: number;
   pct: number;
+  /** Cuantas unidades cubre la cotizacion: 100 en bonos y ON. */
+  u?: number;
 }
 
 /** Un informe agendado, tal como lo ve el vigia. */
@@ -134,6 +136,7 @@ export function buildAlertPlan(
         cur: asset.currency,
         qty: pos.quantity,
         pct: thresholdFor(rules, pos.assetId),
+        ...(asset.priceUnit && asset.priceUnit > 1 ? { u: asset.priceUnit } : {}),
       });
     }
   }

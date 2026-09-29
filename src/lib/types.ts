@@ -48,6 +48,12 @@ export interface Asset {
   precision: number;
   /** Precio fijado a mano cuando source === "manual". */
   manualPrice?: number;
+  /**
+   * Cuantas unidades cubre la cotizacion del mercado. Los bonos y las ON
+   * cotizan cada 100 nominales: el precio se divide por esto al guardarlo,
+   * para que todo lo demas siga siendo unidades por precio. Ver `bonds.ts`.
+   */
+  priceUnit?: number;
   archived?: boolean;
 }
 
@@ -213,6 +219,8 @@ export interface Settings {
   compareMethod?: import("@/lib/engine/shadow").CompareMethod;
   /** Avisar con una notificacion cuando sale un APK nuevo. Prendido si falta. */
   updateNotify?: boolean;
+  /** Ya se ofrecio activar las notificaciones en el inicio (se ofrece una vez). */
+  notifAsked?: boolean;
 }
 
 export interface InsightSource {

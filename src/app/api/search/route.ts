@@ -16,12 +16,13 @@ export async function POST(request: Request) {
   const parsed = Schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Pedido inválido." }, { status: 400 });
 
+  // Un proveedor caido no es un error del pedido: se devuelve sin resultados
+  // y con el motivo, como el resto de los proveedores. Con un 502 el
+  // navegador lo anota como error y quien llama no puede seguir con lo suyo
+  // (por ejemplo, ofrecer cargar una ON que Yahoo no conoce).
   try {
     return NextResponse.json({ hits: await searchSymbols(parsed.data.q) });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 502 },
-    );
+    return NextResponse.json({ hits: [], error: err instanceof Error ? err.message : String(err) });
   }
 }

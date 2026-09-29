@@ -25,6 +25,7 @@ export function assetFromSymbol(
       source: entry.source,
       sourceSymbol: entry.sourceSymbol,
       precision: entry.precision,
+      ...(entry.priceUnit && entry.priceUnit > 1 ? { priceUnit: entry.priceUnit } : {}),
     };
   }
   return {

@@ -10,6 +10,8 @@ export interface CatalogEntry {
   precision: number;
   /** Como lo puede llamar el usuario al escribir rapido. */
   aliases: string[];
+  /** Cuantas unidades cubre la cotizacion: 100 en bonos y ON. */
+  priceUnit?: number;
 }
 
 const crypto = (symbol: string, name: string, aliases: string[] = []): CatalogEntry => ({
@@ -49,6 +51,8 @@ const ar = (symbol: string, name: string, kind: AssetKind, aliases: string[] = [
   sourceSymbol: symbol,
   precision: 2,
   aliases,
+  // Los bonos cotizan cada 100 nominales.
+  ...(kind === "bond" ? { priceUnit: 100 } : {}),
 });
 
 export const CATALOG: CatalogEntry[] = [
