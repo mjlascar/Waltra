@@ -30,7 +30,7 @@ export function ReportView({ report }: { report: InsightReport }) {
       </p>
       {report.question && (
         <p className="card mb-4 p-3 text-[13px] leading-snug" style={{ color: "var(--color-ink-2)" }}>
-          Tu pregunta: «{report.question}»
+          Adjuntaste: «{report.question}»
         </p>
       )}
 
@@ -80,7 +80,7 @@ export function ReportView({ report }: { report: InsightReport }) {
 
       {report.profileRead.summary && (
       <section className="mb-4">
-        <SectionTitle>Cómo invertís en los hechos</SectionTitle>
+        <SectionTitle>Alineación con tu perfil</SectionTitle>
         <div className="card p-3">
           <p className="mb-3 text-[13px] leading-relaxed">{report.profileRead.summary}</p>
           {(

@@ -459,7 +459,8 @@ function recordatorios(plan, estado, ahora) {
 var VERSION_CADA_MS = 6 * 60 * 60 * 1000;
 
 /**
- * El numero de version de un release, "1.0.<n>" en el titulo o en las notas.
+ * El numero de compilacion de un release, el <n> de "1.x.<n>", en el titulo o
+ * en las notas. La compilacion crece siempre; el 1.x es el nombre de la version.
  * Misma logica que `releaseBuild` en src/lib/update.ts; el test compara las
  * dos.
  */
@@ -468,7 +469,7 @@ function versionPublicada(release) {
   var textos = [release.name, release.body];
   for (var i = 0; i < textos.length; i++) {
     if (typeof textos[i] !== "string") continue;
-    var m = textos[i].match(/\b1\.0\.(\d+)\b/);
+    var m = textos[i].match(/\b1\.\d+\.(\d+)\b/);
     if (m) return Number(m[1]);
   }
   return null;
@@ -497,7 +498,7 @@ function decidirVersion(plan, publicada, estado, ahora) {
     aviso: {
       id: notifId("version", "apk"),
       title: "Hay una versión nueva de Waltra",
-      body: "La 1.0." + publicada + " está lista. Abrí la app y actualizala desde Ajustes.",
+      body: "Hay una versión nueva de Waltra. Abrí la app y actualizala desde Ajustes.",
       group: "waltra-version",
     },
     upd: upd,

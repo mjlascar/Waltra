@@ -26,7 +26,7 @@ export const APK_URL = `https://github.com/${REPO}/releases/download/apk-latest/
 export interface ReleaseInfo {
   /** El `versionCode` del APK publicado: el numero de corrida de CI. */
   build: number;
-  /** "1.0.123", como lo muestra Android. */
+  /** "1.1.123", como lo muestra Android. */
   version: string;
   url: string;
   publishedAt?: string;
@@ -40,24 +40,33 @@ interface GithubRelease {
 }
 
 /**
- * El numero de version de un release. CI lo escribe como `1.0.<corrida>` en
- * el titulo y en las notas; se busca en los dos para no depender de uno solo.
+ * La version de un release. CI la escribe como `1.<menor>.<corrida>` en el
+ * titulo y en las notas; se busca en los dos para no depender de uno solo.
+ * Lo que se compara es la corrida, que crece siempre: el 1.x es el nombre.
+ *
+ * Las notas llevan ademas un `1.0.<corrida>`: es lo unico que reconocen las
+ * apps instaladas antes de la 1.1, y sin eso nunca se enterarian de ella.
  */
-export function releaseBuild(release: { name?: string | null; body?: string | null }): number | null {
+function releaseMatch(release: { name?: string | null; body?: string | null }) {
   for (const texto of [release.name, release.body]) {
-    const m = typeof texto === "string" ? texto.match(/\b1\.0\.(\d+)\b/) : null;
-    if (m) return Number(m[1]);
+    const m = typeof texto === "string" ? texto.match(/\b1\.(\d+)\.(\d+)\b/) : null;
+    if (m) return { minor: Number(m[1]), build: Number(m[2]) };
   }
   return null;
 }
 
+export function releaseBuild(release: { name?: string | null; body?: string | null }): number | null {
+  return releaseMatch(release)?.build ?? null;
+}
+
 export function parseRelease(json: GithubRelease): ReleaseInfo | null {
-  const build = releaseBuild(json);
-  if (build === null) return null;
+  const hallada = releaseMatch(json);
+  if (hallada === null) return null;
+  const { build, minor } = hallada;
   const apk = json.assets?.find((a) => a.name === "waltra.apk")?.browser_download_url;
   return {
     build,
-    version: `1.0.${build}`,
+    version: `1.${minor}.${build}`,
     url: apk ?? APK_URL,
     publishedAt: json.published_at ?? undefined,
   };

@@ -59,11 +59,13 @@ export default function Cartera() {
   const pnlRows = useMemo(
     () =>
       [...p.positions]
-        .sort((a, b) => b.totalPnlUsd - a.totalPnlUsd)
+        .sort((a, b) => b.unrealizedUsd - a.unrealizedUsd)
         .map((pos) => ({
           key: pos.assetId,
           label: pos.symbol,
-          value: pos.totalPnlUsd,
+          // Sin realizar, como dice el titulo: lo realizado de cada activo
+          // esta en la lista de ventas, y sumarlo aca lo contaba en dos lados.
+          value: pos.unrealizedUsd,
           pct: pos.unrealizedPct,
         })),
     [p.positions],
@@ -101,25 +103,22 @@ export default function Cartera() {
       <section className="mb-4">
         <div className="eyebrow mb-2">Invertido</div>
         <div className="hero-num">{money(p.investedUsd, display)}</div>
-        <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <div className="mt-2 flex items-baseline gap-2">
           <span className={`num text-[14px] ${p.unrealizedUsd >= 0 ? "pos" : "neg"}`}>
             {money(p.unrealizedUsd, display, { sign: true })}
           </span>
           <span className="label">sin realizar</span>
-          {p.realizedUsd !== 0 && (
-            <>
-              <span className="label">·</span>
-              <span className={`num text-[13px] ${p.realizedUsd >= 0 ? "pos" : "neg"}`}>
-                {money(p.realizedUsd, display, { sign: true })}
-              </span>
-              <span className="label">ya realizado</span>
-            </>
-          )}
         </div>
+        {p.realizedUsd !== 0 && (
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className={`num text-[12px] ${p.realizedUsd >= 0 ? "pos" : "neg"}`}>
+              {money(p.realizedUsd, display, { sign: true })}
+            </span>
+            <span className="label">realizado al vender</span>
+          </div>
+        )}
         {p.cashUsd > 0.01 && (
-          <p className="label mt-2">
-            {money(p.cashUsd, display)} en efectivo sin invertir.
-          </p>
+          <p className="label mt-2">{money(p.cashUsd, display)} de liquidez</p>
         )}
       </section>
 
@@ -151,7 +150,7 @@ export default function Cartera() {
                   </span>
                 </div>
                 <div className="label mt-0.5 truncate">
-                  {fmtQty(pos.quantity, 4)} · costo {money(pos.avgCostUsd, display)}
+                  {fmtQty(pos.quantity, 4)} · {money(pos.avgCostUsd, display)}
                 </div>
               </div>
 
@@ -246,7 +245,7 @@ export default function Cartera() {
 
       {pnlRows.length > 0 && (
         <section className="mb-5">
-          <SectionTitle>Qué te dio y qué te sacó</SectionTitle>
+          <SectionTitle>Resultado sin realizar</SectionTitle>
           <div className="card p-3">
             <PnlBars rows={pnlRows} currency={display} />
           </div>

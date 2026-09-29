@@ -284,7 +284,23 @@ await goto("/cartera");
 await page.locator("button").filter({ hasText: "VOO.BA" }).first().click();
 await page.waitForTimeout(800);
 check("la posición tiene las unidades nuevas", await has("25"));
-check("el cambio de ratio queda a la vista", await has("cada unidad pasó a ser 2,5"));
+check("el cambio de ratio queda a la vista", await has("×2,5 el"), (await text()).slice(-400));
+check("el histórico tiene sus rangos", (await page.getByRole("group", { name: "Rango del histórico" }).count()) === 1);
+{
+  // El navegador de operaciones arranca en la última y va para atrás.
+  const donde = async () => (await page.locator('[role="dialog"]').innerText()).match(/(\d+)\/(\d+)/)?.slice(1).map(Number);
+  const [pos, total] = (await donde()) ?? [0, 0];
+  check("el navegador arranca en la última operación", total > 0 && pos === total, `${pos}/${total}`);
+  if (total > 1) {
+    await page.getByRole("button", { name: "Operación anterior" }).click();
+    await page.waitForTimeout(200);
+    check("y va a la anterior", (await donde())?.[0] === total - 1);
+  }
+  await page.getByRole("button", { name: "3M", exact: true }).click();
+  await page.waitForTimeout(300);
+  const [, enVentana] = (await donde()) ?? [0, 0];
+  check("con otro rango navega solo lo de ese rango", enVentana <= total, `${enVentana} de ${total}`);
+}
 await page.locator('[aria-label="Cerrar"]').first().click();
 await page.waitForTimeout(300);
 
@@ -562,7 +578,7 @@ await page.evaluate(
 );
 await goto("/insights");
 check("los pedidos van en una lista", await has("Tus pedidos"), (await text()).slice(0, 600));
-check("la pregunta dice que se suma al análisis", await has("Se suma al análisis de arriba"));
+check("el texto adjunto viaja con el análisis", await has("Adjuntar texto"));
 check("el informe no se apila debajo del formulario", !(await has("Contexto de prueba para el recorrido")));
 await page.getByRole("button", { name: /Análisis de tu cartera/ }).last().click();
 await page.waitForTimeout(600);
@@ -581,8 +597,9 @@ await goto("/");
 await page.getByRole("button", { name: /¿Cómo se calcula\?/ }).click();
 await page.waitForTimeout(700);
 const explica = await text();
-check("explica el capital aportado", await has("no es capital nuevo"), explica.slice(0, 200));
-check("explica el rendimiento real", await has("neutralizando las entradas y salidas"));
+check("explica el capital aportado", await has("pasar plata entre tus cuentas no cuenta"), explica.slice(0, 200));
+check("explica el rendimiento", await has("un ingreso nuevo sube el valor, no el rendimiento"));
+check("desglosa la ganancia", await has("De dónde sale la ganancia"));
 check("usa los números de la cartera", /\d+ días/.test(explica));
 await page.keyboard.press("Escape");
 await page.waitForTimeout(400);
@@ -679,14 +696,14 @@ async function gananciaVisible() {
 // quietas: la ganancia del mes era la de siempre.
 await page.getByRole("button", { name: /^Todo$/ }).click();
 await page.waitForTimeout(500);
-check("las métricas dicen de qué período hablan", await has("Cómo te fue desde el primer movimiento"));
+check("las métricas van bajo «Detalle»", await has("Detalle"));
 const totalGan = await gananciaVisible();
 await page.getByRole("button", { name: /^7D$/ }).click();
 await page.waitForTimeout(600);
-check("el rótulo sigue la ventana elegida", await has("Cómo te fue en los últimos 7 días"), (await text()).slice(0, 300));
+check("el rótulo sigue la ventana elegida", await has("en los últimos 7 días"), (await text()).slice(0, 300));
 const semanaGan = await gananciaVisible();
 check("la ganancia cambia con la ventana", semanaGan !== totalGan, `todo: ${totalGan} · 7d: ${semanaGan}`);
-check("no anualiza una semana", await has("hace falta un período más largo"));
+check("no anualiza una semana", /tir \(xirr\)\s*—/.test(normalize(await text())));
 await page.getByRole("button", { name: /^Todo$/ }).click();
 await page.waitForTimeout(500);
 check("volver a «Todo» devuelve el número de siempre", (await gananciaVisible()) === totalGan);
@@ -744,7 +761,8 @@ await page.waitForTimeout(500);
 await goto("/cartera");
 await page.locator("button").filter({ hasText: "QQQ" }).first().click();
 await page.waitForTimeout(1000);
-check("la posición explica la línea de costo", await has("arriba de esa línea estás ganando"));
+check("la posición muestra su histórico", await has("Histórico"));
+check("sin la catarata de explicaciones", !(await has("arriba de esa línea estás ganando")));
 const marcas = await page.evaluate(
   () => document.querySelectorAll('[role="dialog"] svg circle').length,
 );
@@ -780,14 +798,21 @@ await goto("/cartera");
   // Ningún monto de la cartera queda en dólares: antes el costo de cada
   // posición salía en la moneda del activo y se mezclaban.
   const cartera = normalize(await text());
-  const posiciones = cartera.slice(0, cartera.indexOf("cómo te fue en cada venta") >>> 0);
+  const posiciones = cartera.slice(0, cartera.indexOf("resultado realizado") >>> 0);
   check("la cartera entera en pesos", !posiciones.includes("us$"), posiciones.match(/.{0,40}us\$.{0,20}/)?.[0] ?? "");
 }
-check("la lista de ventas", await has("Cómo te fue en cada venta"));
+check("la lista de ventas", await has("Resultado realizado"));
 check("cada venta con su resultado", /\(([+-])?[\d.,]+%\)/.test(await text()));
 await page.getByRole("button", { name: /^SPY/ }).last().click();
 await page.waitForTimeout(400);
 check("el detalle de una venta", await has("Te habían costado"), (await text()).slice(-600));
+const ventas = page.getByRole("group", { name: "Ordenar ventas" });
+await ventas.getByRole("button", { name: "Pérdida", exact: true }).click();
+await page.waitForTimeout(200);
+check("las ventas se ordenan", (await ventas.getByRole("button", { name: "Pérdida", exact: true }).getAttribute("aria-pressed")) === "true");
+await page.locator("button[aria-pressed]", { hasText: /^Por activo$/ }).last().click();
+await page.waitForTimeout(200);
+check("y se agrupan por activo", /\d+ ventas?\b/i.test(await text()));
 await goto("/");
 await page.getByRole("button", { name: "Ver todo en dólares" }).click();
 await page.waitForTimeout(1200);

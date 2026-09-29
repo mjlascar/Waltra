@@ -47,6 +47,8 @@ export function ReturnChart({
   tone,
   level,
   marks,
+  axisOutside = false,
+  focus = null,
 }: {
   data: ReturnPoint[];
   compare?: ReturnSeries;
@@ -56,10 +58,18 @@ export function ReturnChart({
   level?: ReturnLevel;
   /** Movimientos a marcar sobre la curva. */
   marks?: ReturnMark[];
+  /**
+   * Las etiquetas del eje en un margen propio a la derecha, en vez de encima
+   * de la curva. En un grafico bajo, las de adentro tapaban justo el tramo
+   * final, que es el que mas se mira.
+   */
+  axisOutside?: boolean;
+  /** Indice de la marca resaltada, la que se esta mirando en el navegador. */
+  focus?: number | null;
 }) {
   const { ref, width } = useMeasure<HTMLDivElement>();
 
-  const box = { width, height, top: 10, right: 8, bottom: 20, left: 8 };
+  const box = { width, height, top: 10, right: axisOutside ? 40 : 8, bottom: 20, left: 8 };
   const area = plotArea(box);
 
   const last = data[data.length - 1]?.value ?? 0;
@@ -200,6 +210,21 @@ export function ReturnChart({
           {model.ticks.map((t) => {
             const text = percent(t, { decimals: 0 });
             const w = text.length * 5.4 + 6;
+            if (axisOutside) {
+              return (
+                <text
+                  key={`label-${t}`}
+                  x={width - 2}
+                  y={model.y(t) + 3}
+                  textAnchor="end"
+                  className="num"
+                  fontSize={9}
+                  fill="var(--color-ink-3)"
+                >
+                  {text}
+                </text>
+              );
+            }
             return (
               <g key={`label-${t}`}>
                 <rect
@@ -245,6 +270,16 @@ export function ReturnChart({
                   stroke="var(--color-surface)"
                   strokeWidth={2.5}
                 />
+                {focus === m.index && (
+                  <circle
+                    cx={model.x(m.index)}
+                    cy={model.y(data[m.index].value)}
+                    r={8}
+                    fill="none"
+                    stroke="var(--color-ink)"
+                    strokeWidth={1.5}
+                  />
+                )}
                 <circle
                   cx={model.x(m.index)}
                   cy={model.y(data[m.index].value)}

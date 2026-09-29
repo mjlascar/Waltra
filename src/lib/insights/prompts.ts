@@ -53,16 +53,16 @@ Escribi:
 
 No suavices los numeros. La idea es saber de antemano cuanto se puede perder.`,
 
-  posicion: `Este informe es sobre UN activo de la cartera, el que se indica abajo.
+  posicion: `Este informe es sobre UN activo, el que se indica abajo. Puede estar en la cartera o no: si no esta, es un candidato que la persona esta mirando, y el informe dice si tiene sentido sumarlo a esta cartera.
 
 Busca todo lo relevante de los ultimos meses sobre ese activo: resultados, guidance, noticias del sector, cambios regulatorios, y para cripto lo que corresponda.
 
 Escribi:
 1. Que es y de que depende que suba. En terminos simples.
-2. Que cambio desde que esta persona entro. Tenes cada compra y venta con fecha y precio: deci que paso con el activo entre esas fechas y hoy, y cual de sus entradas fue buena y cual no. No es lo mismo estar arriba que estar abajo, ni haber entrado una vez que haber ido comprando.
+2. Si ya lo tiene: como le fue desde que entro. Tenes cada compra y venta con fecha y precio: deci que paso con el activo entre esas fechas y hoy, y cual de sus entradas fue buena y cual no. No es lo mismo estar arriba que estar abajo, ni haber entrado una vez que haber ido comprando. Si no lo tiene: que aportaria a esta cartera, y con que se superpone de lo que ya tiene.
 3. La tesis hoy: por que tendria sentido seguir, y por que no.
 4. Que tendria que pasar para que la tesis se rompa. Concreto y observable, no "si el mercado cae".
-5. Que haria vos con esta posicion, dado el peso que tiene en esta cartera y el perfil declarado.`,
+5. Que haria vos: sumar, mantener, reducir o no entrar, dado el peso que tiene (o tendria) en esta cartera y el perfil declarado.`,
 
   decision: `Esta persona tiene un monto para poner y quiere saber que hacer con el. El monto esta indicado abajo.
 
@@ -82,7 +82,7 @@ export const CONSIGNA_TITULO: Record<ReportKind, string> = {
   mercado: "Escribi un resumen de mercado para esta cartera",
   conducta: "Analiza como invierte esta persona",
   riesgo: "Analiza el riesgo de esta cartera",
-  posicion: "Analiza una posicion de esta cartera",
+  posicion: "Analiza un activo para esta cartera",
   decision: "Recomenda que hacer con un monto nuevo",
 };
 

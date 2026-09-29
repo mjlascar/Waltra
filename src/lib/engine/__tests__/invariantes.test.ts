@@ -446,6 +446,14 @@ describe("la historia entera cierra", () => {
     expect(ganandoPorCausas(p, 3)).toBeCloseTo(p.totalPnlUsd, 6);
   });
 
+  it("las comisiones sueltas las cuenta el motor, no hay que adivinarlas", () => {
+    const p = correr({ transactions: vida, precios });
+    // La de 3 y nada más: las de compra y venta ya están en el costo y en el
+    // realizado. Es el número que usa el desglose de «¿Cómo se calcula?».
+    expect(p.looseFeesUsd).toBeCloseTo(3);
+    expect(ganandoPorCausas(p, p.looseFeesUsd)).toBeCloseTo(p.totalPnlUsd, 6);
+  });
+
   it("el capital aportado es exactamente ingresos menos retiros", () => {
     const p = correr({ transactions: vida, precios });
     expect(p.depositedUsd).toBeCloseTo(1500);
@@ -624,6 +632,23 @@ describe("con las cuentas en pesos", () => {
   it("la serie diaria termina donde termina la cartera", () => {
     const p = correr({ transactions: vida, precios, fxRates, base: "ARS" });
     expect(p.daily[p.daily.length - 1].nav).toBeCloseTo(p.totalValueUsd, 4);
+  });
+
+  it("lo que no explican las causas es lo que se movió el dólar", () => {
+    const sinCambio = vida.filter((t) => t.type !== "exchange");
+    const resto = (q: Portfolio) => q.totalPnlUsd - ganandoPorCausas(q, q.looseFeesUsd);
+    // Con el dólar quieto, las causas cierran en las dos monedas.
+    const quieto = [{ date: "2024-01-01", arsPerUsd: 1000 }];
+    for (const base of ["USD", "ARS"] as const) {
+      const q = correr({ transactions: sinCambio, precios, fxRates: quieto, base });
+      expect(resto(q)).toBeCloseTo(0, 4);
+    }
+    // Con el dólar en movimiento queda un resto: la liquidez en la otra
+    // moneda cambió de valor. Es lo que el desglose muestra como tipo de cambio.
+    for (const base of ["USD", "ARS"] as const) {
+      const q = correr({ transactions: sinCambio, precios, fxRates, base });
+      expect(Math.abs(resto(q))).toBeGreaterThan(1);
+    }
   });
 
   it("guardar dólares gana pesos cuando sube el dólar", () => {

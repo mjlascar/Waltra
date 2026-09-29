@@ -194,6 +194,8 @@ export interface Portfolio {
   realizedUsd: number;
   incomeUsd: number;
   feesUsd: number;
+  /** Las comisiones que no estan adentro de un costo ni de un resultado. Ver el ledger. */
+  looseFeesUsd: number;
   /** Ganancia total = valor actual - capital neto aportado. */
   totalPnlUsd: number;
   /** Ganancia simple sobre el capital aportado. */
@@ -325,6 +327,7 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
     realizedUsd: 0,
     incomeUsd: 0,
     feesUsd: 0,
+    looseFeesUsd: 0,
     totalPnlUsd: 0,
     simpleReturn: null,
     positions: [],
@@ -714,6 +717,7 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
     realizedUsd: state.realizedUsd,
     incomeUsd: state.incomeUsd,
     feesUsd: state.feesUsd,
+    looseFeesUsd: state.looseFeesUsd,
     totalPnlUsd,
     simpleReturn:
       state.netContributedUsd > 0 ? totalPnlUsd / state.netContributedUsd : null,

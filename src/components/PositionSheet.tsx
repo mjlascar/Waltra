@@ -9,6 +9,18 @@ import type { PositionView } from "@/lib/engine/portfolio";
 import { useLiveQuery } from "dexie-react-hooks";
 import { getDb } from "@/lib/db";
 import { SplitSheet } from "@/components/SplitSheet";
+import { MiniSegmented } from "@/components/ui/Field";
+import { IconChevron } from "@/components/icons";
+import { rangeStart } from "@/lib/date";
+
+type Rango = "3M" | "6M" | "1A" | "MAX";
+
+const RANGOS: { value: Rango; label: string }[] = [
+  { value: "3M", label: "3M" },
+  { value: "6M", label: "6M" },
+  { value: "1A", label: "1A" },
+  { value: "MAX", label: "Todo" },
+];
 
 /** Detalle de una posicion: de donde viene el resultado y con que movimientos. */
 export function PositionSheet({
@@ -29,44 +41,52 @@ export function PositionSheet({
     [db, assetId],
   );
 
+  const [rango, setRango] = useState<Rango>("MAX");
+  const [elegida, setElegida] = useState<string | null>(null);
+
+  /** Los cierres de la ventana elegida. */
+  const puntos = useMemo(() => {
+    const todos = series?.points ?? [];
+    if (todos.length === 0 || rango === "MAX") return todos;
+    const desde = rangeStart(rango, todos[0].date, todos[todos.length - 1].date);
+    return todos.filter((p) => p.date >= desde);
+  }, [series, rango]);
+
+  // Indexada al primer cierre de la ventana: 3M dice lo que paso en esos tres
+  // meses, no el acumulado desde siempre recortado.
   const history = useMemo(() => {
-    if (!series?.points.length) return [];
-    const base = series.points[0].close;
+    const base = puntos[0]?.close;
     if (!base) return [];
-    return series.points.map((p) => ({ day: p.date, value: p.close / base - 1 }));
-  }, [series]);
+    return puntos.map((p) => ({ day: p.date, value: p.close / base - 1 }));
+  }, [puntos]);
 
   /**
-   * El costo promedio, en las mismas unidades que la curva.
-   *
-   * La serie esta indexada al primer cierre, asi que el costo tambien: arriba
-   * de esa linea la posicion esta en ganancia y abajo en perdida. Sin esto, el
-   * grafico dice como se movio el precio y no dice nada sobre vos.
+   * El costo promedio, en las mismas unidades que la curva: arriba de esa
+   * linea la posicion esta en ganancia y abajo en perdida. La linea va donde
+   * cae el costo contra la curva, en la moneda del activo; el rotulo, en la
+   * moneda en que se ve la app, como el resto de la hoja.
    */
   const avgCost = position?.avgCost;
-  // La linea va donde cae el costo contra la curva, en la moneda del activo;
-  // el rotulo, en la moneda en que se ve la app, como el resto de la hoja.
   const costoVisto = position?.avgCostUsd;
   const nivelCosto = useMemo(() => {
-    const base = series?.points[0]?.close;
+    const base = puntos[0]?.close;
     if (!base || !avgCost || costoVisto === undefined) return undefined;
     return {
       value: avgCost / base - 1,
-      label: `costo ${money(costoVisto, display, { compact: true })}`,
+      label: money(costoVisto, display, { compact: true }),
     };
-  }, [series, avgCost, costoVisto, display]);
+  }, [puntos, avgCost, costoVisto, display]);
 
   /**
-   * Cada compra y cada venta, ubicadas en el dia que pasaron.
+   * Cada compra y cada venta de la ventana, ubicadas en el dia que pasaron.
    *
    * Si operaste un dia sin cotizacion —un feriado, un fin de semana en una
    * accion— la marca se corre al dia habil mas cercano en vez de perderse:
    * descartarla en silencio dejaria el grafico diciendo que compraste menos
    * veces de las que compraste.
    */
-  const marcas = useMemo((): ReturnMark[] => {
-    const puntos = series?.points;
-    if (!puntos?.length || !assetId) return [];
+  const operaciones = useMemo(() => {
+    if (!puntos.length || !assetId) return [];
     const dias = puntos.map((p) => p.date);
     const cercano = (day: string) => {
       if (day < dias[0] || day > dias[dias.length - 1]) return null;
@@ -87,18 +107,29 @@ export function PositionSheet({
     };
     return transactions
       .filter((t) => t.assetId === assetId && (t.type === "buy" || t.type === "sell"))
-      .map((t) => {
-        const day = t.date.slice(0, 10);
-        const i = cercano(day);
-        if (i === null) return null;
-        return {
-          index: i,
-          kind: t.type as "buy" | "sell",
-          label: `${t.type === "buy" ? "Compra" : "Venta"} ${shortDate(day, true)}`,
-        };
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+      .map((tx) => {
+        const index = cercano(tx.date.slice(0, 10));
+        return index === null ? null : { tx, index };
       })
-      .filter((m): m is ReturnMark => m !== null);
-  }, [series, transactions, assetId]);
+      .filter((o): o is { tx: (typeof transactions)[number]; index: number } => o !== null);
+  }, [puntos, transactions, assetId]);
+
+  const marcas = useMemo(
+    (): ReturnMark[] =>
+      operaciones.map(({ tx, index }) => ({
+        index,
+        kind: tx.type as "buy" | "sell",
+        label: `${tx.type === "buy" ? "Compra" : "Venta"} ${shortDate(tx.date.slice(0, 10), true)}`,
+      })),
+    [operaciones],
+  );
+
+  // La que se mira en el navegador. Si quedo afuera de la ventana (se cambio
+  // el rango), la ultima de las que se ven.
+  const hallada = operaciones.findIndex((o) => o.tx.id === elegida);
+  const posElegida = hallada >= 0 ? hallada : operaciones.length - 1;
+  const actual = posElegida >= 0 ? operaciones[posElegida] : null;
 
   const moves = useMemo(
     () =>
@@ -110,6 +141,7 @@ export function PositionSheet({
 
   if (!position) return null;
   const asset = assets.find((a) => a.id === position.assetId);
+  const splitsActivo = portfolio.splits[position.assetId] ?? [];
 
   return (
     <Sheet open onClose={onClose} title={position.symbol}>
@@ -148,15 +180,70 @@ export function PositionSheet({
         ))}
       </div>
 
-      {history.length > 2 && (
+      {(series?.points.length ?? 0) > 2 && (
         <div className="card mb-4 p-3">
-          <div className="eyebrow mb-2">Variación del precio</div>
-          <ReturnChart data={history} height={120} level={nivelCosto} marks={marcas} />
-          {nivelCosto && (
-            <p className="label mt-2 leading-snug">
-              La punteada es tu costo promedio: arriba de esa línea estás ganando.
-              {marcas.length > 0 && " Los puntos son tus movimientos, llenos las compras y huecos las ventas."}
-            </p>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="eyebrow">Histórico</span>
+            <MiniSegmented
+              value={rango}
+              onChange={setRango}
+              label="Rango del histórico"
+              options={RANGOS}
+            />
+          </div>
+          <ReturnChart
+            key={rango}
+            data={history}
+            height={130}
+            level={nivelCosto}
+            marks={marcas}
+            axisOutside
+            focus={actual?.index ?? null}
+          />
+          {/* Un navegador entre las operaciones de la ventana: la marca que se
+              mira se resalta en el grafico, y aca van el precio y la cantidad
+              que en el grafico no entran. */}
+          {actual ? (
+            <div className="hairline mt-2 flex items-center gap-2 pt-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline gap-2">
+                  <span className="chip shrink-0">{TX_SHORT[actual.tx.type]}</span>
+                  <span className="label num">{shortDate(actual.tx.date.slice(0, 10), true)}</span>
+                </div>
+                <div className="num mt-1 truncate text-[12px]">
+                  {fmtQty(actual.tx.quantity ?? 0, asset?.precision ?? 6)} a{" "}
+                  {money(
+                    (actual.tx.price ?? actual.tx.amount / (actual.tx.quantity || 1)) *
+                      (asset?.priceUnit ?? 1),
+                    actual.tx.currency,
+                  )}
+                  {(asset?.priceUnit ?? 1) > 1 && " cada 100 VN"}
+                </div>
+              </div>
+              <span className="label num shrink-0">
+                {posElegida + 1}/{operaciones.length}
+              </span>
+              <button
+                type="button"
+                className="btn btn-sm px-2"
+                aria-label="Operación anterior"
+                disabled={posElegida <= 0}
+                onClick={() => setElegida(operaciones[posElegida - 1].tx.id)}
+              >
+                <IconChevron size={14} className="rotate-180" />
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm px-2"
+                aria-label="Operación siguiente"
+                disabled={posElegida >= operaciones.length - 1}
+                onClick={() => setElegida(operaciones[posElegida + 1].tx.id)}
+              >
+                <IconChevron size={14} />
+              </button>
+            </div>
+          ) : (
+            <p className="label hairline mt-2 pt-2">Sin compras ni ventas en este período.</p>
           )}
         </div>
       )}
@@ -166,39 +253,6 @@ export function PositionSheet({
           No hay cotización para {position.symbol}. Está valuada al costo. Revisá el
           símbolo del proveedor en Ajustes → Activos.
         </p>
-      )}
-
-      {/* Los cambios de ratio a la vista: si el proveedor informa uno, las
-          unidades cambian solas, y eso no puede pasar sin que se vea por que. */}
-      <div className="eyebrow mb-2">Cambios de ratio</div>
-      <div className="card mb-4 p-3">
-        {(portfolio.splits[position.assetId] ?? []).length > 0 ? (
-          <ul className="mb-3 space-y-1">
-            {portfolio.splits[position.assetId].map((s) => (
-              <li key={`${s.source}-${s.date}`} className="flex items-baseline justify-between gap-3 text-[13px]">
-                <span>
-                  {shortDate(s.date, true)}: cada unidad pasó a ser{" "}
-                  <span className="num">{s.ratio.toLocaleString("es-AR", { maximumFractionDigits: 2 })}</span>
-                </span>
-                <span className="label shrink-0">
-                  {s.source === "proveedor" ? "lo informó el proveedor" : "cargado por vos"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="label mb-3 leading-snug">
-            Ninguno. Si tu broker te acreditó unidades por un cambio de ratio o un split,
-            registralo: si no, la historia de precios del proveedor, que ya viene ajustada, no
-            cierra con tus compras.
-          </p>
-        )}
-        <button className="btn btn-sm w-full" onClick={() => setCargandoRatio(true)}>
-          Registrar un cambio de ratio
-        </button>
-      </div>
-      {cargandoRatio && (
-        <SplitSheet assetId={position.assetId} onClose={() => setCargandoRatio(false)} />
       )}
 
       <div className="eyebrow mb-2">Movimientos ({moves.length})</div>
@@ -223,6 +277,27 @@ export function PositionSheet({
           .map((a) => `${accounts.find((x) => x.id === a.accountId)?.name ?? "—"}: ${fmtQty(a.quantity, 6)}`)
           .join(" · ")}
       </p>
+      {/* Los cambios de ratio a la vista: si el proveedor informa uno, las
+          unidades cambian solas, y eso no puede pasar sin que se vea por que.
+          La cripto no se divide. */}
+      {position.kind !== "crypto" && (
+        <p className="label mt-4 leading-snug">
+          {splitsActivo.length > 0
+            ? `Cambios de ratio: ${splitsActivo
+                .map(
+                  (s) =>
+                    `×${s.ratio.toLocaleString("es-AR", { maximumFractionDigits: 2 })} el ${shortDate(s.date, true)}${s.source === "proveedor" ? " (proveedor)" : ""}`,
+                )
+                .join(", ")}. `
+            : "Sin cambios de ratio. "}
+          <button className="underline" onClick={() => setCargandoRatio(true)}>
+            Registrar uno
+          </button>
+        </p>
+      )}
+      {cargandoRatio && (
+        <SplitSheet assetId={position.assetId} onClose={() => setCargandoRatio(false)} />
+      )}
     </Sheet>
   );
 }

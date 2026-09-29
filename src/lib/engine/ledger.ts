@@ -53,6 +53,13 @@ export interface LedgerState {
   incomeUsd: number;
   /** Comisiones pagadas, en USD. */
   feesUsd: number;
+  /**
+   * Las comisiones que no estan adentro de un costo ni de un resultado: las
+   * sueltas, las de ingresos, retiros, transferencias y cambios, y las
+   * unidades de menos de un ajuste. Las de compra y venta no: ya bajaron el
+   * resultado, y restarlas otra vez las contaria dos veces.
+   */
+  looseFeesUsd: number;
   /** Capital neto aportado (deposit - withdraw), en USD. */
   netContributedUsd: number;
   depositedUsd: number;
@@ -70,6 +77,7 @@ export function emptyLedger(): LedgerState {
     realizedByAsset: {},
     incomeUsd: 0,
     feesUsd: 0,
+    looseFeesUsd: 0,
     netContributedUsd: 0,
     depositedUsd: 0,
     withdrawnUsd: 0,
@@ -205,6 +213,7 @@ export function applyTransaction(
       state.depositedUsd += usd(tx.amount);
       state.netContributedUsd += usd(tx.amount);
       state.feesUsd += usd(fee);
+      state.looseFeesUsd += usd(fee);
       break;
     }
     case "withdraw": {
@@ -212,6 +221,7 @@ export function applyTransaction(
       state.withdrawnUsd += usd(tx.amount);
       state.netContributedUsd -= usd(tx.amount);
       state.feesUsd += usd(fee);
+      state.looseFeesUsd += usd(fee);
       break;
     }
     case "transfer": {
@@ -220,6 +230,7 @@ export function applyTransaction(
         bumpCash(state.cash, tx.counterAccountId, tx.currency, tx.amount);
       }
       state.feesUsd += usd(fee);
+      state.looseFeesUsd += usd(fee);
       break;
     }
     case "buy": {
@@ -262,6 +273,7 @@ export function applyTransaction(
       bumpCash(state.cash, tx.accountId, tx.currency, tx.amount - fee);
       state.incomeUsd += usd(tx.amount);
       state.feesUsd += usd(fee);
+      state.looseFeesUsd += usd(fee);
       if (tx.assetId) {
         state.realizedByAsset[tx.assetId] =
           (state.realizedByAsset[tx.assetId] ?? 0) + usd(tx.amount);
@@ -271,6 +283,7 @@ export function applyTransaction(
     case "fee": {
       bumpCash(state.cash, tx.accountId, tx.currency, -tx.amount);
       state.feesUsd += usd(tx.amount);
+      state.looseFeesUsd += usd(tx.amount);
       break;
     }
     case "split": {
@@ -307,7 +320,9 @@ export function applyTransaction(
         // promedio. Lo que habian subido se va con ellas de la ganancia sin
         // realizar, sin pasar por el realizado: no se vendio nada.
         const costoUnidad = state.positions[tx.assetId]?.avgCostUsd ?? 0;
-        state.feesUsd += costoUnidad * removeUnits(state, tx.assetId, -tx.quantity);
+        const deMenos = costoUnidad * removeUnits(state, tx.assetId, -tx.quantity);
+        state.feesUsd += deMenos;
+        state.looseFeesUsd += deMenos;
       }
       bumpPosition(state, tx.accountId, tx.assetId, tx.quantity);
       break;
@@ -321,6 +336,7 @@ export function applyTransaction(
       bumpCash(state.cash, tx.accountId, tx.currency, -(tx.amount + fee));
       bumpCash(state.cash, tx.accountId, tx.toCurrency, tx.toAmount);
       state.feesUsd += usd(fee);
+      state.looseFeesUsd += usd(fee);
       break;
     }
   }

@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { Header } from "@/components/ui/Header";
 import { Notice } from "@/components/ui/Notice";
 import { SectionTitle, Stat } from "@/components/ui/Stat";
-import { Segmented } from "@/components/ui/Field";
+import { MiniSegmented, Segmented } from "@/components/ui/Field";
 import { ValueChart } from "@/components/charts/ValueChart";
 import { ReturnChart } from "@/components/charts/ReturnChart";
 import { Allocation } from "@/components/charts/Allocation";
@@ -692,7 +692,7 @@ export default function Overview() {
       {/* Las cuatro metricas que contestan "como me fue" sin ambiguedad, en la
           ventana que se eligio arriba. Todo el bloque abre la explicacion: son
           numeros que solo sirven si se entiende que mide cada uno. */}
-      <div className="eyebrow mb-2">Cómo te fue {desde}</div>
+      <div className="eyebrow mb-2">Detalle</div>
       <button
         className="card mb-1 grid w-full grid-cols-2 text-left"
         style={{ gap: 1, background: "var(--color-line)" }}
@@ -700,7 +700,7 @@ export default function Overview() {
       >
         <div style={{ background: "var(--color-surface)" }}>
           <Stat
-            label={completo ? "Capital aportado" : "Capital que entró"}
+            label={completo ? "Capital aportado" : "Ingresos"}
             value={money(capitalPeriodo, display, { compact: true })}
           />
         </div>
@@ -713,22 +713,16 @@ export default function Overview() {
         </div>
         <div style={{ background: "var(--color-surface)" }}>
           <Stat
-            label="Rendimiento real"
+            label="Rendimiento (TWR)"
             value={percent(twrPeriodo, { decimals: 1 })}
             tone={twrPeriodo === null ? "plain" : twrPeriodo >= 0 ? "pos" : "neg"}
-            hint="el momento del aporte no lo afecta"
           />
         </div>
         <div style={{ background: "var(--color-surface)" }}>
           <Stat
-            label="TIR anual"
+            label="TIR (XIRR)"
             value={percent(xirrPeriodo, { decimals: 1 })}
             tone={xirrPeriodo === null ? "plain" : xirrPeriodo >= 0 ? "pos" : "neg"}
-            hint={
-              xirrPeriodo === null && periodo && periodo.days < 90
-                ? "hace falta un período más largo"
-                : "anualizada, según cuándo aportaste"
-            }
           />
         </div>
       </button>
@@ -739,7 +733,7 @@ export default function Overview() {
       </p>
 
       <section className="mb-5">
-        <SectionTitle>Distribución por cuenta</SectionTitle>
+        <SectionTitle>Cuentas</SectionTitle>
         <div className="card divide-hairline">
           {full.accountViews
             .filter((a) => a.valueUsd > 0.01 || a.netContributedUsd !== 0)
@@ -788,7 +782,7 @@ export default function Overview() {
           <Allocation slices={slices} total={p.investedUsd} currency={display} />
           {p.cashUsd > 0.01 && (
             <p className="hairline mt-2 pt-2 text-[11px]" style={{ color: "var(--color-ink-3)" }}>
-              {money(p.cashUsd, display)} sin invertir
+              {money(p.cashUsd, display)} de liquidez
               {p.totalValueUsd > 0 && `, un ${percent(p.cashUsd / p.totalValueUsd, { decimals: 0, sign: false })} del total`}.
             </p>
           )}
@@ -864,29 +858,15 @@ function CurrencyToggle({
   value: Currency;
   onChange: (c: Currency) => void;
 }) {
-  const opciones: { value: Currency; label: string; aria: string }[] = [
-    { value: "USD", label: "US$", aria: "Ver todo en dólares" },
-    { value: "ARS", label: "$", aria: "Ver todo en pesos" },
-  ];
   return (
-    <div className="flex shrink-0 border" style={{ borderColor: "var(--color-line)" }}>
-      {opciones.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          aria-label={o.aria}
-          aria-pressed={value === o.value}
-          onClick={() => onChange(o.value)}
-          className="num min-w-[40px] px-2 py-1 text-[12px]"
-          style={
-            value === o.value
-              ? { background: "var(--color-ink)", color: "var(--color-bg)" }
-              : { color: "var(--color-ink-3)" }
-          }
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
+    <MiniSegmented
+      value={value}
+      onChange={onChange}
+      label="Moneda"
+      options={[
+        { value: "USD", label: "US$", aria: "Ver todo en dólares" },
+        { value: "ARS", label: "$", aria: "Ver todo en pesos" },
+      ]}
+    />
   );
 }

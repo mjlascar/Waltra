@@ -53,3 +53,48 @@ export function Segmented<T extends string>({
     </div>
   );
 }
+
+/**
+ * Un selector chico, para ir en la misma fila que un título: el orden de una
+ * lista, el rango de un gráfico, la moneda. `Segmented` ocupa el ancho entero
+ * y compite con el contenido.
+ */
+export function MiniSegmented<T extends string>({
+  value,
+  options,
+  onChange,
+  label,
+}: {
+  value: T;
+  options: { value: T; label: string; aria?: string }[];
+  onChange: (value: T) => void;
+  /** Qué elige, para un lector de pantalla. */
+  label?: string;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      className="flex shrink-0 border"
+      style={{ borderColor: "var(--color-line)" }}
+    >
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          aria-label={o.aria}
+          aria-pressed={value === o.value}
+          onClick={() => onChange(o.value)}
+          className="num min-w-[34px] px-1.5 py-[3px] text-[11px]"
+          style={
+            value === o.value
+              ? { background: "var(--color-ink)", color: "var(--color-bg)" }
+              : { color: "var(--color-ink-3)" }
+          }
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}

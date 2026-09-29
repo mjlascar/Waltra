@@ -12,6 +12,20 @@ describe("la versión publicada", () => {
     ).toBe(47);
   });
 
+  it("la 1.1 se lee igual, y el número que cuenta es la compilación", () => {
+    expect(parseRelease({ name: "Waltra 1.1.55" })).toMatchObject({ build: 55, version: "1.1.55" });
+    const r = parseRelease({ name: "Waltra 1.1.55" });
+    expect(isNewer(r, { build: 54, version: "1.0.54" })).toBe(true);
+  });
+
+  it("las notas le hablan también a las apps de antes de la 1.1", () => {
+    // Una app 1.0 solo reconoce "1.0.<n>": si las notas no lo traen, nunca
+    // se entera de que salió la 1.1. Es la línea que agrega CI.
+    const body = "Version 1.1.55, de abc.\n\nCompilacion 1.0.55, para las versiones anteriores a la 1.1.";
+    expect(body.match(/\b1\.0\.(\d+)\b/)?.[1]).toBe("55");
+    expect(releaseBuild({ name: "Waltra 1.1.55", body })).toBe(55);
+  });
+
   it("sin número no inventa uno", () => {
     expect(releaseBuild({ name: "Waltra", body: "sin version" })).toBeNull();
     expect(parseRelease({ name: "Waltra" })).toBeNull();

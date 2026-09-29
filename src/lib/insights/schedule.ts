@@ -34,18 +34,18 @@ export interface Schedule {
 export const KIND_LABEL: Record<ReportKind, string> = {
   cartera: "Análisis de tu cartera",
   mercado: "Resumen de mercado",
-  conducta: "Cómo invertís de verdad",
-  riesgo: "Qué te puede doler",
-  posicion: "Una posición a fondo",
+  conducta: "Alineación del portafolio",
+  riesgo: "Análisis de riesgo",
+  posicion: "Análisis de un activo",
   decision: "Tengo plata, ¿qué hago?",
 };
 
 export const KIND_DETAIL: Record<ReportKind, string> = {
   cartera: "Qué pasó con tus posiciones y qué hacer con cada una.",
   mercado: "Cómo viene el mercado para lo que tenés, y qué más podría interesarte.",
-  conducta: "Tu operatoria real contra el perfil que declarás. Sale del historial, no de una encuesta.",
+  conducta: "Tu portafolio real contra el perfil que declarás.",
   riesgo: "Concentración, moneda y cuánto dolería una caída como las que ya pasaron.",
-  posicion: "Un activo solo: la tesis, qué cambió y qué la rompería.",
+  posicion: "Uno que tengas o que estés mirando: por qué sí, por qué no, y qué te haría cambiar de idea.",
   decision: "Un monto concreto y qué conviene hacer con él, dada tu cartera de hoy.",
 };
 

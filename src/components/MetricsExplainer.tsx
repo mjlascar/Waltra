@@ -1,7 +1,7 @@
 "use client";
 
 import { Sheet } from "@/components/ui/Sheet";
-import { money, percent } from "@/lib/format";
+import { money, percent, shortDate } from "@/lib/format";
 import type { Portfolio } from "@/lib/engine/portfolio";
 import type { PeriodView } from "@/lib/engine/period";
 
@@ -37,35 +37,46 @@ export function MetricsExplainer({
   const rendimiento = completo ? p.metrics.twrCumulative : periodo.twr;
   const tir = completo ? p.metrics.xirr : periodo.xirr;
 
-  const entradas = [
+  // La ganancia, por sus causas. Las comisiones de compra y venta ya estan
+  // adentro del costo y del realizado; aca van solo las sueltas. Lo que queda
+  // es el tipo de cambio: la liquidez en la otra moneda cambio de valor.
+  const causas: [string, number][] = [
+    ["Sin realizar", p.unrealizedUsd],
+    ["Realizado", p.realizedUsd],
+    ["Cobrado", p.incomeUsd],
+    ["Comisiones", -p.looseFeesUsd],
+  ];
+  const resto = p.totalPnlUsd - causas.reduce((acc, [, v]) => acc + v, 0);
+  if (Math.abs(resto) >= 0.5) causas.push(["Tipo de cambio", resto]);
+
+  const entradas: { titulo: string; valor: string; cuerpo: string }[] = [
     {
-      titulo: completo ? "Capital aportado" : "Capital que entró",
+      titulo: completo ? "Capital aportado" : "Ingresos",
       valor: money(capital, display),
       cuerpo: completo
-        ? `Todo lo que ingresaste menos todo lo que retiraste: ${money(p.depositedUsd, display)} de ingresos y ${money(p.withdrawnUsd, display)} de retiros. Transferir de Cocos a Binance no suma acá: no es capital nuevo, solo cambia de lugar. Comprar tampoco: convertís efectivo en un activo, pero el patrimonio es el mismo.`
-        : `Lo que ingresaste menos lo que retiraste ${desde}. Transferir de Cocos a Binance no suma acá: no es capital nuevo, solo cambia de lugar. Comprar tampoco: convertís efectivo en un activo, pero el patrimonio es el mismo. En total, desde el primer movimiento, llevás ${money(p.netContributedUsd, display)}.`,
+        ? `Ingresos (${money(p.depositedUsd, display)}) menos retiros (${money(p.withdrawnUsd, display)}). Comprar o pasar plata entre tus cuentas no cuenta.`
+        : `Ingresos menos retiros ${desde}. Comprar o pasar plata entre tus cuentas no cuenta.`,
     },
     {
       titulo: "Ganancia",
       valor: money(ganancia, display, { sign: true }),
       cuerpo: completo
-        ? `Lo que vale hoy la cartera (${money(p.totalValueUsd, display)}) menos el capital aportado (${money(p.netContributedUsd, display)}). Incluye lo que subieron tus posiciones${p.realizedUsd !== 0 ? `, lo que ya realizaste al vender (${money(p.realizedUsd, display, { sign: true })})` : ""}${p.incomeUsd > 0 ? ` y lo que cobraste en dividendos e intereses (${money(p.incomeUsd, display)})` : ""}${p.feesUsd > 0 ? `, descontando ${money(p.feesUsd, display)} de comisiones` : ""}.`
-        : `Lo que vale hoy la cartera (${money(periodo.endValueUsd, display)}) menos lo que valía al empezar el período (${money(periodo.startValueUsd, display)}), descontando los ${money(periodo.netFlowUsd, display)} de capital que entraron en el medio. Esa resta es la razón de ser de la app: sin ella, un ingreso de plata se vería como si lo hubieras ganado.`,
+        ? `Lo que vale la cartera (${money(p.totalValueUsd, display)}) menos el capital aportado.`
+        : `Lo que vale hoy menos lo que valía al empezar (${money(periodo.startValueUsd, display)}), sin contar los ${money(periodo.netFlowUsd, display)} que ingresaste en el medio.`,
     },
     {
-      titulo: "Rendimiento real (TWR)",
+      titulo: "Rendimiento (TWR)",
       valor: percent(rendimiento, { decimals: 1 }),
       cuerpo:
-        "Qué tan bien elegiste, sin que el momento de los aportes distorsione el número. Se encadenan los retornos de cada día neutralizando las entradas y salidas: si aportás 1.000 dólares nuevos, el valor sube pero el rendimiento no se mueve. Es la métrica que los gráficos de los brokers mezclan, y por la que un depósito parece una ganancia." +
-        (completo ? "" : ` Acá se mide solo ${desde}, arrancando de cero el primer día del período.`),
+        "Cuánto rindió lo que elegiste, sin que los aportes lo muevan: un ingreso nuevo sube el valor, no el rendimiento.",
     },
     {
-      titulo: "TIR anual (XIRR)",
+      titulo: "TIR (XIRR)",
       valor: percent(tir, { decimals: 1 }),
       cuerpo:
         tir === null && periodo && !periodo.full && periodo.days < 90
-          ? `La misma idea, anualizada: qué tasa anual habría dado el mismo resultado, teniendo en cuenta cuándo entró cada aporte. Con ${periodo.days} días de período no se muestra: estirar eso a un año da un número de tres cifras que no dice nada. Elegí una ventana más larga y aparece.`
-          : "La misma idea, anualizada y desde el punto de vista del aportante: qué tasa anual habría dado el mismo resultado, teniendo en cuenta cuándo entró cada aporte. Si aportaste fuerte justo antes de una subida, va a dar más alta que el rendimiento real. Las dos son correctas; contestan preguntas distintas.",
+          ? "La tasa anual equivalente. Con menos de 90 días no se muestra: anualizar tan poco da un número sin sentido."
+          : "La tasa anual equivalente, según cuándo entró cada aporte. Si aportaste antes de una suba, da más que el TWR.",
     },
   ];
 
@@ -73,25 +84,22 @@ export function MetricsExplainer({
     {
       titulo: "Volatilidad anual",
       valor: percent(p.metrics.volatility, { decimals: 0, sign: false }),
-      cuerpo:
-        "Cuánto se mueve la cartera en un año típico, para arriba y para abajo. No es una predicción: mide qué tan accidentado fue el recorrido.",
+      cuerpo: "Cuánto se mueve la cartera en un año típico.",
     },
     {
       titulo: "Peor caída",
       valor: percent(p.metrics.maxDrawdown.value, { decimals: 1 }),
       cuerpo: p.metrics.maxDrawdown.from
-        ? `La caída más grande desde un pico hasta el fondo, entre ${p.metrics.maxDrawdown.from} y ${p.metrics.maxDrawdown.to}. Sirve para dimensionar cuánta caída soportó la cartera en la práctica.`
-        : "La caída más grande desde un pico hasta el fondo.",
+        ? `De un pico al fondo, entre el ${shortDate(p.metrics.maxDrawdown.from, true)} y el ${shortDate(p.metrics.maxDrawdown.to ?? p.metrics.maxDrawdown.from, true)}.`
+        : "De un pico al fondo.",
     },
   ];
 
   return (
     <Sheet open={open} onClose={onClose} title="Cómo se calcula">
       <p className="label mb-4 leading-relaxed">
-        Todo en dólares. Los números salen únicamente de los movimientos cargados y
-        de los precios de mercado: no hay nada estimado. Los cuatro de arriba son{" "}
-        <strong style={{ color: "var(--color-ink)" }}>{desde}</strong>, la ventana que
-        elegiste en el gráfico.
+        Los cuatro números son{" "}
+        <strong style={{ color: "var(--color-ink)" }}>{desde}</strong>, la ventana del gráfico.
       </p>
 
       <div className="space-y-3">
@@ -107,6 +115,32 @@ export function MetricsExplainer({
           </section>
         ))}
       </div>
+
+      {/* Desde el principio, la ganancia se arma con estas partes. Sin el
+          desglose, sin realizar + realizado no da la ganancia y parece un
+          error: faltan lo cobrado, las comisiones y el tipo de cambio. */}
+      <div className="eyebrow mb-2 mt-5">De dónde sale la ganancia</div>
+      <ul className="card divide-hairline">
+        {causas.map(([nombre, valor]) => (
+          <li key={nombre} className="flex items-baseline justify-between gap-3 px-3 py-2">
+            <span className="text-[12px]">{nombre}</span>
+            <span className={`num text-[12px] ${valor > 0 ? "pos" : valor < 0 ? "neg" : ""}`}>
+              {money(valor, display, { sign: true })}
+            </span>
+          </li>
+        ))}
+        <li className="flex items-baseline justify-between gap-3 px-3 py-2">
+          <span className="text-[12px] font-semibold">Ganancia desde el principio</span>
+          <span className="num text-[12px] font-semibold">
+            {money(p.totalPnlUsd, display, { sign: true })}
+          </span>
+        </li>
+      </ul>
+      <p className="label mt-2 leading-snug">
+        Realizado es lo que ganaste o perdiste al vender, contra lo que te había costado.
+        Cuenta aunque hayas reinvertido la plata: la venta ya pasó, y lo que compraste
+        después arranca con su propio costo.
+      </p>
 
       {(p.metrics.volatility !== null || p.metrics.maxDrawdown.value < 0) && (
         <>
@@ -130,10 +164,12 @@ export function MetricsExplainer({
       <div className="eyebrow mb-2 mt-5">Letra chica</div>
       <ul className="card divide-hairline">
         {[
-          ["Costo de las posiciones", "Promedio ponderado, con la comisión adentro. No es FIFO: para impuestos puede no coincidir."],
-          ["Pesos", "Se convierten al dólar MEP de cada fecha, o al que hayas cargado en la operación, que tiene prioridad."],
-          ["Sin precio", "Si falta la cotización de un activo, se valúa al costo y la app lo indica. Preferimos subestimar antes que estimar."],
-          ["Antigüedad", `La cartera tiene ${p.metrics.ageDays} días de historia. Con menos de dos o tres meses, la volatilidad y la TIR son ruido más que señal.`],
+          ["Costo", "Promedio ponderado, con la comisión adentro."],
+          [
+            display === "USD" ? "Pesos" : "Dólares",
+            "Al dólar MEP de cada fecha, o al que cargaste en la operación.",
+          ],
+          ["Sin precio", "Se valúa al costo, y la app lo avisa."],
         ].map(([titulo, cuerpo]) => (
           <li key={titulo} className="p-3">
             <div className="text-[12px] font-medium">{titulo}</div>

@@ -225,10 +225,21 @@ moneda en que se cargaron: son el registro de lo que pasó. Hay invariantes
 en pesos en `invariantes.test.ts`.
 
 **Cada venta queda con su resultado** (`portfolio.sales`, `SalesList` en
-Cartera). Con costo promedio no hay una compra que empareje a cada venta: el
+Cartera, "Resultado realizado"; se ordena por fecha o por resultado y se
+agrupa por activo). Con costo promedio no hay una compra que empareje a cada venta: el
 costo es el promedio de lo que se tenía, como lo cuenta el broker, y el plazo
 se cuenta desde que la posición pasó de cero a positiva (`Lot.since`). Lo
 vendido sin costo conocido se marca: ese resultado está inflado.
+
+**Sin realizar + realizado no es la ganancia**, y se pregunta. Faltan lo
+cobrado (dividendos, intereses, Earn), las comisiones sueltas
+(`looseFeesUsd`: las de compra y venta ya están en el costo y el realizado) y
+el tipo de cambio sobre la liquidez en la otra moneda. «¿Cómo se calcula?»
+muestra ese desglose, y el resto es el tipo de cambio por construcción; hay un
+test que fija que con el dólar quieto el resto es cero. Lo realizado cuenta
+aunque la plata se reinvierta: la venta ya pasó, y lo comprado después
+arranca con su propio costo. "Resultado sin realizar" en Cartera muestra solo
+eso por activo: sumarle lo realizado lo contaba en dos lados.
 
 **Nunca inventar un número.** Sin cotización, una posición se valúa al costo y
 la app lo dice (`missingPrices`). Sin dólar MEP, los montos en pesos quedan
@@ -516,9 +527,14 @@ publica a mano y verifica contra la API pública; si no se ve, falla. La app
 distingue el 404 (no hay versión publicada) y el 403 (límite de consultas)
 de la falta de señal (`updateErrorText`).
 
-El número sale del **título del release**, `Waltra 1.0.<corrida>`, que arma
-CI (y de las notas, como respaldo). Si cambia ese formato, la app deja de
-avisar sin un solo error. El vigía también lo busca, cada unas seis horas y
+El número sale del **título del release**, `Waltra 1.1.<corrida>`, que arma
+CI (y de las notas, como respaldo). Se compara la corrida, que crece siempre;
+el `1.x` es el nombre. Si cambia ese formato, la app deja de avisar sin un
+solo error. **Las apps anteriores a la 1.1 solo reconocen `1.0.<n>`**: por eso
+las notas llevan una línea `Compilacion 1.0.<corrida>`, y sacarla deja a esos
+teléfonos sin enterarse nunca más de una versión nueva. Para pasar a la 1.2
+se cambia el `1.1` en `ci.yml` (nombre, título y notas); el código ya acepta
+cualquier `1.x.<n>`. El vigía también lo busca, cada unas seis horas y
 fuera del horario de silencio, y avisa una vez por versión; como no puede
 preguntarle a Android qué versión hay instalada, se la deja la app en el
 plan (`update`). Por eso hay plan aunque las alertas estén apagadas.

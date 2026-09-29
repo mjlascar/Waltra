@@ -281,7 +281,7 @@ export default function Insights() {
 
           <div className="card mb-4 p-3">
             <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="eyebrow">Qué querés que analice</span>
+              <span className="eyebrow">Análisis</span>
               <button
                 className="chip shrink-0"
                 style={{
@@ -330,19 +330,39 @@ export default function Insights() {
 
             {needsFocus(tipo) &&
               (tipo === "posicion" ? (
+                // Cualquier ticker, no solo los que tenés: tambien sirve para
+                // mirar uno antes de comprarlo. Los tuyos quedan a un toque.
                 <div className="mb-2">
-                  <select
-                    className="input"
+                  <input
+                    className="input text-[13px]"
                     value={foco}
-                    onChange={(e) => setFoco(e.target.value)}
-                  >
-                    <option value="">Elegí la posición…</option>
-                    {p.positions.map((pos) => (
-                      <option key={pos.assetId} value={pos.symbol}>
-                        {pos.symbol}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(e) => setFoco(e.target.value.toUpperCase())}
+                    placeholder="Ticker, por ej. NVDA o BTC"
+                    maxLength={20}
+                    autoCapitalize="characters"
+                    autoCorrect="off"
+                    spellCheck={false}
+                  />
+                  {p.positions.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {p.positions.slice(0, 10).map((pos) => (
+                        <button
+                          key={pos.assetId}
+                          type="button"
+                          className="chip"
+                          aria-pressed={foco === pos.symbol}
+                          style={
+                            foco === pos.symbol
+                              ? { color: "var(--color-ink)", borderColor: "var(--color-ink)" }
+                              : undefined
+                          }
+                          onClick={() => setFoco(pos.symbol)}
+                        >
+                          {pos.symbol}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <input
@@ -357,18 +377,15 @@ export default function Insights() {
             {/* La pregunta no es otro pedido: viaja junto con el analisis
                 elegido, y el informe la contesta primero. Antes no quedaba
                 claro, y encima no llegaba al modelo. */}
-            <span className="eyebrow mb-1.5 mt-1 block">Tu pregunta · opcional</span>
+            <span className="eyebrow mb-1.5 mt-3 block">Adjuntar texto</span>
             <textarea
-              className="input mb-1"
+              className="input mb-3 text-[13px]"
               rows={2}
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              placeholder="Ej.: ¿me conviene sumar más BTC ahora?"
+              placeholder="Ej.: Quiero un poco más de riesgo"
               maxLength={300}
             />
-            <p className="label mb-3 leading-snug">
-              Se suma al análisis de arriba: el informe la contesta primero.
-            </p>
             <button
               className="btn btn-primary w-full"
               onClick={pedir}
@@ -379,7 +396,7 @@ export default function Insights() {
             {config && (
               <p className="label mt-2 leading-snug">
                 {config.aiConfigured
-                  ? `Usa ${config.model}. Tarda alrededor de un minuto y consume créditos de tu cuenta; mientras, podés seguir usando la app.`
+                  ? "Tarda 1-3 minutos y consume créditos de tu API. No cierres la app."
                   : ON_DEVICE
                     ? `Falta tu clave de ${providerInfo(resolveProvider(settings.provider)).label}: cargala en Ajustes. El resto de la app funciona igual sin ella.`
                     : "Falta configurar ANTHROPIC_API_KEY en el servidor. El resto de la app funciona igual; está explicado en el README."}

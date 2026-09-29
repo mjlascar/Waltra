@@ -18,7 +18,12 @@ function precioStatus(lastSync: string): string {
   return `Cotizaciones de ${relativeTime(lastSync)}`;
 }
 
-/** Cabecera comun: nombre de la vista, estado de datos y acceso a ajustes. */
+/**
+ * Cabecera comun: el nombre de la vista y nada mas. El estado de los precios
+ * viaja en el boton de actualizar (su rotulo, y en color de aviso sin
+ * conexion): un subtitulo fijo en cada pantalla repetia "al dia" sin decir
+ * nada la mayor parte del tiempo.
+ */
 export function Header({ title }: { title: string }) {
   const { sync, refresh, settings } = useStore();
 
@@ -33,21 +38,16 @@ export function Header({ title }: { title: string }) {
 
   return (
     <header className="mb-4 flex items-center justify-between gap-3">
-      <div className="min-w-0">
-        <h1 className="text-[19px] font-semibold leading-tight tracking-tight">{title}</h1>
-        <p
-          className="eyebrow mt-1 truncate"
-          style={{ color: sync.status === "error" ? "var(--color-warn)" : undefined }}
-        >
-          {status}
-        </p>
-      </div>
+      <h1 className="min-w-0 truncate text-[19px] font-semibold leading-tight tracking-tight">
+        {title}
+      </h1>
       <div className="flex shrink-0 items-center gap-1">
         <button
           onClick={() => void refresh({ force: false })}
-          aria-label="Actualizar precios"
+          aria-label={`${status}. Actualizar precios`}
+          title={status}
           className="p-2"
-          style={{ color: "var(--color-ink-2)" }}
+          style={{ color: sync.status === "error" ? "var(--color-warn)" : "var(--color-ink-2)" }}
           disabled={sync.status === "syncing"}
         >
           <IconRefresh size={18} className={sync.status === "syncing" ? "opacity-40" : ""} />

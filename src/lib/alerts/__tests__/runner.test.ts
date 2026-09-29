@@ -585,7 +585,7 @@ describe("versiones nuevas del APK", () => {
 
   it("avisa una sola vez por versión", () => {
     const primera = v.decidirVersion(conUpdate(), 41, {}, ahora);
-    expect(primera.aviso?.body).toContain("1.0.41");
+    expect(primera.aviso?.body).toContain("versión nueva");
     const otra = v.decidirVersion(conUpdate(), 41, { upd: primera.upd }, ahora);
     expect(otra.aviso).toBeNull();
     // Sale otra más nueva sin haber actualizado: esa sí se avisa.
