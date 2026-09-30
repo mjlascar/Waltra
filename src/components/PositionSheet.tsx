@@ -211,7 +211,7 @@ export function PositionSheet({
                   <span className="label num">{shortDate(actual.tx.date.slice(0, 10), true)}</span>
                 </div>
                 <div className="num mt-1 truncate text-[12px]">
-                  {fmtQty(actual.tx.quantity ?? 0, asset?.precision ?? 6)} a{" "}
+                  {money(actual.tx.amount, actual.tx.currency)} a{" "}
                   {money(
                     (actual.tx.price ?? actual.tx.amount / (actual.tx.quantity || 1)) *
                       (asset?.priceUnit ?? 1),

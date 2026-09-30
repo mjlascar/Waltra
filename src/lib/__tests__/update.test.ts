@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { APK_URL, isNewer, parseRelease, releaseBuild, updateErrorText } from "@/lib/update";
 
@@ -12,18 +14,50 @@ describe("la versión publicada", () => {
     ).toBe(47);
   });
 
-  it("la 1.1 se lee igual, y el número que cuenta es la compilación", () => {
-    expect(parseRelease({ name: "Waltra 1.1.55" })).toMatchObject({ build: 55, version: "1.1.55" });
-    const r = parseRelease({ name: "Waltra 1.1.55" });
-    expect(isNewer(r, { build: 54, version: "1.0.54" })).toBe(true);
+  // Lo que publica CI: el nombre con la v pegada en el título, la
+  // compilación primera en las notas (ver ci.yml).
+  const titulo = "Waltra v1.1.0";
+  const notas =
+    "Compilacion 1.0.56 de v1.1.0, de abc12345 en claude/investment-tracking-app-slxfyz.\n\nFirmado.";
+
+  it("muestra el nombre de la versión y compara la compilación", () => {
+    expect(parseRelease({ name: titulo, body: notas })).toMatchObject({ build: 56, version: "1.1.0" });
+    expect(isNewer(parseRelease({ name: titulo, body: notas }), { build: 55, version: "1.1.55" })).toBe(true);
   });
 
-  it("las notas le hablan también a las apps de antes de la 1.1", () => {
-    // Una app 1.0 solo reconoce "1.0.<n>": si las notas no lo traen, nunca
-    // se entera de que salió la 1.1. Es la línea que agrega CI.
-    const body = "Version 1.1.55, de abc.\n\nCompilacion 1.0.55, para las versiones anteriores a la 1.1.";
-    expect(body.match(/\b1\.0\.(\d+)\b/)?.[1]).toBe("55");
-    expect(releaseBuild({ name: "Waltra 1.1.55", body })).toBe(55);
+  it("todas las apps ya instaladas leen la compilación correcta", () => {
+    // Cada generación lee el release a su manera, y ya están en los
+    // teléfonos: no se pueden cambiar, solo respetar.
+    const generaciones = {
+      // 1.0: busca "1.0.<n>" en el título y en las notas.
+      "1.0": /\b1\.0\.(\d+)\b/,
+      // 1.1.55: busca el primer "1.x.<n>" del título, y si no, el de las notas.
+      "1.1.55": /\b1\.(\d+)\.(\d+)\b/,
+    };
+    for (const [gen, re] of Object.entries(generaciones)) {
+      let build: number | null = null;
+      for (const texto of [titulo, notas]) {
+        const m = texto.match(re);
+        if (m) {
+          build = Number(m[m.length - 1]);
+          break;
+        }
+      }
+      expect(build, gen).toBe(56);
+    }
+  });
+
+  it("CI publica con ese formato", () => {
+    const ci = readFileSync(join(process.cwd(), ".github/workflows/ci.yml"), "utf8");
+    expect(ci).toContain('--title "Waltra v${WALTRA_VERSION}"');
+    expect(ci).toMatch(/notas=\$\(printf[^\n]*\n\s*"Compilacion 1\.0\.\$\{GITHUB_RUN_NUMBER\}/);
+  });
+
+  it("los releases de antes se siguen leyendo", () => {
+    expect(parseRelease({ name: "Waltra 1.0.54" })).toMatchObject({ build: 54, version: "1.0.54" });
+    expect(
+      parseRelease({ name: "Waltra 1.1.55", body: "Version 1.1.55.\n\nCompilacion 1.0.55, para las versiones anteriores a la 1.1." }),
+    ).toMatchObject({ build: 55, version: "1.1.55" });
   });
 
   it("sin número no inventa uno", () => {

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { SectionTitle } from "@/components/ui/Stat";
 import { MiniSegmented } from "@/components/ui/Field";
+import { IconChevron } from "@/components/icons";
 import { money, percent, quantity as fmtQty, shortDate } from "@/lib/format";
 import { daysBetween } from "@/lib/date";
 import type { Portfolio } from "@/lib/engine/portfolio";
@@ -44,6 +45,12 @@ export function SalesList({ portfolio: p }: { portfolio: Portfolio }) {
   const [abierta, setAbierta] = useState<string | null>(null);
   const [orden, setOrden] = useState<Orden>("recientes");
   const [agrupar, setAgrupar] = useState(false);
+  /**
+   * Los activos abiertos, cuando se agrupa. Arrancan todos cerrados: abiertos,
+   * la lista era tan larga como sin agrupar y agrupar no servia para mirar de
+   * un vistazo como le fue a cada uno.
+   */
+  const [desplegados, setDesplegados] = useState<Set<string>>(() => new Set());
   const display = p.base;
 
   const filas = useMemo<Fila[]>(() => {
@@ -166,7 +173,23 @@ export function SalesList({ portfolio: p }: { portfolio: Portfolio }) {
               const tono = g.pnl >= 0 ? "pos" : "neg";
               return (
                 <div key={g.assetId}>
-                  <div className="flex items-center gap-3 p-3 pb-1">
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-3 p-3 text-left"
+                    aria-expanded={desplegados.has(g.assetId)}
+                    onClick={() =>
+                      setDesplegados((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(g.assetId)) next.delete(g.assetId);
+                        else next.add(g.assetId);
+                        return next;
+                      })
+                    }
+                  >
+                    <IconChevron
+                      size={12}
+                      className={`shrink-0 transition-transform ${desplegados.has(g.assetId) ? "rotate-90" : ""}`}
+                    />
                     <div className="min-w-0 flex-1">
                       <div className="text-[14px] font-medium">{g.symbol}</div>
                       <div className="label">
@@ -181,8 +204,8 @@ export function SalesList({ portfolio: p }: { portfolio: Portfolio }) {
                         {g.pct === null ? "sin costo" : `(${percent(g.pct, { decimals: 1 })})`}
                       </div>
                     </div>
-                  </div>
-                  {g.ventas.map((v) => venta(v, false))}
+                  </button>
+                  {desplegados.has(g.assetId) && g.ventas.map((v) => venta(v, false))}
                 </div>
               );
             })

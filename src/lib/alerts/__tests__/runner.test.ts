@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createContext, runInContext } from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 
@@ -681,5 +682,30 @@ describe("bonos y ON en el vigía", () => {
     );
     // 1.000 nominales a $ 1.080 cada uno, a 1.000 el dólar: US$ 1.080.
     expect(r.avisos[0].title).toContain("1.080");
+  });
+});
+
+describe("tocar una notificación abre la app", () => {
+  it("el manifest atiende el intent con que el runner arma cada notificación", () => {
+    // El runner (Notifications.kt) le pone a cada notificación un intent de
+    // acción ".NOTIFICATION_CLICKED" sin clase. Si ninguna actividad lo
+    // declara, tocarla no hace nada: pasó con el aviso de versión nueva.
+    const manifest = readFileSync(
+      join(process.cwd(), "android/app/src/main/AndroidManifest.xml"),
+      "utf8",
+    );
+    const filtro = manifest.match(
+      /<intent-filter>[\s\S]*?\.NOTIFICATION_CLICKED[\s\S]*?<\/intent-filter>/,
+    )?.[0];
+    expect(filtro).toBeDefined();
+    expect(filtro).toContain("android.intent.category.DEFAULT");
+    const kt = readFileSync(
+      join(
+        process.cwd(),
+        "node_modules/@capacitor/background-runner/android/src/main/java/io/ionic/backgroundrunner/plugin/api/Notifications.kt",
+      ),
+      "utf8",
+    );
+    expect(kt).toContain('Intent(".NOTIFICATION_CLICKED")');
   });
 });

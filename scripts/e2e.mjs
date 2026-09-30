@@ -802,6 +802,18 @@ await goto("/cartera");
   check("la cartera entera en pesos", !posiciones.includes("us$"), posiciones.match(/.{0,40}us\$.{0,20}/)?.[0] ?? "");
 }
 check("la lista de ventas", await has("Resultado realizado"));
+{
+  // De entrada, cinco activos; el botón abre de a diez y después todos.
+  const filas = () => page.locator("section.card").first().locator("button").count();
+  const boton = page.getByRole("button", { name: /^Mostrar (10 más|todos)$/ });
+  if ((await boton.count()) > 0) {
+    check("la cartera arranca con cinco activos", (await filas()) === 5, `${await filas()}`);
+    const antes = await filas();
+    await boton.first().click();
+    await page.waitForTimeout(200);
+    check("y el botón muestra más", (await filas()) > antes);
+  }
+}
 check("cada venta con su resultado", /\(([+-])?[\d.,]+%\)/.test(await text()));
 await page.getByRole("button", { name: /^SPY/ }).last().click();
 await page.waitForTimeout(400);
@@ -813,6 +825,10 @@ check("las ventas se ordenan", (await ventas.getByRole("button", { name: "Pérdi
 await page.locator("button[aria-pressed]", { hasText: /^Por activo$/ }).last().click();
 await page.waitForTimeout(200);
 check("y se agrupan por activo", /\d+ ventas?\b/i.test(await text()));
+check(
+  "agrupadas, arrancan cerradas",
+  (await page.locator('button[aria-expanded="true"]').count()) === 0,
+);
 await goto("/");
 await page.getByRole("button", { name: "Ver todo en dólares" }).click();
 await page.waitForTimeout(1200);

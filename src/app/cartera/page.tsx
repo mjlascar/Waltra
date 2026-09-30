@@ -24,6 +24,12 @@ export default function Cartera() {
   const { portfolio: p, accounts, assets, ready, saveAsset, refresh } = useStore();
   const display = p.base;
   const [group, setGroup] = useState<Group>("activo");
+  /**
+   * Cuantos activos se ven: 5 al entrar, 10 mas con un toque y todos con el
+   * segundo. Sin el paso intermedio, llegar al final con muchos activos eran
+   * muchos toques; sin el primero, la pantalla arrancaba con la lista entera.
+   */
+  const [cuantosActivos, setCuantosActivos] = useState(5);
   const [selected, setSelected] = useState<PositionView | null>(null);
   const [fixing, setFixing] = useState<Asset | null>(null);
   const db = getDb();
@@ -136,7 +142,7 @@ export default function Cartera() {
 
       {group === "activo" && (
         <section className="card divide-hairline mb-5">
-          {p.positions.map((pos) => (
+          {p.positions.slice(0, cuantosActivos).map((pos) => (
             <button
               key={pos.assetId}
               onClick={() => setSelected(pos)}
@@ -172,6 +178,28 @@ export default function Cartera() {
             <p className="label p-6 text-center">Todavía no compraste nada.</p>
           )}
         </section>
+      )}
+      {group === "activo" && p.positions.length > 5 && (
+        <div className="-mt-3 mb-5">
+          <button
+            className="chip"
+            onClick={() =>
+              setCuantosActivos(
+                cuantosActivos >= p.positions.length
+                  ? 5
+                  : cuantosActivos === 5 && p.positions.length > 15
+                    ? 15
+                    : p.positions.length,
+              )
+            }
+          >
+            {cuantosActivos >= p.positions.length
+              ? "Mostrar menos"
+              : cuantosActivos === 5 && p.positions.length > 15
+                ? "Mostrar 10 más"
+                : "Mostrar todos"}
+          </button>
+        </div>
       )}
 
       {group === "cuenta" && (
@@ -247,7 +275,7 @@ export default function Cartera() {
         <section className="mb-5">
           <SectionTitle>Resultado sin realizar</SectionTitle>
           <div className="card p-3">
-            <PnlBars rows={pnlRows} currency={display} />
+            <PnlBars rows={pnlRows} currency={display} fold />
           </div>
         </section>
       )}

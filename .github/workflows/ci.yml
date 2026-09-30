@@ -5,6 +5,11 @@ on:
     branches: ["**"]
   pull_request:
 
+# El nombre de la version, el que muestra Android. Se cambia a mano al sacar
+# una version nueva; el numero que compara la app es la corrida (versionCode).
+env:
+  WALTRA_VERSION: "1.1.0"
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -146,7 +151,7 @@ jobs:
         working-directory: android
         env:
           WALTRA_VERSION_CODE: ${{ github.run_number }}
-          WALTRA_VERSION_NAME: 1.1.${{ github.run_number }}
+          WALTRA_VERSION_NAME: ${{ env.WALTRA_VERSION }}
           WALTRA_KEYSTORE_FILE: ${{ runner.temp }}/waltra.keystore
           WALTRA_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD || 'descartable' }}
           WALTRA_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || 'waltra' }}
@@ -169,9 +174,11 @@ jobs:
       # Se borra y se rehace en vez de editarlo para que la etiqueta apunte
       # siempre al commit que se acaba de compilar.
       #
-      # La app lee el numero de version del titulo ("Waltra 1.1.<corrida>")
-      # para saber si hay una nueva: ver src/lib/update.ts. Si cambia el
-      # formato, deja de avisar sin un solo error.
+      # La app sabe si hay una version nueva por la linea "Compilacion
+      # 1.0.<corrida>", que va PRIMERA en las notas, y muestra el nombre del
+      # titulo ("Waltra v1.1.0", con la v pegada). Es el unico formato que
+      # leen bien todas las apps ya instaladas: ver releaseBuild en
+      # src/lib/update.ts. Si cambia, dejan de avisar sin un solo error.
       - name: Publicar el APK para descargar
         if: github.event_name == 'push'
         env:
@@ -185,13 +192,10 @@ jobs:
           else
             firma="ATENCION: firmado con una clave descartable, distinta en cada compilacion. Sirve para probar, pero no se puede instalar encima de una version anterior sin desinstalar, y desinstalar borra los movimientos. El README explica como configurar una clave propia."
           fi
-          # La linea "1.0.<corrida>" es para las apps anteriores a la 1.1: es lo
-          # unico que reconocen, y sin ella nunca se enterarian de una nueva.
-          notas=$(printf '%s\n\n%s\n\n%s\n\n%s' \
-            "Version 1.1.${GITHUB_RUN_NUMBER}, de ${GITHUB_SHA:0:8} en ${GITHUB_REF_NAME}." \
+          notas=$(printf '%s\n\n%s\n\n%s' \
+            "Compilacion 1.0.${GITHUB_RUN_NUMBER} de v${WALTRA_VERSION}, de ${GITHUB_SHA:0:8} en ${GITHUB_REF_NAME}." \
             "$firma" \
-            "Descarga waltra.apk de aca abajo y abrilo en el telefono. Android va a pedirte permitir instalar desde el navegador: es el paso normal para algo que no viene de Play." \
-            "Compilacion 1.0.${GITHUB_RUN_NUMBER}, para las versiones anteriores a la 1.1.")
+            "Descarga waltra.apk de aca abajo y abrilo en el telefono. Android va a pedirte permitir instalar desde el navegador: es el paso normal para algo que no viene de Play.")
           # Puede haber mas de uno con la etiqueta (borradores que quedaron de
           # corridas anteriores): se borran todos.
           for _ in 1 2 3 4 5; do
@@ -200,7 +204,7 @@ jobs:
           gh release create apk-latest waltra.apk \
             --prerelease \
             --target "$GITHUB_SHA" \
-            --title "Waltra 1.1.${GITHUB_RUN_NUMBER}" \
+            --title "Waltra v${WALTRA_VERSION}" \
             --notes "$notas"
           # `gh release create` arma un borrador, sube el APK y recien ahi lo
           # publica. Con la etiqueta recien borrada, ese ultimo paso puede no

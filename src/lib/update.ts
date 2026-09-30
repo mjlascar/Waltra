@@ -26,7 +26,7 @@ export const APK_URL = `https://github.com/${REPO}/releases/download/apk-latest/
 export interface ReleaseInfo {
   /** El `versionCode` del APK publicado: el numero de corrida de CI. */
   build: number;
-  /** "1.1.123", como lo muestra Android. */
+  /** "1.1.0", como lo muestra Android. */
   version: string;
   url: string;
   publishedAt?: string;
@@ -40,33 +40,45 @@ interface GithubRelease {
 }
 
 /**
- * La version de un release. CI la escribe como `1.<menor>.<corrida>` en el
- * titulo y en las notas; se busca en los dos para no depender de uno solo.
- * Lo que se compara es la corrida, que crece siempre: el 1.x es el nombre.
+ * El numero de compilacion de un release: la corrida de CI, que crece siempre
+ * y es lo que se compara. Viaja en las notas como `1.0.<corrida>`, porque es
+ * lo unico que reconocen todas las apps ya instaladas:
  *
- * Las notas llevan ademas un `1.0.<corrida>`: es lo unico que reconocen las
- * apps instaladas antes de la 1.1, y sin eso nunca se enterarian de ella.
+ * - las 1.0 buscan `1.0.<n>` en el titulo y en las notas;
+ * - las 1.1.<corrida> buscan el primer `1.x.<n>` del titulo, y si no hay, el
+ *   de las notas.
+ *
+ * Por eso el titulo lleva el nombre como `v1.1.0`: con la `v` pegada no lo
+ * toma ninguna de las dos (sin ella, una 1.1.55 leeria "compilacion 0" y no
+ * se enteraria nunca mas de una version nueva). Y en las notas la linea de la
+ * compilacion va primero. El vigia tiene una copia de esta funcion, y el test
+ * las compara.
  */
-function releaseMatch(release: { name?: string | null; body?: string | null }) {
+export function releaseBuild(release: { name?: string | null; body?: string | null }): number | null {
   for (const texto of [release.name, release.body]) {
-    const m = typeof texto === "string" ? texto.match(/\b1\.(\d+)\.(\d+)\b/) : null;
-    if (m) return { minor: Number(m[1]), build: Number(m[2]) };
+    const m = typeof texto === "string" ? texto.match(/\b1\.0\.(\d+)\b/) : null;
+    if (m) return Number(m[1]);
   }
   return null;
 }
 
-export function releaseBuild(release: { name?: string | null; body?: string | null }): number | null {
-  return releaseMatch(release)?.build ?? null;
+/** El nombre de la version, "1.1.0", del titulo. Sin el, el de la compilacion. */
+function releaseName(release: { name?: string | null }, build: number): string {
+  const titulo = release.name ?? "";
+  const nuevo = titulo.match(/\bv(\d+\.\d+\.\d+)\b/);
+  if (nuevo) return nuevo[1];
+  // Los releases de antes: "Waltra 1.1.55" o "Waltra 1.0.54".
+  const viejo = titulo.match(/\b(1\.\d+\.\d+)\b/);
+  return viejo ? viejo[1] : `1.0.${build}`;
 }
 
 export function parseRelease(json: GithubRelease): ReleaseInfo | null {
-  const hallada = releaseMatch(json);
-  if (hallada === null) return null;
-  const { build, minor } = hallada;
+  const build = releaseBuild(json);
+  if (build === null) return null;
   const apk = json.assets?.find((a) => a.name === "waltra.apk")?.browser_download_url;
   return {
     build,
-    version: `1.${minor}.${build}`,
+    version: releaseName(json, build),
     url: apk ?? APK_URL,
     publishedAt: json.published_at ?? undefined,
   };

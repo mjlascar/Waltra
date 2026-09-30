@@ -459,8 +459,8 @@ function recordatorios(plan, estado, ahora) {
 var VERSION_CADA_MS = 6 * 60 * 60 * 1000;
 
 /**
- * El numero de compilacion de un release, el <n> de "1.x.<n>", en el titulo o
- * en las notas. La compilacion crece siempre; el 1.x es el nombre de la version.
+ * El numero de compilacion de un release, el <n> de "1.0.<n>" en el titulo o
+ * en las notas. Ver `releaseBuild` en src/lib/update.ts: por que ese formato.
  * Misma logica que `releaseBuild` en src/lib/update.ts; el test compara las
  * dos.
  */
@@ -469,7 +469,7 @@ function versionPublicada(release) {
   var textos = [release.name, release.body];
   for (var i = 0; i < textos.length; i++) {
     if (typeof textos[i] !== "string") continue;
-    var m = textos[i].match(/\b1\.\d+\.(\d+)\b/);
+    var m = textos[i].match(/\b1\.0\.(\d+)\b/);
     if (m) return Number(m[1]);
   }
   return null;

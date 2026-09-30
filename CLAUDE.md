@@ -527,17 +527,24 @@ publica a mano y verifica contra la API pública; si no se ve, falla. La app
 distingue el 404 (no hay versión publicada) y el 403 (límite de consultas)
 de la falta de señal (`updateErrorText`).
 
-El número sale del **título del release**, `Waltra 1.1.<corrida>`, que arma
-CI (y de las notas, como respaldo). Se compara la corrida, que crece siempre;
-el `1.x` es el nombre. Si cambia ese formato, la app deja de avisar sin un
-solo error. **Las apps anteriores a la 1.1 solo reconocen `1.0.<n>`**: por eso
-las notas llevan una línea `Compilacion 1.0.<corrida>`, y sacarla deja a esos
-teléfonos sin enterarse nunca más de una versión nueva. Para pasar a la 1.2
-se cambia el `1.1` en `ci.yml` (nombre, título y notas); el código ya acepta
-cualquier `1.x.<n>`. El vigía también lo busca, cada unas seis horas y
+La versión tiene **dos números**: el nombre (`1.1.0`, `WALTRA_VERSION` en
+`ci.yml`, se cambia a mano) y la compilación (la corrida de CI, el
+`versionCode`, que crece siempre y es lo que se compara). El release los
+lleva así, y **no es un capricho**: el título es `Waltra v1.1.0` y la
+primera línea de las notas es `Compilacion 1.0.<corrida> de v1.1.0…`. Es el
+único formato que leen bien todas las apps ya instaladas, que no se pueden
+cambiar: las 1.0 buscan `1.0.<n>` en el título y en las notas, y las
+1.1.<corrida> buscan el primer `1.x.<n>` del título y si no, el de las notas.
+Con la `v` pegada, el título no lo toma ninguna (sin ella, una 1.1.55 leería
+«compilación 0» y no se enteraría nunca más de una versión nueva). Hay un
+test que simula las dos generaciones contra lo que publica CI. Si cambia el
+formato, dejan de avisar sin un solo error. El vigía también lo busca, cada unas seis horas y
 fuera del horario de silencio, y avisa una vez por versión; como no puede
 preguntarle a Android qué versión hay instalada, se la deja la app en el
-plan (`update`). Por eso hay plan aunque las alertas estén apagadas.
+plan (`update`). Por eso hay plan aunque las alertas estén apagadas. Tocar la
+notificación abre la app solo porque el manifest declara el intent
+`.NOTIFICATION_CLICKED` con que el runner arma cada una; sin eso el toque no
+hacía nada, y hay un test que lo fija.
 `versionPublicada` en el vigía es copia de `releaseBuild`, y el test las
 compara.
 

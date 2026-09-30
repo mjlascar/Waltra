@@ -30,6 +30,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!--
+              Tocar una notificacion del vigia. El runner arma la notificacion
+              con un intent de accion ".NOTIFICATION_CLICKED" y sin clase: si
+              ninguna actividad lo declara, Android no encuentra a quien abrir
+              y el toque no hace nada, sin un solo error. Pasaba con el aviso
+              de version nueva y con todas las alertas.
+            -->
+            <intent-filter>
+                <action android:name=".NOTIFICATION_CLICKED" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+
         </activity>
 
         <provider
