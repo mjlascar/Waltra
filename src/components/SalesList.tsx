@@ -96,7 +96,7 @@ export function SalesList({ portfolio: p }: { portfolio: Portfolio }) {
       <button
         key={f.txId}
         type="button"
-        className={`block w-full text-left ${conSimbolo ? "p-3" : "py-2 pl-6 pr-3"}`}
+        className={`block w-full text-left ${conSimbolo ? "p-3" : "unfold py-2 pl-6 pr-3"}`}
         aria-expanded={expandida}
         onClick={() => setAbierta(expandida ? null : f.txId)}
       >
@@ -118,7 +118,7 @@ export function SalesList({ portfolio: p }: { portfolio: Portfolio }) {
           </div>
         </div>
         {expandida && (
-          <p className="label mt-2 leading-snug">
+          <p className="unfold label mt-2 leading-snug">
             Vendiste {fmtQty(f.quantity, 6)} y cobraste {money(f.proceeds, display)}, neto de
             comisión. Te habían costado {money(f.cost, display)}.
             {f.uncovered > 1e-9 &&
@@ -159,7 +159,7 @@ export function SalesList({ portfolio: p }: { portfolio: Portfolio }) {
           Por activo
         </button>
       </div>
-      <div className="card divide-hairline">
+      <div className="card divide-hairline stagger">
         <div className="flex items-baseline justify-between gap-3 p-3">
           <span className="label">
             {filas.length} {filas.length === 1 ? "venta" : "ventas"} · {ganadoras} con ganancia

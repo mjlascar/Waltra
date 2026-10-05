@@ -162,15 +162,22 @@ export function ValueChart({
               arriba dice en plata. Verde arriba del capital, rojo abajo; el
               relleno anterior iba de la linea al piso del eje, que no
               significaba nada. */}
-          {model.banda.map((run, i) => (
-            <path
-              key={i}
-              d={run.path}
-              fill={run.gain ? "var(--color-pos)" : "var(--color-neg)"}
-              opacity={0.16}
-            />
-          ))}
+          {/* Al aparecer, las lineas se dibujan y la banda llega despues:
+              el relleno va en un grupo para que la animacion de opacidad no
+              le pise el 0,16 a cada tramo. */}
+          <g className="draw-fill">
+            {model.banda.map((run, i) => (
+              <path
+                key={i}
+                d={run.path}
+                fill={run.gain ? "var(--color-pos)" : "var(--color-neg)"}
+                opacity={0.16}
+              />
+            ))}
+          </g>
           <path
+            className="draw-line"
+            pathLength={1}
             d={stepPath(model.capitalPts)}
             fill="none"
             stroke="var(--color-s4)"
@@ -178,6 +185,8 @@ export function ValueChart({
             strokeLinejoin="round"
           />
           <path
+            className="draw-line"
+            pathLength={1}
             d={linePath(model.valuePts)}
             fill="none"
             stroke="var(--color-s1)"

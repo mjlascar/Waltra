@@ -49,6 +49,18 @@ export default function AparienciaAjustes() {
           </p>
         </div>
       </div>
+
+      <div className="card mt-4 p-3">
+        <div className="eyebrow mb-2">Vibración al tocar</div>
+        <Segmented
+          value={settings.haptics === false ? "no" : "si"}
+          onChange={(v) => void updateSettings({ haptics: v === "si" })}
+          options={[
+            { value: "si", label: "Prendida" },
+            { value: "no", label: "Apagada" },
+          ]}
+        />
+      </div>
     </AjustesShell>
   );
 }

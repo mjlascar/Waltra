@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Header } from "@/components/ui/Header";
+import { TweenMoney } from "@/components/ui/TweenMoney";
 import { Notice } from "@/components/ui/Notice";
 import { SectionTitle, Stat } from "@/components/ui/Stat";
 import { MiniSegmented, Segmented } from "@/components/ui/Field";
@@ -593,7 +594,9 @@ export default function Overview() {
             onChange={(c) => void updateSettings({ baseCurrency: c })}
           />
         </div>
-        <div className="hero-num">{money(p.totalValueUsd, display)}</div>
+        <div className="hero-num">
+          <TweenMoney value={p.totalValueUsd} currency={display} />
+        </div>
         <div className="mt-2 flex flex-wrap items-baseline gap-x-2">
           <span className={`num text-[15px] ${pnlTone}`}>
             {money(pnl, display, { sign: true })}
@@ -734,7 +737,7 @@ export default function Overview() {
 
       <section className="mb-5">
         <SectionTitle>Cuentas</SectionTitle>
-        <div className="card divide-hairline">
+        <div className="card divide-hairline stagger">
           {full.accountViews
             .filter((a) => a.valueUsd > 0.01 || a.netContributedUsd !== 0)
             .sort((a, b) => b.valueUsd - a.valueUsd)

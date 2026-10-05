@@ -155,9 +155,13 @@ export function ReturnChart({
             />
           ))}
 
-          <path d={areaPath(model.pts, model.zero)} fill={mainColor} opacity={0.1} />
+          <g className="draw-fill">
+            <path d={areaPath(model.pts, model.zero)} fill={mainColor} opacity={0.1} />
+          </g>
           {model.comparePts && (
             <path
+              className="draw-line"
+              pathLength={1}
               d={linePath(model.comparePts)}
               fill="none"
               stroke={compare!.color}
@@ -166,6 +170,8 @@ export function ReturnChart({
             />
           )}
           <path
+            className="draw-line"
+            pathLength={1}
             d={linePath(model.pts)}
             fill="none"
             stroke={mainColor}

@@ -146,6 +146,36 @@ describe("franja sin molestar", () => {
 });
 
 describe("avisos por activo", () => {
+  it("con el mercado cerrado no repite la variación del viernes", () => {
+    // El caso real: compra de Nike un viernes, y el sábado y el domingo
+    // llegaba el mismo aviso de caída con el mismo precio.
+    const nike = plan({
+      assets: [{ sym: "NKE", src: "yahoo", ss: "NKE", cur: "USD", qty: 1, pct: 3 }],
+    });
+    const viernes = new Date(2026, 8, 25, 17, 0, 0);
+    const sabado = new Date(2026, 8, 26, 12, 0, 0);
+    const domingo = new Date(2026, 8, 27, 12, 0, 0);
+    const cierre = { price: 70, changePct: -4, at: new Date(2026, 8, 25, 17, 0, 0).getTime() };
+    const precios = { "yahoo|NKE": cierre };
+    expect(runner.decidir(nike, precios, {}, viernes).avisos).toHaveLength(1);
+    expect(runner.decidir(nike, precios, {}, sabado).avisos).toHaveLength(0);
+    expect(runner.decidir(nike, precios, {}, domingo).avisos).toHaveLength(0);
+    // Sin la hora de la rueda (BYMA), el fin de semana alcanza.
+    const sinHora = { "yahoo|NKE": { price: 70, changePct: -4 } };
+    expect(runner.decidir(nike, sinHora, {}, sabado).avisos).toHaveLength(0);
+  });
+
+  it("la cripto avisa también el fin de semana", () => {
+    const sabado = new Date(2026, 8, 26, 12, 0, 0);
+    const { avisos } = runner.decidir(
+      plan(),
+      { "binance|BTCUSDT": { price: 95000, changePct: -6.2 } },
+      {},
+      sabado,
+    );
+    expect(avisos).toHaveLength(1);
+  });
+
   it("avisa cuando pasa el umbral", () => {
     const { avisos } = runner.decidir(
       plan(),

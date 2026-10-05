@@ -61,6 +61,8 @@ export function percent(
 ): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
   const decimals = options.decimals ?? (Math.abs(value) >= 1 ? 0 : 1);
+  // Lo que redondea a cero es cero: un eje que decia "-0%" parecia un error.
+  if (Number((value * 100).toFixed(decimals)) === 0) value = 0;
   const sign = value > 0 && options.sign !== false ? "+" : "";
   return `${sign}${(value * 100).toLocaleString("es-AR", {
     minimumFractionDigits: decimals,

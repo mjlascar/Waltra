@@ -177,7 +177,12 @@ function precioYahoo(assets) {
         var price = meta.regularMarketPrice;
         var prev = meta.chartPreviousClose || meta.previousClose;
         if (typeof price !== "number" || !prev) return;
-        out[asset.ss.toUpperCase()] = { price: price, changePct: (price / prev - 1) * 100 };
+        out[asset.ss.toUpperCase()] = {
+          price: price,
+          changePct: (price / prev - 1) * 100,
+          // Cuando cerro esa rueda. Ver `ruedaVieja`.
+          at: typeof meta.regularMarketTime === "number" ? meta.regularMarketTime * 1000 : undefined,
+        };
       })
       .catch(function () {
         // Un simbolo que falla no puede tumbar a los demas.
@@ -259,6 +264,23 @@ function traerPrecios(assets) {
 /* --- decision ----------------------------------------------------------- */
 
 /**
+ * Si la cotizacion es de una rueda que no es la de hoy: un sabado, un domingo
+ * o un feriado, el proveedor sigue dando el precio y la variacion del ultimo
+ * dia habil. Cada dia nuevo se olvida lo ya avisado, asi que la misma caida
+ * del viernes se volvia a notificar el sabado y el domingo, siempre con el
+ * mismo precio. Con el mercado cerrado, hoy no hubo variacion.
+ *
+ * La cripto opera todos los dias. Yahoo dice cuando cerro la rueda; BYMA no,
+ * y ahi alcanza con el fin de semana.
+ */
+function ruedaVieja(asset, quote, ahora) {
+  if (asset.src === "binance") return false;
+  if (typeof quote.at === "number") return localDay(new Date(quote.at)) !== localDay(ahora);
+  var dow = ahora.getDay();
+  return dow === 0 || dow === 6;
+}
+
+/**
  * Que avisar, dado el plan, los precios y lo que ya se aviso hoy.
  *
  * Separado del resto a proposito: es la unica parte con reglas de verdad, y
@@ -288,7 +310,7 @@ function decidir(plan, precios, estado, ahora) {
     // Los pesos se pasan a dolares al MEP que la app dejo anotado. Sin
     // cotizacion no se convierte: mejor un total corto que uno inventado.
     var aDolar = a.cur === "ARS" ? (plan.arsPerUsd > 0 ? 1 / plan.arsPerUsd : 0) : 1;
-    var cambio = typeof q.changePct === "number" ? q.changePct : 0;
+    var cambio = typeof q.changePct === "number" && !ruedaVieja(a, q, ahora) ? q.changePct : 0;
     var anterior = q.price / (1 + cambio / 100);
     // Los bonos y las ON cotizan cada 100 nominales; la cantidad es en
     // nominales, asi que para el total el precio va por nominal.

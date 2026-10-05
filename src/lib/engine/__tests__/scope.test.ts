@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scopeToAccount } from "@/lib/engine/scope";
+import { scopeToAccount, scopeToAccounts } from "@/lib/engine/scope";
 import { computePortfolio } from "@/lib/engine/portfolio";
 import { asset, binance, cocos, series, tx } from "./helpers";
 
@@ -50,5 +50,22 @@ describe("una sola billetera", () => {
     const conSplit = [...txs, tx("split", "2024-01-20", { amount: 0, assetId: "qqq", ratio: 2 })];
     expect(scopeToAccount(conSplit, "binance").some((t) => t.type === "split")).toBe(false);
     expect(scopeToAccount(conSplit, "cocos").some((t) => t.type === "split")).toBe(true);
+  });
+});
+
+describe("varias cuentas juntas", () => {
+  it("las dos juntas son la cartera entera: la transferencia sigue siendo interna", () => {
+    const entera = correr(txs);
+    const juntas = correr(scopeToAccounts(txs, ["cocos", "binance"]));
+    expect(juntas.netContributedUsd).toBeCloseTo(entera.netContributedUsd);
+    expect(juntas.totalValueUsd).toBeCloseTo(entera.totalValueUsd);
+    expect(juntas.totalPnlUsd).toBeCloseTo(entera.totalPnlUsd);
+  });
+
+  it("con una sola, es lo mismo que la billetera sola", () => {
+    const sola = correr(scopeToAccount(txs, "binance"), [binance]);
+    const lista = correr(scopeToAccounts(txs, ["binance"]), [binance]);
+    expect(lista.totalValueUsd).toBeCloseTo(sola.totalValueUsd);
+    expect(lista.netContributedUsd).toBeCloseTo(sola.netContributedUsd);
   });
 });

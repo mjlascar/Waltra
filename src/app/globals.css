@@ -150,7 +150,10 @@ body {
     border: 1px solid var(--color-line-strong);
     background: var(--color-surface-2);
     color: var(--color-ink);
-    transition: background 120ms ease, border-color 120ms ease;
+    transition:
+      background 120ms ease,
+      border-color 120ms ease,
+      transform 90ms var(--ease-out);
   }
   .btn:active {
     background: var(--color-surface-3);
@@ -263,6 +266,9 @@ body {
     color: var(--color-ink-3);
     background: transparent;
     border-right: 1px solid var(--color-line-strong);
+    transition:
+      background 180ms var(--ease-out),
+      color 180ms var(--ease-out);
   }
   .segmented > button:last-child {
     border-right: 0;
@@ -279,6 +285,27 @@ body {
   }
   .neg {
     color: var(--color-neg);
+  }
+
+  /* Filtro que se prende y se apaga: cuentas y tipos en Cartera. */
+  .filter-chip {
+    height: 28px;
+    padding-inline: 10px;
+    font-size: 12px;
+    border: 1px solid var(--color-line-strong);
+    color: var(--color-ink-2);
+    background: transparent;
+    transition:
+      background 160ms var(--ease-out),
+      color 160ms var(--ease-out),
+      border-color 160ms var(--ease-out),
+      transform 90ms var(--ease-out);
+  }
+  .filter-chip[data-active="true"] {
+    background: var(--color-ink);
+    border-color: var(--color-ink);
+    color: var(--color-bg);
+    font-weight: 500;
   }
 
   .chip {
@@ -321,6 +348,141 @@ body {
   }
 }
 
+/*
+ * Movimiento.
+ *
+ * Corto y con la curva que frena al final: lo que entra llega rapido y se
+ * acomoda, que es lo que se siente caro. Nada pasa de un tercio de segundo,
+ * salvo las lineas de los graficos, que se dibujan. Y nada se mueve si el
+ * sistema pidio menos movimiento (abajo).
+ */
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* Lo que se toca se hunde un poco, como un boton de verdad. */
+.btn:active:not(:disabled),
+.chip:active,
+.filter-chip:active,
+.segmented > button:active {
+  transform: scale(0.97);
+}
+
+/* La hoja sube desde abajo y el fondo se oscurece; al cerrar, al reves. */
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes sheet-out {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.sheet-panel {
+  animation: sheet-in 320ms var(--ease-out) backwards;
+}
+.sheet-backdrop {
+  animation: fade-in 240ms var(--ease-out) both;
+}
+.sheet-closing .sheet-panel {
+  animation: sheet-out 200ms var(--ease-in) both;
+}
+.sheet-closing .sheet-backdrop {
+  animation: fade-out 200ms var(--ease-in) both;
+}
+
+/* Cada pantalla entra subiendo apenas.
+
+   `backwards` y no `both`, en todas las entradas: con `both` el transform
+   final queda puesto, y un elemento con transform es el contenedor de sus
+   hijos `position: fixed`. Las hojas viven adentro de cada pantalla, y se
+   abrian pegadas a ella en vez de a la ventana. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.page-enter {
+  animation: rise-in 280ms var(--ease-out) backwards;
+}
+
+/* Las filas de una lista entran de a una. Despues de la decima ya no se
+   nota, y esperar mas seria hacer esperar. */
+.stagger > * {
+  animation: rise-in 300ms var(--ease-out) backwards;
+}
+.stagger > :nth-child(2) { animation-delay: 30ms; }
+.stagger > :nth-child(3) { animation-delay: 60ms; }
+.stagger > :nth-child(4) { animation-delay: 90ms; }
+.stagger > :nth-child(5) { animation-delay: 120ms; }
+.stagger > :nth-child(6) { animation-delay: 150ms; }
+.stagger > :nth-child(7) { animation-delay: 170ms; }
+.stagger > :nth-child(8) { animation-delay: 190ms; }
+.stagger > :nth-child(9) { animation-delay: 210ms; }
+.stagger > :nth-child(n + 10) { animation-delay: 230ms; }
+
+/* Lo que se despliega (las ventas de un activo) baja desde donde estaba. */
+@keyframes unfold {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.unfold {
+  animation: unfold 220ms var(--ease-out) backwards;
+}
+
+/* Las lineas de los graficos se dibujan de izquierda a derecha. El path
+   lleva pathLength="1", asi que el trazo mide 1 sin importar su largo. */
+@keyframes draw-line {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.draw-line {
+  stroke-dasharray: 1;
+  animation: draw-line 700ms var(--ease-out) both;
+}
+.draw-fill {
+  animation: fade-in 500ms var(--ease-out) 200ms both;
+}
+
 /* Respeta a quien pidio menos movimiento. */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -328,6 +490,7 @@ body {
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
   }
 }
 

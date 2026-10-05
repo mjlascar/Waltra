@@ -175,7 +175,7 @@ export default function Movimientos() {
             <div className="eyebrow mb-1.5">
               {MONTHS[Number(month) - 1]} {year}
             </div>
-            <div className="card divide-hairline">
+            <div className="card divide-hairline stagger">
               {rows.map((tx) => {
                 const asset = assetOf(tx);
                 const outflow =

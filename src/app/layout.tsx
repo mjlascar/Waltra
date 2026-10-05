@@ -10,6 +10,8 @@ import { PullToRefresh } from "@/components/PullToRefresh";
 import { NativeShell } from "@/components/NativeShell";
 import { AlertsMirror } from "@/components/AlertsMirror";
 import { ThemeSync } from "@/components/ThemeSync";
+import { HapticTouch } from "@/components/HapticTouch";
+import { PageTransition } from "@/components/PageTransition";
 
 // Pone el tema antes de que se pinte nada: sin esto, quien usa blanco y negro
 // ve la app en color un instante al abrirla. La clave es la de `ThemeSync`.
@@ -60,12 +62,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <StoreProvider>
           <PullToRefresh />
-          <main className="shell pt-3">{children}</main>
+          <main className="shell pt-3">
+            <PageTransition>{children}</PageTransition>
+          </main>
           <Nav />
           <ServiceWorker />
           <NativeShell />
           <AlertsMirror />
           <ThemeSync />
+          <HapticTouch />
         </StoreProvider>
       </body>
     </html>

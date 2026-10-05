@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { Header } from "@/components/ui/Header";
+import { TweenMoney } from "@/components/ui/TweenMoney";
 import { SectionTitle } from "@/components/ui/Stat";
-import { Segmented } from "@/components/ui/Field";
 import { PnlBars } from "@/components/charts/PnlBars";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { PositionSheet } from "@/components/PositionSheet";
@@ -18,12 +18,17 @@ import { getDb } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 import type { PositionView } from "@/lib/engine/portfolio";
 
-type Group = "activo" | "cuenta" | "tipo";
-
 export default function Cartera() {
-  const { portfolio: p, accounts, assets, ready, saveAsset, refresh } = useStore();
-  const display = p.base;
-  const [group, setGroup] = useState<Group>("activo");
+  const { portfolio: full, portfolioFor, accounts, assets, ready, saveAsset, refresh } = useStore();
+  const display = full.base;
+  /**
+   * Los filtros: cuentas y tipos, de a varios. Vacio es todo. No cambian la
+   * pantalla, la recortan: las mismas metricas, la misma lista y los mismos
+   * resultados, solo de lo elegido. Antes eran tres vistas distintas, y la de
+   * cuenta y la de tipo decian mucho menos que la de activo.
+   */
+  const [cuentasElegidas, setCuentasElegidas] = useState<string[]>([]);
+  const [tiposElegidos, setTiposElegidos] = useState<string[]>([]);
   /**
    * Cuantos activos se ven: 5 al entrar, 10 mas con un toque y todos con el
    * segundo. Sin el paso intermedio, llegar al final con muchos activos eran
@@ -54,13 +59,61 @@ export default function Cartera() {
     return raw.map((price) => price / pos.avgCost);
   };
 
-  const byKind = useMemo(() => {
-    const totals = new Map<string, number>();
-    for (const pos of p.positions) {
-      totals.set(pos.kind, (totals.get(pos.kind) ?? 0) + pos.valueUsd);
-    }
-    return [...totals.entries()].sort((a, b) => b[1] - a[1]);
-  }, [p.positions]);
+  // Las cuentas que tienen algo, y los tipos de lo que se tuvo alguna vez.
+  const cuentasConDatos = useMemo(
+    () =>
+      full.accountViews
+        .filter((a) => a.valueUsd > 0.01 || a.netContributedUsd !== 0)
+        .sort((a, b) => b.valueUsd - a.valueUsd),
+    [full.accountViews],
+  );
+  const porCuenta = useMemo(
+    () =>
+      cuentasElegidas.length > 0 && cuentasElegidas.length < cuentasConDatos.length
+        ? portfolioFor(cuentasElegidas)
+        : full,
+    [full, portfolioFor, cuentasElegidas, cuentasConDatos.length],
+  );
+  // Los tipos de lo que hay en las cuentas elegidas: con Binance sola no se
+  // ofrece CEDEAR. Los ya elegidos quedan, para poder apagarlos.
+  const tipos = useMemo(() => {
+    const vistos = new Set<string>(tiposElegidos);
+    for (const pos of porCuenta.positions) vistos.add(pos.kind);
+    for (const pos of porCuenta.closedPositions) vistos.add(pos.kind);
+    return [...vistos];
+  }, [porCuenta.positions, porCuenta.closedPositions, tiposElegidos]);
+
+  /**
+   * Lo que se mira. Por cuenta, la cartera recortada a esas cuentas, con su
+   * capital y sus transferencias bien contadas (ver `scopeToAccounts`). Por
+   * tipo, solo sus activos: la liquidez no tiene tipo, asi que no se muestra.
+   */
+  const p = useMemo(() => {
+    if (tiposElegidos.length === 0) return porCuenta;
+    const entra = (kind: string) => tiposElegidos.includes(kind);
+    const positions = porCuenta.positions.filter((pos) => entra(pos.kind));
+    const closedPositions = porCuenta.closedPositions.filter((pos) => entra(pos.kind));
+    const kindOf = new Map(assets.map((a) => [a.id, a.kind as string]));
+    const sales = porCuenta.sales.filter((s) => entra(kindOf.get(s.assetId) ?? ""));
+    const investedUsd = positions.reduce((acc, pos) => acc + pos.valueUsd, 0);
+    return {
+      ...porCuenta,
+      positions: positions.map((pos) => ({
+        ...pos,
+        weight: investedUsd > 0 ? pos.valueUsd / investedUsd : 0,
+      })),
+      closedPositions,
+      sales,
+      investedUsd,
+      unrealizedUsd: positions.reduce((acc, pos) => acc + pos.unrealizedUsd, 0),
+      realizedUsd: sales.reduce((acc, v) => acc + v.pnl, 0),
+      cashUsd: 0,
+    };
+  }, [porCuenta, tiposElegidos, assets]);
+  const filtrando = cuentasElegidas.length > 0 || tiposElegidos.length > 0;
+
+  const alternar = (lista: string[], valor: string) =>
+    lista.includes(valor) ? lista.filter((v) => v !== valor) : [...lista, valor];
 
   const pnlRows = useMemo(
     () =>
@@ -108,7 +161,9 @@ export default function Cartera() {
 
       <section className="mb-4">
         <div className="eyebrow mb-2">Invertido</div>
-        <div className="hero-num">{money(p.investedUsd, display)}</div>
+        <div className="hero-num">
+          <TweenMoney value={p.investedUsd} currency={display} />
+        </div>
         <div className="mt-2 flex items-baseline gap-2">
           <span className={`num text-[14px] ${p.unrealizedUsd >= 0 ? "pos" : "neg"}`}>
             {money(p.unrealizedUsd, display, { sign: true })}
@@ -128,58 +183,78 @@ export default function Cartera() {
         )}
       </section>
 
-      <div className="mb-3">
-        <Segmented
-          value={group}
-          onChange={setGroup}
-          options={[
-            { value: "activo", label: "Por activo" },
-            { value: "cuenta", label: "Por cuenta" },
-            { value: "tipo", label: "Por tipo" },
-          ]}
-        />
-      </div>
-
-      {group === "activo" && (
-        <section className="card divide-hairline mb-5">
-          {p.positions.slice(0, cuantosActivos).map((pos) => (
-            <button
-              key={pos.assetId}
-              onClick={() => setSelected(pos)}
-              className="flex w-full items-center gap-2.5 p-3 text-left"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-[14px] font-medium">{pos.symbol}</span>
-                  <span className="num text-[10px]" style={{ color: "var(--color-ink-3)" }}>
-                    {percent(pos.weight, { decimals: 0, sign: false })}
-                  </span>
-                </div>
-                <div className="label mt-0.5 truncate">
-                  {fmtQty(pos.quantity, 4)} · {money(pos.avgCostUsd, display)}
-                </div>
-              </div>
-
-              <Sparkline
-                values={sparkFor(pos)}
-                tone={pos.unrealizedUsd >= 0 ? "var(--color-pos)" : "var(--color-neg)"}
-              />
-
-              <div className="shrink-0 text-right">
-                <div className="num text-[13px]">{money(pos.valueUsd, display, { compact: true })}</div>
-                <div className={`num text-[11px] ${pos.unrealizedUsd >= 0 ? "pos" : "neg"}`}>
-                  {percent(pos.unrealizedPct, { decimals: 1 })}
-                </div>
-              </div>
-              <IconChevron size={13} className="shrink-0" />
-            </button>
-          ))}
-          {p.positions.length === 0 && (
-            <p className="label p-6 text-center">Todavía no compraste nada.</p>
+      {(cuentasConDatos.length > 1 || tipos.length > 1) && (
+        <div className="mb-3 space-y-2">
+          {cuentasConDatos.length > 1 && (
+            <FiltroFila
+              titulo="Cuentas"
+              opciones={cuentasConDatos.map((c) => ({ value: c.accountId, label: c.name }))}
+              elegidos={cuentasElegidas}
+              onToggle={(v) => setCuentasElegidas((prev) => alternar(prev, v))}
+            />
           )}
-        </section>
+          {tipos.length > 1 && (
+            <FiltroFila
+              titulo="Tipos"
+              opciones={tipos.map((k) => ({ value: k, label: KIND_LABEL[k] ?? k }))}
+              elegidos={tiposElegidos}
+              onToggle={(v) => setTiposElegidos((prev) => alternar(prev, v))}
+            />
+          )}
+          {filtrando && (
+            <button
+              className="label underline"
+              onClick={() => {
+                setCuentasElegidas([]);
+                setTiposElegidos([]);
+              }}
+            >
+              Ver todo
+            </button>
+          )}
+        </div>
       )}
-      {group === "activo" && p.positions.length > 5 && (
+
+      <section className="card divide-hairline stagger mb-5">
+        {p.positions.slice(0, cuantosActivos).map((pos) => (
+          <button
+            key={pos.assetId}
+            onClick={() => setSelected(pos)}
+            className="flex w-full items-center gap-2.5 p-3 text-left"
+          >
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline gap-2">
+                <span className="text-[14px] font-medium">{pos.symbol}</span>
+                <span className="num text-[10px]" style={{ color: "var(--color-ink-3)" }}>
+                  {percent(pos.weight, { decimals: 0, sign: false })}
+                </span>
+              </div>
+              <div className="label mt-0.5 truncate">
+                {fmtQty(pos.quantity, 4)} · {money(pos.avgCostUsd, display)}
+              </div>
+            </div>
+
+            <Sparkline
+              values={sparkFor(pos)}
+              tone={pos.unrealizedUsd >= 0 ? "var(--color-pos)" : "var(--color-neg)"}
+            />
+
+            <div className="shrink-0 text-right">
+              <div className="num text-[13px]">{money(pos.valueUsd, display, { compact: true })}</div>
+              <div className={`num text-[11px] ${pos.unrealizedUsd >= 0 ? "pos" : "neg"}`}>
+                {percent(pos.unrealizedPct, { decimals: 1 })}
+              </div>
+            </div>
+            <IconChevron size={13} className="shrink-0" />
+          </button>
+        ))}
+        {p.positions.length === 0 && (
+          <p className="label p-6 text-center">
+            {filtrando ? "Nada con estos filtros." : "Todavía no compraste nada."}
+          </p>
+        )}
+      </section>
+      {p.positions.length > 5 && (
         <div className="-mt-3 mb-5">
           <button
             className="chip"
@@ -200,75 +275,6 @@ export default function Cartera() {
                 : "Mostrar todos"}
           </button>
         </div>
-      )}
-
-      {group === "cuenta" && (
-        <section className="mb-5 space-y-3">
-          {[...p.accountViews]
-            .sort((a, b) => b.valueUsd - a.valueUsd)
-            .map((account) => {
-              const held = p.positions.filter((pos) =>
-                pos.accounts.some((a) => a.accountId === account.accountId),
-              );
-              return (
-                <div key={account.accountId} className="card">
-                  <div className="flex items-center justify-between p-3">
-                    <div>
-                      <div className="text-[14px] font-medium">{account.name}</div>
-                      <div className="label mt-0.5">
-                        {held.length} {held.length === 1 ? "posición" : "posiciones"} ·{" "}
-                        {money(account.cashUsd, display, { compact: true })} líquido
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="num text-[14px]">
-                        {money(account.valueUsd, display, { compact: true })}
-                      </div>
-                      <div className={`num text-[11px] ${account.pnlUsd >= 0 ? "pos" : "neg"}`}>
-                        {money(account.pnlUsd, display, { compact: true, sign: true })}
-                      </div>
-                    </div>
-                  </div>
-                  {held.length > 0 && (
-                    <div className="divide-hairline hairline">
-                      {held.map((pos) => {
-                        const qty =
-                          pos.accounts.find((a) => a.accountId === account.accountId)?.quantity ?? 0;
-                        const share = pos.quantity > 0 ? qty / pos.quantity : 0;
-                        return (
-                          <button
-                            key={pos.assetId}
-                            onClick={() => setSelected(pos)}
-                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
-                          >
-                            <span className="min-w-0 flex-1 truncate text-[13px]">{pos.symbol}</span>
-                            <span className="label shrink-0">{fmtQty(qty, 4)}</span>
-                            <span className="num shrink-0 text-[12px]">
-                              {money(pos.valueUsd * share, display, { compact: true })}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-        </section>
-      )}
-
-      {group === "tipo" && (
-        <section className="card divide-hairline mb-5">
-          {byKind.map(([kind, value]) => (
-            <div key={kind} className="flex items-center gap-3 p-3">
-              <span className="min-w-0 flex-1 text-[13px]">{KIND_LABEL[kind] ?? kind}</span>
-              <span className="num text-[12px]" style={{ color: "var(--color-ink-3)" }}>
-                {percent(p.investedUsd > 0 ? value / p.investedUsd : 0, { decimals: 0, sign: false })}
-              </span>
-              <span className="num text-[13px]">{money(value, display, { compact: true })}</span>
-            </div>
-          ))}
-        </section>
       )}
 
       {pnlRows.length > 0 && (
@@ -299,6 +305,46 @@ export default function Cartera() {
           onDelete={async () => setFixing(null)}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Una fila de filtros que se prenden y apagan de a uno, varios a la vez.
+ * Ninguno prendido es todo: no hace falta un "Todas" que compita con los
+ * demas.
+ */
+function FiltroFila({
+  titulo,
+  opciones,
+  elegidos,
+  onToggle,
+}: {
+  titulo: string;
+  opciones: { value: string; label: string }[];
+  elegidos: string[];
+  onToggle: (value: string) => void;
+}) {
+  return (
+    <div role="group" aria-label={titulo} className="flex items-center gap-2">
+      <span className="eyebrow w-14 shrink-0">{titulo}</span>
+      <div className="no-scrollbar flex min-w-0 gap-1.5 overflow-x-auto">
+        {opciones.map((o) => {
+          const activo = elegidos.includes(o.value);
+          return (
+            <button
+              key={o.value}
+              type="button"
+              aria-pressed={activo}
+              onClick={() => onToggle(o.value)}
+              className="filter-chip shrink-0"
+              data-active={activo}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

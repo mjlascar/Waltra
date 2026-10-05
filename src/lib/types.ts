@@ -227,6 +227,8 @@ export interface Settings {
   notifAsked?: boolean;
   /** Colores de la interfaz. "mono" es blanco y negro, para pantallas en grises. */
   theme?: "color" | "mono";
+  /** Vibrar al tocar botones. Prendido si falta. */
+  haptics?: boolean;
 }
 
 export interface InsightSource {

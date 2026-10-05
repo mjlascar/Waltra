@@ -803,6 +803,30 @@ await goto("/cartera");
 }
 check("la lista de ventas", await has("Resultado realizado"));
 {
+  // Los filtros recortan la misma pantalla: una cuenta, un tipo, o varios.
+  const total = async () => normalize(await page.locator(".hero-num").first().innerText());
+  const antes = await total();
+  const cuentas = page.getByRole("group", { name: "Cuentas" });
+  check("se filtra por cuenta", (await cuentas.count()) === 1);
+  await cuentas.getByRole("button", { name: "Binance" }).click();
+  await page.waitForTimeout(900);
+  const soloBinance = await total();
+  check("el total pasa a ser el de esa cuenta", soloBinance !== antes, `${antes} → ${soloBinance}`);
+  check("y se puede volver a todo", await has("Ver todo"));
+  await cuentas.getByRole("button", { name: /Cocos/ }).click();
+  await page.waitForTimeout(900);
+  check("con las dos elegidas es la cartera entera", (await total()) === antes, `${antes} vs ${await total()}`);
+  await page.getByRole("button", { name: "Ver todo" }).click();
+  await page.waitForTimeout(600);
+  const tipos = page.getByRole("group", { name: "Tipos" });
+  await tipos.getByRole("button", { name: "Cripto" }).click();
+  await page.waitForTimeout(900);
+  const lista = normalize(await page.locator("section.card").first().innerText());
+  check("por tipo, solo esos activos", !/\.ba\b/.test(lista) && /btc|eth|sol/.test(lista), lista.slice(0, 200));
+  await page.getByRole("button", { name: "Ver todo" }).click();
+  await page.waitForTimeout(600);
+}
+{
   // De entrada, cinco activos; el botón abre de a diez y después todos.
   const filas = () => page.locator("section.card").first().locator("button").count();
   const boton = page.getByRole("button", { name: /^Mostrar (10 más|todos)$/ });

@@ -109,10 +109,11 @@ await page.waitForTimeout(400);
 await shot("carga-datos", true);
 await page.keyboard.press("Escape");
 
-// Cartera agrupada por cuenta.
+// Cartera filtrada a una cuenta.
 await page.goto(`${BASE}/cartera`, { waitUntil: "networkidle" });
 await page.waitForTimeout(800);
-await page.getByRole("button", { name: /Por cuenta/ }).click();
+await page.getByRole("group", { name: "Cuentas" }).getByRole("button").first().click();
+await page.waitForTimeout(600);
 await shot("cartera-cuentas", true);
 
 // Modo rendimiento, con el índice de referencia superpuesto.

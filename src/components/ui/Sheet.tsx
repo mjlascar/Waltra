@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { IconClose } from "@/components/icons";
 import { overlayClosed, overlayOpened } from "@/components/ui/overlay";
 
@@ -22,11 +22,31 @@ export function Sheet({
   footer?: ReactNode;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  /**
+   * Cerrando: la hoja baja antes de desaparecer. Solo cuando la cierra el
+   * usuario (la X, el fondo, Escape); cuando la cierra la app despues de
+   * guardar, desaparece de una, porque ya hay otra cosa pasando.
+   */
+  const [cerrando, setCerrando] = useState(false);
+  const cerrar = useCallback(() => {
+    if (cerrando) return;
+    const quieto =
+      typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (quieto) {
+      onClose();
+      return;
+    }
+    setCerrando(true);
+    window.setTimeout(() => {
+      setCerrando(false);
+      onClose();
+    }, 190);
+  }, [cerrando, onClose]);
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") cerrar();
     };
     document.addEventListener("keydown", onKey);
     const previous = document.body.style.overflow;
@@ -37,18 +57,18 @@ export function Sheet({
       document.body.style.overflow = previous;
       overlayClosed();
     };
-  }, [open, onClose]);
+  }, [open, cerrar]);
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end">
+    <div className={`fixed inset-0 z-50 flex flex-col justify-end ${cerrando ? "sheet-closing" : ""}`}>
       {/* El fondo cierra al tocarlo, pero no es un control anunciable: para
           teclado y lectores de pantalla estan la X del encabezado y Escape. */}
       <div
         aria-hidden
-        className="absolute inset-0 bg-black/70"
-        onClick={onClose}
+        className="sheet-backdrop absolute inset-0 bg-black/70"
+        onClick={cerrar}
       />
       {/* El panel es una columna flexible: el encabezado y el pie miden lo que
           miden, y el cuerpo se queda con el resto. Antes el alto del cuerpo se
@@ -60,7 +80,7 @@ export function Sheet({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="relative flex w-full flex-col"
+        className="sheet-panel relative flex w-full flex-col"
         style={{
           background: "var(--color-bg)",
           borderTop: "1px solid var(--color-line-strong)",
@@ -74,7 +94,7 @@ export function Sheet({
           style={{ height: 52, borderBottom: "1px solid var(--color-line)" }}
         >
           <h2 className="text-[15px] font-semibold">{title}</h2>
-          <button onClick={onClose} className="p-2 -mr-2" aria-label="Cerrar" style={{ color: "var(--color-ink-2)" }}>
+          <button onClick={cerrar} className="p-2 -mr-2" aria-label="Cerrar" style={{ color: "var(--color-ink-2)" }}>
             <IconClose size={18} />
           </button>
         </div>

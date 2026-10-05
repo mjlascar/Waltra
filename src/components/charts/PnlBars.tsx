@@ -69,7 +69,7 @@ export function PnlBars({
 
 function Filas({ rows, max, currency }: { rows: PnlRow[]; max: number; currency: Currency }) {
   return (
-    <ul className="divide-hairline">
+    <ul className="divide-hairline stagger">
       {rows.map((row) => {
         const ratio = Math.abs(row.value) / max;
         const positive = row.value >= 0;

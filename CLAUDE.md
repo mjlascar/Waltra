@@ -224,6 +224,12 @@ el pedido a los insights, el aviso de efectivo al cargar— usa
 moneda en que se cargaron: son el registro de lo que pasó. Hay invariantes
 en pesos en `invariantes.test.ts`.
 
+**Cartera se filtra, no se reagrupa.** Cuentas y tipos, de a varios, y
+ninguno elegido es todo: la pantalla es la misma (total, lista, sin realizar,
+ventas), recortada. Por cuenta usa `portfolioFor(cuentas)` (`scopeToAccounts`:
+una transferencia entre dos elegidas sigue siendo interna); por tipo filtra
+los activos y no muestra liquidez, que no tiene tipo.
+
 **Cada venta queda con su resultado** (`portfolio.sales`, `SalesList` en
 Cartera, "Resultado realizado"; se ordena por fecha o por resultado y se
 agrupa por activo). Con costo promedio no hay una compra que empareje a cada venta: el
@@ -311,6 +317,24 @@ el rojo son el mismo gris. Redefine los tokens en `globals.css`, sube los
 contrastes y marca la ganancia en negrita y la pérdida en negrita
 subrayada, además del signo. Un script en el `<head>` lo pone antes de pintar
 para que no se vea un instante en color.
+
+**Movimiento** (al final de `globals.css`): hojas que suben y bajan, cada
+pantalla que entra subiendo apenas (`PageTransition`), filas que entran
+escalonadas (`.stagger`), las líneas de los gráficos que se dibujan
+(`pathLength={1}` + `.draw-line`), el número grande que corre hasta su valor
+nuevo (`TweenMoney`) y lo que se toca que se hunde. Corto, con la curva que
+frena al final, y nada si el sistema pide menos movimiento. **Las entradas
+usan `backwards`, nunca `both`**: con `both` queda puesto el transform final,
+un elemento con transform es el contenedor de sus hijos `position: fixed`, y
+las hojas, que viven adentro de cada pantalla, se abrían pegadas a ella. Un
+relleno que se anima va en un `<g>`: la animación de opacidad le pisaría la
+suya.
+
+**Vibración al tocar** (`HapticTouch`, `src/lib/haptics.ts`): un solo
+escuchador de `click` para toda la app, así los botones nuevos la tienen sin
+acordarse. En `click` y no en `pointerdown`, para que un scroll que arranca
+arriba de un botón no vibre. En el APK, el plugin de Capacitor; en la web,
+`navigator.vibrate`. Se apaga en Ajustes → Apariencia.
 
 Ninguna información depende del color solo: siempre hay signo, etiqueta o
 ícono al lado. Con dos o más series hay leyenda; con una, no.
@@ -500,6 +524,13 @@ El plan viaja por las preferencias compartidas de Android, y la app y el vigía
 solo se ven si **`KV_GROUP` en `src/lib/alerts/mirror.ts` es igual al `label`
 del runner en `capacitor.config.ts`**. Si se separan, las alertas dejan de
 salir sin un solo error en ningún lado.
+
+**Con el mercado cerrado no hay variación.** Un sábado, un domingo o un
+feriado, Yahoo y BYMA siguen dando el precio y la variación del último día
+hábil, y como lo avisado se olvida cada día, la caída del viernes se volvía a
+notificar el sábado y el domingo con el mismo precio. `ruedaVieja` lo decide:
+para Yahoo, por la hora de la rueda (`regularMarketTime`); para BYMA, que no
+la da, por el fin de semana. La cripto opera siempre.
 
 Android decide cuándo corre: el intervalo que se pide es un pedido, no una
 promesa, y nunca baja de 15 minutos. La pantalla lo dice así en vez de prometer

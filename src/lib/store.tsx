@@ -23,7 +23,7 @@ import type {
 } from "@/lib/types";
 import { DEFAULT_SETTINGS, ensureSeeded, getDb, type WaltraDB } from "@/lib/db";
 import { computePortfolio, type Portfolio } from "@/lib/engine/portfolio";
-import { scopeToAccount } from "@/lib/engine/scope";
+import { scopeToAccounts } from "@/lib/engine/scope";
 import { addDays, today, toDay, type DayKey } from "@/lib/date";
 import { FxTable } from "@/lib/engine/fx";
 import { syncMarket, type BackendContext } from "@/lib/backend";
@@ -72,7 +72,7 @@ interface StoreValue {
    * La cartera vista desde una sola cuenta, para filtrar el grafico por
    * billetera. Ver `engine/scope.ts`.
    */
-  portfolioFor: (accountId: string) => Portfolio;
+  portfolioFor: (accountIds: string | string[]) => Portfolio;
   /** El dolar MEP de un dia (0 si no hay), para pasar el indice a pesos. */
   fxAt: (day: DayKey) => number;
 }
@@ -358,16 +358,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       refresh,
       backend,
       fxAt: (day) => fxTable.at(day),
-      portfolioFor: (accountId) =>
-        computePortfolio({
-          transactions: scopeToAccount(transactions, accountId),
+      portfolioFor: (accountIds) => {
+        const ids = typeof accountIds === "string" ? [accountIds] : accountIds;
+        return computePortfolio({
+          transactions: scopeToAccounts(transactions, ids),
           assets,
-          accounts: accounts.filter((a) => a.id === accountId),
+          accounts: accounts.filter((a) => ids.includes(a.id)),
           priceSeries,
           quotes,
           fxRates,
           base,
-        }),
+        });
+      },
       saveTransaction: async (tx) => {
         await db?.transactions.put({ ...tx, updatedAt: new Date().toISOString() });
       },
