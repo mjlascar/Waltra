@@ -572,7 +572,12 @@ test que simula las dos generaciones contra lo que publica CI. Si cambia el
 formato, dejan de avisar sin un solo error. El vigía también lo busca, cada unas seis horas y
 fuera del horario de silencio, y avisa una vez por versión; como no puede
 preguntarle a Android qué versión hay instalada, se la deja la app en el
-plan (`update`). Por eso hay plan aunque las alertas estén apagadas. Tocar la
+plan (`update`). Por eso hay plan aunque las alertas estén apagadas. Revisa
+cada unas dos horas. Un aviso que no llega no deja rastro en ningún lado, así
+que el vigía anota cuándo corrió (`ran`), qué compilación vio (`upd.seen`) y,
+si falló, por qué (`upd.err`, sin tocar `upd.at` para que reintente); Ajustes
+→ Actualizaciones lo muestra, con un botón que lo hace correr en el momento
+(`runWatcherNow`, `dispatchEvent` con `forzar`). Tocar la
 notificación abre la app solo porque el manifest declara el intent
 `.NOTIFICATION_CLICKED` con que el runner arma cada una; sin eso el toque no
 hacía nada, y hay un test que lo fija.

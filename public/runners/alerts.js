@@ -478,7 +478,7 @@ function recordatorios(plan, estado, ahora) {
  * GitHub. No en cada corrida: GitHub deja 60 pedidos por hora sin
  * credenciales y una version nueva no es urgente.
  */
-var VERSION_CADA_MS = 6 * 60 * 60 * 1000;
+var VERSION_CADA_MS = 2 * 60 * 60 * 1000;
 
 /**
  * El numero de compilacion de un release, el <n> de "1.0.<n>" en el titulo o
@@ -497,9 +497,13 @@ function versionPublicada(release) {
   return null;
 }
 
-/** Si toca preguntar: hay que saber la version instalada, y no en silencio. */
-function tocaRevisarVersion(plan, estado, ahora) {
+/**
+ * Si toca preguntar: hay que saber la version instalada, y no en silencio.
+ * `forzar` es el boton de Ajustes, que quiere la respuesta ya.
+ */
+function tocaRevisarVersion(plan, estado, ahora, forzar) {
   if (!plan.update || !(plan.update.build > 0) || !plan.update.api) return false;
+  if (forzar) return true;
   if (enSilencio(plan.quiet, ahora.getHours())) return false;
   var ultima = estado.upd && estado.upd.at;
   return !(typeof ultima === "number" && ahora.getTime() - ultima < VERSION_CADA_MS);
@@ -511,7 +515,9 @@ function tocaRevisarVersion(plan, estado, ahora) {
  */
 function decidirVersion(plan, publicada, estado, ahora) {
   var avisada = estado.upd ? estado.upd.notified : undefined;
-  var upd = { at: ahora.getTime(), notified: avisada };
+  // `seen` es lo que vio, para que Ajustes pueda mostrar que el vigia pregunto
+  // y que le contestaron. Sin esto, un aviso que no llega no deja rastro.
+  var upd = { at: ahora.getTime(), notified: avisada, seen: publicada };
   if (typeof publicada !== "number" || !(publicada > plan.update.build) || avisada === publicada) {
     return { aviso: null, upd: upd };
   }
@@ -529,7 +535,7 @@ function decidirVersion(plan, publicada, estado, ahora) {
 
 /* --- corrida ------------------------------------------------------------ */
 
-function correr() {
+function correr(forzar) {
   var plan = kvRead(PLAN_KEY);
   if (!plan || plan.v !== 1) return Promise.resolve("sin plan");
   var activos = plan.assets || [];
@@ -550,9 +556,13 @@ function correr() {
   // undefined: no se pregunto, o GitHub no contesto. Se vuelve a intentar en
   // la proxima corrida sin anotar nada.
   var estadoPrevio = kvRead(STATE_KEY) || {};
+  // El motivo de un fallo se anota aparte, sin tocar `at`: la proxima corrida
+  // tiene que volver a intentar, y Ajustes tiene que poder decir por que no.
+  var fallo = null;
   var version =
-    hayRed && tocaRevisarVersion(plan, estadoPrevio, new Date())
-      ? traerJson(plan.update.api).then(versionPublicada, function () {
+    hayRed && tocaRevisarVersion(plan, estadoPrevio, new Date(), forzar)
+      ? traerJson(plan.update.api).then(versionPublicada, function (err) {
+          fallo = err && err.message ? err.message : "sin respuesta";
           return undefined;
         })
       : Promise.resolve(undefined);
@@ -568,7 +578,19 @@ function correr() {
       var v = decidirVersion(plan, publicada, estado, ahora);
       salida.estado.upd = v.upd;
       if (v.aviso) salida.avisos.push(v.aviso);
+    } else if (fallo) {
+      var previa = estado.upd || {};
+      salida.estado.upd = {
+        at: previa.at,
+        notified: previa.notified,
+        seen: previa.seen,
+        err: fallo,
+        errAt: ahora.getTime(),
+      };
     }
+    // Cuando corrio por ultima vez: si Android no lo deja correr, es lo
+    // primero que hay que saber.
+    salida.estado.ran = ahora.getTime();
     kvWrite(STATE_KEY, salida.estado);
 
     if (salida.avisos.length === 0) return "sin novedades";
@@ -595,9 +617,9 @@ function correr() {
   });
 }
 
-addEventListener("checkPrices", function (resolve, reject) {
+addEventListener("checkPrices", function (resolve, reject, args) {
   try {
-    correr().then(
+    correr(Boolean(args && args.forzar)).then(
       function (detalle) {
         console.log("[waltra] " + detalle);
         resolve();

@@ -93,3 +93,45 @@ export async function sendTestNotification(): Promise<void> {
     ],
   });
 }
+
+/** Lo que el vigia dejo anotado de la ultima vez que corrio. */
+export interface WatcherState {
+  /** Cuando corrio por ultima vez (ms). */
+  ran?: number;
+  upd?: {
+    /** Cuando pregunto a GitHub con exito, lo que vio y lo que ya aviso. */
+    at?: number;
+    seen?: number;
+    notified?: number;
+    /** El ultimo intento que fallo, y por que. */
+    err?: string;
+    errAt?: number;
+  };
+}
+
+/** Lee el estado del vigia. `null` en la web o si nunca corrio. */
+export async function readWatcherState(): Promise<WatcherState | null> {
+  if (!NATIVE) return null;
+  try {
+    const { Preferences } = await prefs();
+    const { value } = await Preferences.get({ key: ALERT_STATE_KEY });
+    return value ? (JSON.parse(value) as WatcherState) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Hace correr al vigia ahora, con la app abierta, y que revise la version
+ * aunque no le toque. Es la forma de saber si el camino entero anda (la
+ * consulta, la decision y la notificacion) sin esperar a que Android quiera.
+ */
+export async function runWatcherNow(): Promise<void> {
+  if (!NATIVE) return;
+  const { BackgroundRunner } = await import("@capacitor/background-runner");
+  await BackgroundRunner.dispatchEvent({
+    label: KV_GROUP,
+    event: "checkPrices",
+    details: { forzar: true },
+  });
+}

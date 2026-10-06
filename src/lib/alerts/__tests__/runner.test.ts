@@ -50,7 +50,10 @@ interface Runner {
 const FUENTE = readFileSync("public/runners/alerts.js", "utf8");
 
 function cargar(globals: Record<string, unknown> = {}) {
-  const listeners: Record<string, (resolve: () => void, reject: (e: unknown) => void) => void> = {};
+  const listeners: Record<
+    string,
+    (resolve: () => void, reject: (e: unknown) => void, args?: Record<string, unknown>) => void
+  > = {};
   const sandbox: Record<string, unknown> = {
     addEventListener: (name: string, fn: (r: () => void, j: (e: unknown) => void) => void) => {
       listeners[name] = fn;
@@ -578,7 +581,7 @@ describe("recordatorios de informe", () => {
 describe("versiones nuevas del APK", () => {
   interface Version {
     versionPublicada: (release: unknown) => number | null;
-    tocaRevisarVersion: (plan: unknown, estado: unknown, ahora: Date) => boolean;
+    tocaRevisarVersion: (plan: unknown, estado: unknown, ahora: Date, forzar?: boolean) => boolean;
     decidirVersion: (
       plan: unknown,
       publicada: number | null,
@@ -604,12 +607,14 @@ describe("versiones nuevas del APK", () => {
     for (const c of casos) expect(v.versionPublicada(c)).toBe(releaseBuild(c));
   });
 
-  it("revisa cada seis horas, y no en silencio", () => {
+  it("revisa cada dos horas, y no en silencio", () => {
     expect(v.tocaRevisarVersion(conUpdate(), {}, ahora)).toBe(true);
-    const hace2h = { upd: { at: ahora.getTime() - 2 * 3600_000 } };
-    const hace7h = { upd: { at: ahora.getTime() - 7 * 3600_000 } };
-    expect(v.tocaRevisarVersion(conUpdate(), hace2h, ahora)).toBe(false);
-    expect(v.tocaRevisarVersion(conUpdate(), hace7h, ahora)).toBe(true);
+    const hace1h = { upd: { at: ahora.getTime() - 1 * 3600_000 } };
+    const hace3h = { upd: { at: ahora.getTime() - 3 * 3600_000 } };
+    expect(v.tocaRevisarVersion(conUpdate(), hace1h, ahora)).toBe(false);
+    expect(v.tocaRevisarVersion(conUpdate(), hace3h, ahora)).toBe(true);
+    // El botón de Ajustes pregunta igual.
+    expect(v.tocaRevisarVersion(conUpdate(), hace1h, ahora, true)).toBe(true);
     expect(v.tocaRevisarVersion(conUpdate({ quiet: [11, 14] }), {}, ahora)).toBe(false);
     expect(v.tocaRevisarVersion(plan({ assets: [] }), {}, ahora)).toBe(false);
   });
@@ -678,13 +683,42 @@ describe("versiones nuevas del APK", () => {
       expect(env.programadas).toHaveLength(1);
     });
 
-    it("si GitHub no contesta, no anota nada y reintenta", async () => {
+    it("si GitHub no contesta, anota por qué y reintenta", async () => {
       const env = entorno(conUpdate(), null);
       await correr(env);
       expect(env.programadas).toHaveLength(0);
-      expect(JSON.parse(env.almacen["waltra.alertas.estado"]).upd).toBeUndefined();
+      const upd = JSON.parse(env.almacen["waltra.alertas.estado"]).upd;
+      // Sin `at`: la próxima corrida vuelve a preguntar. Con el motivo, para
+      // que Ajustes pueda decir por qué no llegó el aviso.
+      expect(upd.at).toBeUndefined();
+      expect(upd.err).toBe("HTTP 500");
       await correr(env);
       expect(env.pedidos).toHaveLength(2);
+    });
+
+    it("anota cuándo corrió y qué versión vio", async () => {
+      const env = entorno(conUpdate(), { name: "Waltra 1.0.40" });
+      await correr(env);
+      const estado = JSON.parse(env.almacen["waltra.alertas.estado"]);
+      expect(typeof estado.ran).toBe("number");
+      expect(estado.upd.seen).toBe(40);
+    });
+
+    it("con el formato de hoy (v1.1.1 y la compilación en las notas) avisa", async () => {
+      const env = entorno(conUpdate(), {
+        name: "Waltra v1.1.1",
+        body: "Compilacion 1.0.57 de v1.1.1, de fe13e2ad en main.\n\nFirmado.",
+      });
+      await correr(env);
+      expect(env.programadas.flat().map((a) => a.title)).toEqual(["Hay una versión nueva de Waltra"]);
+    });
+
+    it("el botón de Ajustes revisa aunque no le toque", async () => {
+      const env = entorno(conUpdate(), { name: "Waltra 1.0.45" }, { upd: { at: Date.now(), notified: 40 } });
+      const { listeners } = cargar(env.globals);
+      await new Promise<void>((done, fail) => listeners.checkPrices(done, fail, { forzar: true }));
+      expect(env.pedidos).toEqual([API]);
+      expect(env.programadas.flat().map((a) => a.title)).toEqual(["Hay una versión nueva de Waltra"]);
     });
 
     it("no pisa lo que ya estaba avisado de precios", async () => {

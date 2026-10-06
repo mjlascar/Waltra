@@ -7,7 +7,13 @@ import { ON_DEVICE } from "@/lib/backend";
 import { useStore } from "@/lib/store";
 import { useUpdate } from "@/lib/use-update";
 import { relativeTime } from "@/lib/format";
-import { notificationPermission, requestNotificationPermission } from "@/lib/alerts/mirror";
+import {
+  notificationPermission,
+  readWatcherState,
+  requestNotificationPermission,
+  runWatcherNow,
+  type WatcherState,
+} from "@/lib/alerts/mirror";
 
 /**
  * Actualizar la app sin pasar por GitHub.
@@ -28,6 +34,28 @@ export default function ActualizarAjustes() {
     void notificationPermission().then(setPermiso);
   }, []);
   const avisar = settings.updateNotify !== false;
+
+  /**
+   * Lo que el vigia dejo anotado. Un aviso que no llega no deja rastro en
+   * ningun lado: aca se ve si Android lo esta dejando correr, si GitHub le
+   * contesta y que version vio.
+   */
+  const [vigia, setVigia] = useState<WatcherState | null | undefined>(undefined);
+  const [probando, setProbando] = useState(false);
+  useEffect(() => {
+    if (!ON_DEVICE) return;
+    void readWatcherState().then(setVigia);
+  }, []);
+  async function probarVigia() {
+    setProbando(true);
+    try {
+      await runWatcherNow();
+    } catch {
+      // Si no se pudo despertar, el estado de abajo lo dice igual.
+    }
+    setVigia(await readWatcherState());
+    setProbando(false);
+  }
 
   if (!ON_DEVICE) {
     return (
@@ -120,11 +148,29 @@ export default function ActualizarAjustes() {
         <span className="text-[13px] leading-snug">
           Avisarme cuando salga una versión nueva
           <span className="label mt-1 block leading-snug">
-            Una notificación por versión. Se revisa cada unas seis horas, fuera del
-            horario de silencio de las alertas.
+            Una notificación por versión. Se revisa cada unas dos horas, fuera del
+            horario de silencio de las alertas, cuando Android deja correr a la app.
           </span>
         </span>
       </label>
+      {avisar && (
+        <div className="card mt-3 p-3">
+          <div className="eyebrow mb-2">En segundo plano</div>
+          <EstadoVigia vigia={vigia} instalada={u.installed?.build ?? null} />
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm mt-3 w-full"
+            disabled={probando}
+            onClick={() => void probarVigia()}
+          >
+            {probando ? "Revisando…" : "Revisar ahora en segundo plano"}
+          </button>
+          <p className="label mt-2 leading-snug">
+            Hace lo mismo que hace solo cada unas horas: pregunta a GitHub y, si hay una
+            versión nueva que no te avisó, manda la notificación.
+          </p>
+        </div>
+      )}
       {avisar && permiso === false && (
         <button
           type="button"
@@ -135,5 +181,50 @@ export default function ActualizarAjustes() {
         </button>
       )}
     </AjustesShell>
+  );
+}
+
+function hace(ms: number | undefined): string {
+  return ms ? relativeTime(new Date(ms).toISOString()) : "nunca";
+}
+
+/** Lo que el vigia hizo, en tres renglones. */
+function EstadoVigia({
+  vigia,
+  instalada,
+}: {
+  vigia: WatcherState | null | undefined;
+  instalada: number | null;
+}) {
+  if (vigia === undefined) return <p className="label">Leyendo…</p>;
+  const upd = vigia?.upd;
+  const filas: [string, string][] = [
+    ["Corrió por última vez", hace(vigia?.ran)],
+    [
+      "Le preguntó a GitHub",
+      upd?.at ? `${hace(upd.at)} · vio la compilación ${upd.seen ?? "—"}` : "todavía no",
+    ],
+  ];
+  if (upd?.err && (!upd.at || (upd.errAt ?? 0) > upd.at)) {
+    filas.push(["Último intento", `${hace(upd.errAt)} · falló: ${upd.err}`]);
+  }
+  if (upd?.notified) filas.push(["Ya avisó", `la compilación ${upd.notified}`]);
+  if (instalada) filas.push(["Tenés", `la compilación ${instalada}`]);
+  return (
+    <dl className="space-y-1.5">
+      {filas.map(([k, v]) => (
+        <div key={k} className="flex items-baseline justify-between gap-3">
+          <dt className="label">{k}</dt>
+          <dd className="num text-right text-[12px]">{v}</dd>
+        </div>
+      ))}
+      {!vigia?.ran && (
+        <p className="label pt-1 leading-snug" style={{ color: "var(--color-warn)" }}>
+          No corrió desde que instalaste esta versión. Si en unas horas sigue así,
+          Android lo está frenando: en los ajustes del teléfono, Batería → Waltra, sacala
+          de las apps en suspensión y dejala sin restricciones.
+        </p>
+      )}
+    </dl>
   );
 }
