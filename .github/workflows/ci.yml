@@ -8,7 +8,7 @@ on:
 # El nombre de la version, el que muestra Android. Se cambia a mano al sacar
 # una version nueva; el numero que compara la app es la corrida (versionCode).
 env:
-  WALTRA_VERSION: "1.1.2"
+  WALTRA_VERSION: "1.1.3"
 
 jobs:
   check:

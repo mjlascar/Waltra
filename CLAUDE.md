@@ -530,7 +530,9 @@ feriado, Yahoo y BYMA siguen dando el precio y la variación del último día
 hábil, y como lo avisado se olvida cada día, la caída del viernes se volvía a
 notificar el sábado y el domingo con el mismo precio. `ruedaVieja` lo decide:
 para Yahoo, por la hora de la rueda (`regularMarketTime`); para BYMA, que no
-la da, por el fin de semana. La cripto opera siempre.
+la da, por el reloj: el fin de semana y, un día hábil, antes de las 11, cuando
+abre (un +8% de MELI de la rueda anterior llegó a las 10:28). La cripto opera
+siempre. Los feriados de BYMA no están cubiertos.
 
 Android decide cuándo corre: el intervalo que se pide es un pedido, no una
 promesa, y nunca baja de 15 minutos. La pantalla lo dice así en vez de prometer

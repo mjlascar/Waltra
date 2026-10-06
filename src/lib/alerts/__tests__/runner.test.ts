@@ -168,6 +168,17 @@ describe("avisos por activo", () => {
     expect(runner.decidir(nike, sinHora, {}, sabado).avisos).toHaveLength(0);
   });
 
+  it("en BYMA, antes de que abra, la variación es la de ayer", () => {
+    const meli = plan({
+      assets: [{ sym: "MELI.BA", src: "byma", ss: "MELI.BA", cur: "ARS", qty: 1, pct: 5 }],
+    });
+    const precios = { "byma|MELI.BA": { price: 30000, changePct: 8 } };
+    // Martes 10:28: llegó el +8% de la rueda del lunes.
+    expect(runner.decidir(meli, precios, {}, new Date(2026, 9, 6, 10, 28)).avisos).toHaveLength(0);
+    // Con la rueda abierta, sí.
+    expect(runner.decidir(meli, precios, {}, new Date(2026, 9, 6, 12, 0)).avisos).toHaveLength(1);
+  });
+
   it("la cripto avisa también el fin de semana", () => {
     const sabado = new Date(2026, 8, 26, 12, 0, 0);
     const { avisos } = runner.decidir(

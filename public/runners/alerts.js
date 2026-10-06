@@ -271,13 +271,19 @@ function traerPrecios(assets) {
  * mismo precio. Con el mercado cerrado, hoy no hubo variacion.
  *
  * La cripto opera todos los dias. Yahoo dice cuando cerro la rueda; BYMA no,
- * y ahi alcanza con el fin de semana.
+ * asi que ahi se mira el reloj: el fin de semana, y un dia habil antes de las
+ * 11, cuando abre. Antes de esa hora data912 sigue dando la variacion de la
+ * rueda anterior: un +8% de MELI llego a las 10:28 junto con el resto de lo
+ * que Android habia demorado durante la noche.
  */
+var BYMA_ABRE = 11;
+
 function ruedaVieja(asset, quote, ahora) {
   if (asset.src === "binance") return false;
   if (typeof quote.at === "number") return localDay(new Date(quote.at)) !== localDay(ahora);
   var dow = ahora.getDay();
-  return dow === 0 || dow === 6;
+  if (dow === 0 || dow === 6) return true;
+  return ahora.getHours() < BYMA_ABRE;
 }
 
 /**
