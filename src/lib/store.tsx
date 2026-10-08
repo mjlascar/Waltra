@@ -22,6 +22,8 @@ import type {
   Transaction,
 } from "@/lib/types";
 import { DEFAULT_SETTINGS, ensureSeeded, getDb, type WaltraDB } from "@/lib/db";
+import { askPersistence } from "@/lib/storage-health";
+import { autoBackup } from "@/lib/auto-backup";
 import { computePortfolio, type Portfolio } from "@/lib/engine/portfolio";
 import { scopeToAccounts } from "@/lib/engine/scope";
 import { addDays, today, toDay, type DayKey } from "@/lib/date";
@@ -41,6 +43,8 @@ export type SyncState =
 
 interface StoreValue {
   ready: boolean;
+  /** La base no abrio: la app no esta vacia, no puede leerla. */
+  dbError: string | null;
   accounts: Account[];
   assets: Asset[];
   transactions: Transaction[];
@@ -84,38 +88,84 @@ export function newId(): string {
   return `id-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-/** Los recursos que se releen en vivo desde IndexedDB. */
-function useTable<T>(load: (db: WaltraDB) => Promise<T[]>, deps: unknown[] = []): T[] {
+/**
+ * Los recursos que se releen en vivo desde IndexedDB.
+ *
+ * Una tabla que no se puede leer no es una tabla vacia: el error se avisa por
+ * `onError`. Antes se perdia, y una falla al leer los movimientos se veia
+ * igual que no tener ninguno.
+ */
+function useTable<T>(
+  load: (db: WaltraDB) => Promise<T[]>,
+  onError: (msg: string) => void,
+  deps: unknown[] = [],
+): T[] {
   const db = getDb();
-  const rows = useLiveQuery(async () => (db ? load(db) : []), deps, undefined);
+  const rows = useLiveQuery(
+    async () => {
+      if (!db) return [];
+      try {
+        return await load(db);
+      } catch (err) {
+        onError(err instanceof Error ? `${err.name}: ${err.message}` : String(err));
+        return undefined;
+      }
+    },
+    deps,
+    undefined,
+  );
   return rows ?? [];
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const db = getDb();
   const [ready, setReady] = useState(false);
+  /**
+   * Si la base no abrio. Antes el error se tragaba y la app arrancaba como si
+   * estuviera vacia: «Cargá tu primer movimiento» a alguien con semanas de
+   * datos, que podian seguir ahi. Ahora la pantalla lo dice.
+   */
+  const [dbError, setDbError] = useState<string | null>(null);
   const [sync, setSync] = useState<SyncState>({ status: "idle" });
   const syncing = useRef(false);
 
   useEffect(() => {
     if (!db) return;
     let alive = true;
-    ensureSeeded(db)
+    // Que el sistema no limpie la base cuando falte lugar.
+    void askPersistence();
+    db.open()
+      .then(() => ensureSeeded(db))
       .then(() => alive && setReady(true))
-      .catch(() => alive && setReady(true));
+      .catch((err: unknown) => {
+        if (!alive) return;
+        setDbError(err instanceof Error ? `${err.name}: ${err.message}` : String(err));
+        setReady(true);
+      });
     return () => {
       alive = false;
     };
   }, [db]);
 
-  const accounts = useTable<Account>((d) => d.accounts.toArray());
-  const assets = useTable<Asset>((d) => d.assets.toArray());
-  const transactions = useTable<Transaction>((d) => d.transactions.toArray());
-  const priceSeries = useTable<PriceSeries>((d) => d.priceSeries.toArray());
-  const quotes = useTable<Quote>((d) => d.quotes.toArray());
-  const fxRates = useTable<FxRate>((d) => d.fx.toArray());
-  const insights = useTable<InsightReport>((d) =>
-    d.insights.orderBy("createdAt").reverse().toArray(),
+  const alLeer = useCallback((msg: string) => setDbError((prev) => prev ?? msg), []);
+  const accounts = useTable<Account>((d) => d.accounts.toArray(), alLeer);
+
+  const assets = useTable<Asset>((d) => d.assets.toArray(), alLeer);
+  const transactions = useTable<Transaction>((d) => d.transactions.toArray(), alLeer);
+
+  // La copia del dia, fuera de la base (ver `auto-backup.ts`). Corre cuando
+  // cambian los movimientos; si no cambiaron desde la ultima, no escribe.
+  useEffect(() => {
+    if (!db || !ready || dbError || transactions.length === 0) return;
+    const t = window.setTimeout(() => void autoBackup(db), 3000);
+    return () => window.clearTimeout(t);
+  }, [db, ready, dbError, transactions]);
+  const priceSeries = useTable<PriceSeries>((d) => d.priceSeries.toArray(), alLeer);
+  const quotes = useTable<Quote>((d) => d.quotes.toArray(), alLeer);
+  const fxRates = useTable<FxRate>((d) => d.fx.toArray(), alLeer);
+  const insights = useTable<InsightReport>(
+    (d) => d.insights.orderBy("createdAt").reverse().toArray(),
+    alLeer,
   );
   const settingsRow = useLiveQuery(async () => (db ? db.settings.get("settings") : undefined), [db]);
 
@@ -346,6 +396,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const value = useMemo<StoreValue>(
     () => ({
       ready,
+      dbError,
       accounts,
       assets,
       transactions,
@@ -406,7 +457,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (stale.length) await db.insights.bulkDelete(stale);
       },
     }),
-    [ready, accounts, assets, transactions, settings, insights, portfolio, portfolioUsd, base, fxTable, sync, db, refresh, backend, priceSeries, quotes, fxRates],
+    [ready, dbError, accounts, assets, transactions, settings, insights, portfolio, portfolioUsd, base, fxTable, sync, db, refresh, backend, priceSeries, quotes, fxRates],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

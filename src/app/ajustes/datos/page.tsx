@@ -10,6 +10,8 @@ import { useStore } from "@/lib/store";
 import { exportBackup, importBackup, parseBackup, wipeAll } from "@/lib/db";
 import { saveBackupFile } from "@/lib/backup-file";
 import { clearDemoData, hasDemoData, loadDemoData } from "@/lib/demo";
+import { BackupList, StorageStatus } from "@/components/DataRescue";
+import { NATIVE } from "@/lib/platform";
 
 /** Backup, importacion y el boton de borrar todo. */
 export default function DatosAjustes() {
@@ -53,6 +55,20 @@ export default function DatosAjustes() {
 
   return (
     <AjustesShell title="Tus datos" message={message}>
+        <div className="card mb-4 p-3">
+          <div className="eyebrow mb-2">Estado de la base</div>
+          <StorageStatus />
+        </div>
+        {NATIVE && (
+          <div className="card mb-4 p-3">
+            <div className="eyebrow mb-2">Copias en el teléfono</div>
+            <BackupList onRestored={setMessage} />
+            <p className="label mt-2 leading-snug">
+              Una por día, de los últimos siete, fuera de la base de la app: si la base se
+              pierde, quedan. Si desinstalás la app, se van con ella; para eso está Exportar.
+            </p>
+          </div>
+        )}
         <div className="card p-3">
           <p className="label mb-3 leading-relaxed">
             Todo vive en este teléfono. Si borrás los datos del navegador o cambiás de

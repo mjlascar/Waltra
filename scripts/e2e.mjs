@@ -1033,6 +1033,43 @@ check(
 );
 await fresh.close();
 
+console.log("\n14. Cuando la base no abre");
+{
+  // Una base que no abre no es una app vacía: antes llegaba a «Cargá tu primer
+  // movimiento» y alguien con semanas de datos creía haberlos perdido.
+  const roto = await browser.newContext(MOBILE);
+  await roto.addInitScript(() => {
+    const abrir = indexedDB.open.bind(indexedDB);
+    indexedDB.open = (name, version) => {
+      if (name === "waltra") throw new DOMException("Simulada", "UnknownError");
+      return abrir(name, version);
+    };
+  });
+  const pagina = await roto.newPage();
+  await pagina.goto(BASE, { waitUntil: "networkidle" });
+  await pagina.waitForTimeout(1500);
+  const texto = normalize(await pagina.evaluate(() => document.body.innerText));
+  check("dice que no pudo abrir los datos", texto.includes("no pude abrir tus datos"), texto.slice(0, 200));
+  check("no ofrece empezar de cero", !texto.includes("cargar mi primer movimiento"));
+  await roto.close();
+}
+
+console.log("\n15. El estado de la base");
+{
+  const ctx = await browser.newContext(MOBILE);
+  const pagina = await ctx.newPage();
+  await pagina.goto(BASE, { waitUntil: "networkidle" });
+  await pagina.waitForTimeout(1200);
+  await pagina.getByRole("button", { name: /datos de ejemplo/i }).click();
+  await pagina.waitForTimeout(3000);
+  await pagina.goto(BASE + "/ajustes/datos", { waitUntil: "networkidle" });
+  await pagina.waitForTimeout(1200);
+  const texto = normalize(await pagina.evaluate(() => document.body.innerText));
+  check("muestra el estado de la base", texto.includes("estado de la base"));
+  check("cuenta los movimientos", /movimientos\s*\n?\s*\d+/.test(texto), texto.slice(0, 300));
+  await ctx.close();
+}
+
 await browser.close();
 
 console.log(`\n${passed} ok, ${failures.length} fallas`);

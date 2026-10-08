@@ -301,6 +301,21 @@ fuera del backup, que es un archivo que termina en Drive o en un mail. El
 backup automático de Android está apagado por lo mismo. El repositorio es
 público: `scripts/check-secrets.sh` corre en cada verificación y en CI.
 
+**Una base que no abre no es una app vacía.** Un día la app abrió en
+«Cargá tu primer movimiento» a alguien con semanas de datos. El error de abrir
+la base (o de leer una tabla) se tragaba y la pantalla vacía era la misma.
+Ahora queda en `dbError` y el inicio dice «No pude abrir tus datos», con las
+copias para recuperar; hay un e2e que rompe `indexedDB.open` a propósito.
+Ajustes → Tus datos muestra el estado de la base tabla por tabla
+(`storage-health.ts`). Al arrancar se pide `navigator.storage.persist()`.
+
+**Copias automáticas** (`auto-backup.ts`, solo APK): una por día, si hay
+movimientos y cambiaron, en la carpeta privada de la app, **fuera de la
+base**. Se guardan siete. Sobreviven a que la base se pierda (no a
+desinstalar). Una base vacía no se copia: pisaría la última buena. La lista
+para recuperar incluye también los backups manuales que quedaron en la caché
+(Exportar los escribe ahí antes de compartirlos). Recuperar suma, no borra.
+
 ## Diseño
 
 Modo oscuro único, `border-radius: 0` en todo, tipografía neutra y números

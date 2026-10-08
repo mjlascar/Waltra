@@ -1,10 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
 import { loadDemoData } from "@/lib/demo";
 import { AddTransaction } from "@/components/AddTransaction";
 import { BulkImport } from "@/components/BulkImport";
+import { BackupList } from "@/components/DataRescue";
+import { listBackups } from "@/lib/auto-backup";
+import { NATIVE } from "@/lib/platform";
+import Link from "next/link";
 
 /**
  * Primera pantalla. No pide configurar nada: o cargas tu primer movimiento, o
@@ -12,7 +16,8 @@ import { BulkImport } from "@/components/BulkImport";
  * antes de ver nada es la forma mas rapida de que alguien abandone.
  */
 export function EmptyStart() {
-  const { db, refresh } = useStore();
+  const { db, refresh, dbError } = useStore();
+  const [rescate, setRescate] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [bulk, setBulk] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -25,6 +30,31 @@ export function EmptyStart() {
     setLoading(false);
   }
 
+  // La base no abrio: no es una app vacia, y ofrecer «cargar el primer
+  // movimiento» a quien tiene semanas de datos es lo peor que se puede hacer.
+  if (dbError) {
+    return (
+      <div className="pt-10 pb-6">
+        <h1 className="text-[22px] font-semibold leading-tight tracking-tight">
+          No pude abrir tus datos
+        </h1>
+        <p className="mt-2 text-[13px] leading-relaxed" style={{ color: "var(--color-ink-2)" }}>
+          No borres nada ni desinstales la app: lo que no se puede abrir puede seguir en el
+          teléfono. Cerrá la app del todo y volvé a abrirla. Si sigue igual, recuperá una
+          copia de abajo.
+        </p>
+        <p className="card num mt-4 p-3 text-[11px] leading-snug" style={{ color: "var(--color-warn)" }}>
+          {dbError}
+        </p>
+        <div className="card mt-4 p-3">
+          <div className="eyebrow mb-2">Copias en el teléfono</div>
+          <BackupList onRestored={setRescate} />
+          {rescate && <p className="label mt-2">{rescate}</p>}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="pt-10 pb-6">
       <div className="mb-8">
@@ -34,6 +64,10 @@ export function EmptyStart() {
           cuánto vale hoy y cuánto de eso es ganancia de verdad.
         </p>
       </div>
+
+      {/* Si hay copias en el telefono, esto no es una primera vez: es una base
+          que se perdio. Lo primero es ofrecer recuperarla. */}
+      <Rescate onRestored={setRescate} mensaje={rescate} />
 
       <ul className="card divide-hairline mb-6">
         {[
@@ -67,5 +101,37 @@ export function EmptyStart() {
       <AddTransaction open={adding} onClose={() => setAdding(false)} />
       <BulkImport open={bulk} onClose={() => setBulk(false)} />
     </div>
+  );
+}
+
+/**
+ * «¿Ya usabas Waltra?». Con copias en el telefono, la lista para recuperar;
+ * sin ellas, el camino al estado de la base y a importar un backup.
+ */
+function Rescate({ onRestored, mensaje }: { onRestored: (m: string) => void; mensaje: string | null }) {
+  const [hay, setHay] = useState(false);
+  useEffect(() => {
+    if (!NATIVE) return;
+    void listBackups().then((c) => setHay(c.some((b) => (b.transactions ?? 0) > 0)));
+  }, []);
+  if (hay) {
+    return (
+      <div className="card mb-6 p-3" style={{ borderColor: "var(--color-warn)" }}>
+        <div className="text-[13px] font-medium">¿Ya usabas Waltra?</div>
+        <p className="label mt-1 mb-2 leading-snug">
+          Hay copias de tus datos en el teléfono. Recuperar suma lo de la copia a lo que haya.
+        </p>
+        <BackupList onRestored={onRestored} />
+        {mensaje && <p className="label mt-2">{mensaje}</p>}
+      </div>
+    );
+  }
+  return (
+    <p className="label mb-4">
+      ¿Ya usabas Waltra y no ves tus datos?{" "}
+      <Link href="/ajustes/datos" className="underline">
+        Revisar y recuperar
+      </Link>
+    </p>
   );
 }
