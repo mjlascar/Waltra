@@ -28,6 +28,10 @@ const config: CapacitorConfig = {
     androidScheme: "https",
   },
   plugins: {
+    SocialLogin: {
+      providers: { google: true, facebook: false, apple: false, twitter: false },
+      logLevel: 1,
+    },
     /**
      * El vigia de precios. Android no garantiza el intervalo: 30 minutos es
      * lo que se pide, y el sistema lo corre cuando le parece, nunca antes de

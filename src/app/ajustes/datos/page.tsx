@@ -71,8 +71,9 @@ export default function DatosAjustes() {
         )}
         <div className="card p-3">
           <p className="label mb-3 leading-relaxed">
-            Todo vive en este teléfono. Si borrás los datos del navegador o cambiás de
-            equipo, se pierde. El backup es un archivo tuyo, no sube a ningún lado.
+            Los datos se guardan en este dispositivo. Desde Cuenta y sincronización
+            podés guardar una copia privada en tu Google Drive. Exportar crea además
+            un archivo que podés guardar donde quieras, sin claves de API.
           </p>
           <div className="grid grid-cols-2 gap-2">
             <button className="btn btn-sm" onClick={doExport}>
@@ -136,6 +137,8 @@ export default function DatosAjustes() {
             <p className="label mb-2 leading-snug">
               Escribí <strong style={{ color: "var(--color-ink)" }}>BORRAR</strong> para
               habilitar. Se va todo: movimientos, activos, cuentas e informes.
+              Si conectaste Google, también se sincroniza la cartera vacía,
+              reemplazando la copia anterior de tu Drive.
             </p>
             <div className="flex gap-2">
               <input

@@ -33,6 +33,7 @@
     "@capacitor/share": "^8.0.2",
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.3",
+    "@capgo/capacitor-social-login": "^8.5.17",
     "@google/genai": "^2.23.0",
     "dexie": "^4.4.6",
     "dexie-react-hooks": "^4.2.0",

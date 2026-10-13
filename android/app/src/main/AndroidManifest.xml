@@ -4,8 +4,8 @@
     <!--
       El backup automatico de Android sube los datos de la app a Google Drive.
       Aca adentro viven los movimientos y la clave de Anthropic del usuario, y
-      la promesa de Waltra es que eso no sale del telefono. El backup se hace a
-      mano desde Ajustes, que ademas deja el archivo en manos del usuario.
+      las credenciales no deben salir del telefono. El backup manual y la
+      sincronizacion optativa de Drive excluyen esas claves.
     -->
     <application
         android:allowBackup="false"

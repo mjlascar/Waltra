@@ -11,9 +11,8 @@ import type {
 } from "@/lib/types";
 
 /**
- * Todo vive en el telefono (IndexedDB). No hay servidor, no hay cuenta, no hay
- * nadie mirando tus numeros. El costo de esa decision es que hay que hacer
- * backup a mano: por eso Ajustes tiene exportar/importar y la app lo recuerda.
+ * IndexedDB sigue siendo la fuente de la interfaz, incluso sin conexion.
+ * La sincronizacion opcional guarda una copia privada en el Drive del usuario.
  */
 export class WaltraDB extends Dexie {
   accounts!: Table<Account, string>;
@@ -24,6 +23,8 @@ export class WaltraDB extends Dexie {
   fx!: Table<FxRate, string>;
   settings!: Table<Settings, string>;
   insights!: Table<InsightReport, string>;
+  cloudState!: Table<CloudState, string>;
+  cloudBackups!: Table<CloudBackup, number>;
 
   constructor() {
     super("waltra");
@@ -37,7 +38,26 @@ export class WaltraDB extends Dexie {
       settings: "id",
       insights: "id, createdAt",
     });
+    this.version(2).stores({
+      cloudState: "id",
+      cloudBackups: "++id, at",
+    });
   }
+}
+
+export interface CloudState {
+  id: "cloud";
+  /** Cliente OAuth y usuario: nunca se publica esta base con otra identidad. */
+  owner: string;
+  /** Ultima copia confirmada por el servidor, para detectar cambios offline. */
+  base: string | null;
+  syncedAt?: string;
+}
+
+export interface CloudBackup {
+  id?: number;
+  at: string;
+  payload: string;
 }
 
 let instance: WaltraDB | null = null;
@@ -85,14 +105,17 @@ export interface BackupFile {
   assets: Asset[];
   transactions: Transaction[];
   settings: Settings;
+  /** Opcional para seguir aceptando los backups anteriores. */
+  insights?: InsightReport[];
 }
 
 export async function exportBackup(db: WaltraDB): Promise<BackupFile> {
-  const [accounts, assets, transactions, settings] = await Promise.all([
+  const [accounts, assets, transactions, settings, insights] = await Promise.all([
     db.accounts.toArray(),
     db.assets.toArray(),
     db.transactions.toArray(),
     db.settings.get("settings"),
+    db.insights.toArray(),
   ]);
   return {
     app: "waltra",
@@ -101,6 +124,7 @@ export async function exportBackup(db: WaltraDB): Promise<BackupFile> {
     accounts,
     assets,
     transactions,
+    insights,
     // Ninguna credencial viaja en el backup: el archivo puede terminar en
     // cualquier lado (Drive, WhatsApp, un mail a uno mismo).
     settings: {
@@ -131,6 +155,9 @@ export function parseBackup(text: string): BackupFile {
   if (!Array.isArray(file.transactions) || !Array.isArray(file.accounts)) {
     throw new Error("El backup esta incompleto.");
   }
+  if (file.insights !== undefined && !Array.isArray(file.insights)) {
+    throw new Error("Los informes del backup no tienen un formato válido.");
+  }
   return file as BackupFile;
 }
 
@@ -139,13 +166,15 @@ export async function importBackup(
   file: BackupFile,
   mode: "replace" | "merge",
 ): Promise<ImportSummary> {
-  await db.transaction("rw", db.accounts, db.assets, db.transactions, db.settings, async () => {
+  await db.transaction("rw", db.accounts, db.assets, db.transactions, db.settings, db.insights, async () => {
     if (mode === "replace") {
       await Promise.all([db.accounts.clear(), db.assets.clear(), db.transactions.clear()]);
+      if (file.insights) await db.insights.clear();
     }
     await db.accounts.bulkPut(file.accounts);
     await db.assets.bulkPut(file.assets ?? []);
     await db.transactions.bulkPut(file.transactions);
+    if (file.insights) await db.insights.bulkPut(file.insights);
     if (file.settings) {
       const current = await db.settings.get("settings");
       await db.settings.put({
@@ -153,6 +182,8 @@ export async function importBackup(
         ...file.settings,
         // Los datos locales del dispositivo no se pisan desde un backup.
         accessKey: current?.accessKey,
+        apiKey: current?.apiKey,
+        geminiKey: current?.geminiKey,
         id: "settings",
       });
     }
@@ -168,7 +199,7 @@ export async function importBackup(
 export async function wipeAll(db: WaltraDB): Promise<void> {
   await db.transaction(
     "rw",
-    [db.accounts, db.assets, db.transactions, db.priceSeries, db.quotes, db.fx, db.settings, db.insights],
+    [db.accounts, db.assets, db.transactions, db.priceSeries, db.quotes, db.fx, db.settings, db.insights, db.cloudBackups],
     async () => {
       await Promise.all([
         db.accounts.clear(),
@@ -178,6 +209,7 @@ export async function wipeAll(db: WaltraDB): Promise<void> {
         db.quotes.clear(),
         db.fx.clear(),
         db.insights.clear(),
+        db.cloudBackups.clear(),
         db.settings.clear(),
       ]);
     },

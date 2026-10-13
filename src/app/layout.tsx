@@ -4,6 +4,7 @@ import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { NATIVE } from "@/lib/platform";
 import { StoreProvider } from "@/lib/store";
+import { CloudProvider } from "@/lib/cloud/provider";
 import { Nav } from "@/components/Nav";
 import { ServiceWorker } from "@/components/ServiceWorker";
 import { PullToRefresh } from "@/components/PullToRefresh";
@@ -61,16 +62,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <StoreProvider>
-          <PullToRefresh />
-          <main className="shell pt-3">
-            <PageTransition>{children}</PageTransition>
-          </main>
-          <Nav />
-          <ServiceWorker />
-          <NativeShell />
-          <AlertsMirror />
-          <ThemeSync />
-          <HapticTouch />
+          <CloudProvider>
+            <PullToRefresh />
+            <main className="shell pt-3">
+              <PageTransition>{children}</PageTransition>
+            </main>
+            <Nav />
+            <ServiceWorker />
+            <NativeShell />
+            <AlertsMirror />
+            <ThemeSync />
+            <HapticTouch />
+          </CloudProvider>
         </StoreProvider>
       </body>
     </html>
