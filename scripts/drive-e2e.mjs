@@ -246,7 +246,7 @@ console.log("\n6. Desvincular");
 await a.page.getByRole("button", { name: /^Desvincular$/ }).click();
 await a.page.getByRole("button", { name: /^Sí, desvincular$/ }).click();
 check("vuelve a ofrecer conectar", await a.until("Conectar Google Drive"));
-check("ya no dice con qué cuenta está vinculada", !(await a.has("Vinculada a")));
+check("ya no dice con qué cuenta está vinculada", await a.until(async () => !(await a.has("Vinculada a")), 5_000));
 await a.nav("/ajustes");
 check("Ajustes la muestra solo en el dispositivo", await a.has("solo en este dispositivo"));
 
