@@ -178,4 +178,17 @@ describe("combinar dos carteras desde la ultima copia confirmada", () => {
     expect(merged.consistent).toBe(true);
     expect(merged.data.transactions.find((t) => t.id === "b3")?.assetId).toBe("aaa");
   });
+
+  it("no pasa un movimiento a otro instrumento que alguna vez compartio id", () => {
+    // "y" era el ETF SPY y se convirtio en el lugar en su CEDEAR; despues se
+    // cargo la accion de Nueva York ("a-x") y una compra en pesos de "y". Del
+    // otro lado, el CEDEAR quedo como "w" y "y" se borro.
+    const etf = (id: string) => asset(id, "SPY", { kind: "etf", source: "yahoo", sourceSymbol: "SPY" });
+    const cedear = (id: string) => asset(id, "SPY.BA", { kind: "cedear", source: "byma", sourceSymbol: "SPY", currency: "ARS" });
+    const base = data({ assets: [etf("y")] });
+    const local = data({ assets: [cedear("y"), etf("a-x")], transactions: [buy("b3", "y", { currency: "ARS" })] });
+    const remote = data({ assets: [cedear("w")] });
+    const merged = mergeData(base, local, remote, "remote");
+    expect(merged.data.transactions.find((t) => t.id === "b3")?.assetId).toBe("w");
+  });
 });

@@ -107,10 +107,12 @@ Con el mismo contenido gana la fila de Drive, aunque las marcas de tiempo
 difieran: si cada equipo se quedara con la suya, se la subirían uno al otro
 para siempre. Y la base tiene que ser siempre el ancestro común: después de
 una subida aceptada que no se pudo aplicar en el equipo (hubo cambios mientras
-subía, o se desconectó), la base pasa a ser la copia local de la que salió; y
-antes de cada subida queda anotado qué se mandó, por si la respuesta se pierde
-o se cierra la app. Sin eso, lo que se borra justo después de cargarlo
-volvería como si lo hubiera agregado otro equipo.
+subía, o se desconectó), la base pasa a ser la copia local de la que salió.
+Para la respuesta que se pierde o la app que se cierra, el archivo lleva
+`chain`, los ids de las últimas subidas que lo produjeron, y cada equipo anota
+el id de la suya antes de subir: si después lo encuentra en la cadena, la
+subida llegó, aunque otro equipo haya subido encima. Sin eso, lo que se borra
+justo después de cargarlo volvería como si lo hubiera agregado otro equipo.
 
 La sincronización se pausa y pregunta solo en estos casos:
 

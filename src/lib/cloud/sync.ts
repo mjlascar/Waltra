@@ -1,7 +1,7 @@
 import type { CloudBackup, CloudState, WaltraDB } from "@/lib/db";
 import { CloudFormatError, decodeData, encodeData, isPristine, readData, replaceData, type CloudData } from "./data";
 import type { CloudTransport, CloudVersion } from "./drive";
-import { versionToken } from "./drive";
+import { CHAIN_LENGTH, versionToken } from "./drive";
 import { GoogleError } from "./google";
 import { discards, mergeData, shrinks } from "./merge";
 
@@ -174,6 +174,7 @@ export async function synchronize(
     return row;
   });
   if (!state) return pending();
+  let current: CloudState = state;
   const local = await readData(db);
   let read: CloudVersion[];
   const known = state.base !== null && state.remote ? { ...state.remote, payload: state.base, at: "" } : undefined;
@@ -184,11 +185,24 @@ export async function synchronize(
   }));
   if (!active()) return pending();
   // Si la pasada anterior subio y no llego a anotarlo (se perdio la respuesta,
-  // se cerro la app), lo que hay en Drive salio de `sending.base`, y ese es el
-  // ancestro comun. Con la base vieja, lo que se borro aca despues de subirlo
-  // volveria como si lo hubiera agregado otro equipo.
-  const landed = state.sending && versions.length === 1 && versions[0].payload === state.sending.payload;
-  const baseline = landed && state.sending ? state.sending.base : state.base;
+  // se cerro la app), lo que hay en Drive sale de `sending.base`, y ese es el
+  // ancestro comun: con la base vieja, lo que se borro aca despues de subirlo
+  // volveria como si lo hubiera agregado otro equipo. La cadena de la copia lo
+  // dice aunque otro equipo haya subido encima, y se anota en el acto: si esta
+  // pasada choca con otra subida, no se puede volver a perder.
+  const sending = state.sending;
+  if (sending && versions.length === 1 && versions[0].chain?.includes(sending.id)) {
+    const settled = await db.transaction("rw", db.cloudState, async () => {
+      const row = await db.cloudState.get("cloud");
+      if (row?.owner !== owner || row.base !== state.base || row.sending?.id !== sending.id) return null;
+      const next: CloudState = { ...row, base: sending.base, remote: undefined, sending: undefined };
+      await db.cloudState.put(next);
+      return next;
+    });
+    if (!settled) return pending();
+    current = settled;
+  }
+  const baseline = current.base;
   const tokens = versions.map(versionToken).sort();
   const decision = plan(baseline, local, versions);
   let selected: string;
@@ -219,13 +233,19 @@ export async function synchronize(
   let confirmed: CloudVersion | undefined = versions[0];
   let uploaded = false;
   if (selected !== remote || versions.length > 1) {
-    // Lo que la subida pisa se guarda antes de subir: Drive no conserva la
-    // version anterior.
-    const lost = versions.filter((v) => v.payload !== selected && loses(v.payload));
-    if (lost.length) await saveRecovery(db, lost.map((v) => ({ payload: v.payload, origin: "drive" as const })), at);
+    // Lo que se va a perder se guarda antes de subir, de los dos lados: Drive
+    // no conserva la version anterior, y si despues no se puede aplicar aca,
+    // la pasada siguiente ya no lo ve como algo que se pierde.
+    const lost: Pick<CloudBackup, "payload" | "origin">[] = [
+      ...(selected !== local && !isPristine(local) && loses(local) ? [{ payload: local, origin: "device" as const }] : []),
+      ...versions.filter((v) => v.payload !== selected && loses(v.payload)).map((v) => ({ payload: v.payload, origin: "drive" as const })),
+    ];
+    if (lost.length) await saveRecovery(db, lost, at);
     if (!active()) return pending();
-    await db.cloudState.update("cloud", { sending: { base: local, payload: selected } });
-    try { confirmed = await transport.write(selected, versions); uploaded = true; }
+    const id = crypto.randomUUID();
+    await db.cloudState.update("cloud", { sending: { base: local, id } });
+    const chain = [...(versions[0]?.chain ?? []), id].slice(-CHAIN_LENGTH);
+    try { confirmed = await transport.write(selected, versions, chain); uploaded = true; }
     catch (err) { if (err instanceof GoogleError && [404, 412].includes(err.status ?? 0)) return pending(); throw err; }
   }
 
@@ -234,10 +254,10 @@ export async function synchronize(
     // Se desvinculo o se cambio de cuenta mientras tanto: no se confirma nada.
     if (currentState?.owner !== owner) return pending();
     // Otra pestana termino antes. Su baseline manda; releer en la proxima pasada.
-    if (currentState.base !== state.base) return pending();
+    if (currentState.base !== current.base) return pending();
     const settle = (confirmedBase: string, revision?: CloudVersion) => db.cloudState.put({
       ...currentState, base: confirmedBase, syncedAt: at, sending: undefined,
-      remote: revision && { id: revision.id, etag: revision.etag },
+      remote: revision && { id: revision.id, etag: revision.etag, chain: revision.chain },
     });
     const currentLocal = await readData(db);
     if (selected !== local && (!active() || currentLocal !== local)) {

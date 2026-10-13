@@ -349,11 +349,17 @@ reimportar Binance cambia las marcas de tiempo, y si cada teléfono se quedara
 con la suya se la subirían uno al otro para siempre.
 
 La base tiene que ser el ancestro común de los dos lados, o lo que se borra
-vuelve. Después de una subida aceptada que no se pudo aplicar acá (hubo
-cambios mientras subía, o se desconectó), la base es la copia local de la
-que salió; y antes de cada subida queda anotado qué se mandó (`sending`), por
-si la respuesta se pierde o se cierra la app: la pasada siguiente reconoce
-que Drive ya la tiene.
+vuelve como si lo hubiera agregado otro equipo. Después de una subida
+aceptada que no se pudo aplicar acá (hubo cambios mientras subía, o se
+desconectó), la base es la copia local de la que salió. Para la respuesta que
+se pierde o la app que se cierra, el archivo de Drive lleva `chain`, los ids
+de las últimas subidas que lo produjeron, y antes de cada subida queda
+anotado su id (`sending`): si la pasada siguiente lo encuentra en la cadena,
+la subida llegó, aunque otro equipo haya subido encima, y se anota en el acto.
+Comparar el contenido no alcanzaba: con otra subida encima ya no es igual.
+Un movimiento que apunta a un activo que el otro lado unificó pasa al que
+quedó solo si tiene la misma identidad que la versión que conocía ese lado:
+un CEDEAR convertido en el lugar comparte id con la acción que fue.
 
 **Una cartera vaciada no pisa a la otra sin preguntar** (`shrinks`), en
 ninguna de las dos direcciones: es el principio de las copias automáticas. Y

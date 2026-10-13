@@ -6,7 +6,7 @@ import { googleRequest, readGoogleText } from "../google";
 
 const payload = encodeData({ app: "waltra", version: 1, accounts: [], assets: [], transactions: [], settings: DEFAULT_SETTINGS, insights: [] });
 const file = (id = "backup", etag = '"rev-1"') => ({ id, etag, modifiedDate: "2026-10-12T15:00:00Z", fileSize: String(new TextEncoder().encode(payload).length) });
-const version = (id = "backup"): CloudVersion => ({ id, etag: '"rev-1"', at: "2026-10-12T15:00:00Z", payload });
+const version = (id = "backup"): CloudVersion => ({ id, etag: '"rev-1"', at: "2026-10-12T15:00:00Z", payload, chain: [] });
 afterEach(() => vi.unstubAllGlobals());
 
 describe("protocolo de almacenamiento privado en Drive", () => {
@@ -22,6 +22,17 @@ describe("protocolo de almacenamiento privado en Drive", () => {
     expect(calls[0].searchParams.get("spaces")).toBe("appDataFolder");
     expect(calls[0].searchParams.get("q")).toContain("visibility='PRIVATE'");
     expect(calls).toHaveLength(3);
+  });
+
+  it("separa la cadena de subidas de la cartera al bajar", async () => {
+    vi.stubGlobal("fetch", async (input: string) => {
+      const url = new URL(input);
+      if (url.searchParams.get("alt") === "media") return new Response(`${payload.slice(0, -1)},"chain":["a","b","mal id!"]}`);
+      return Response.json(url.pathname.endsWith("/files") ? { items: [file()] } : file());
+    });
+    const [leida] = await new DriveTransport("token").read();
+    expect(leida.payload).toBe(payload);
+    expect(leida.chain).toEqual(["a", "b"]);
   });
 
   it("no vuelve a bajar una revision que ya conoce", async () => {
@@ -51,7 +62,7 @@ describe("protocolo de almacenamiento privado en Drive", () => {
     });
     const drive = new DriveTransport("private-token");
     let current = version();
-    for (let i = 0; i < 4; i++) current = await drive.write(payload, [current]);
+    for (let i = 0; i < 4; i++) current = await drive.write(payload, [current], [...(current.chain ?? []), `subida-${i}`]);
     expect(writes).toHaveLength(4);
     for (const [i, { url, init }] of writes.entries()) {
       expect(url.pathname).toBe("/upload/drive/v2/files/backup");
@@ -59,7 +70,10 @@ describe("protocolo de almacenamiento privado en Drive", () => {
       expect(url.searchParams.get("pinned")).toBe("false");
       expect(new Headers(init.headers).get("If-Match")).toBe(`"rev-${i + 1}"`);
       expect(new Headers(init.headers).get("Authorization")).toBe("Bearer private-token");
-      expect(init.body).toBe(payload);
+      // El archivo es la cartera mas la cadena de subidas que la produjeron.
+      const { chain, ...rest } = JSON.parse(String(init.body));
+      expect(JSON.stringify(rest)).toBe(payload);
+      expect(chain).toEqual(Array.from({ length: i + 1 }, (_, n) => `subida-${n}`));
       expect(url.href).not.toContain("private-token");
     }
   });
@@ -76,7 +90,7 @@ describe("protocolo de almacenamiento privado en Drive", () => {
     expect(writes).toBe(1);
     expect(body).toContain('"parents":[{"id":"appDataFolder"}]');
     expect(body).toContain('"visibility":"PRIVATE"');
-    expect(body).toContain(payload);
+    expect(body).toContain(`${payload.slice(0, -1)},"chain":[]}`);
   });
 
   it("no sobrescribe ni elimina copias si Google rechaza una revision vencida", async () => {
@@ -122,7 +136,7 @@ describe("protocolo de almacenamiento privado en Drive", () => {
   });
 
   it("rechaza subida, metadatos y descarga que exceden limites antes de modificar Drive", async () => {
-    const fetcher = vi.fn(async () => Response.json({ items: [{ ...file(), fileSize: String(MAX_PAYLOAD_BYTES + 1) }] }));
+    const fetcher = vi.fn(async () => Response.json({ items: [{ ...file(), fileSize: String(MAX_PAYLOAD_BYTES * 2) }] }));
     vi.stubGlobal("fetch", fetcher);
     const oversized = JSON.stringify({ ...JSON.parse(payload), settings: { ...DEFAULT_SETTINGS, goals: "é".repeat(MAX_PAYLOAD_BYTES / 2) } });
     await expect(new DriveTransport("token").write(oversized, [])).rejects.toThrow(/5 MiB/);

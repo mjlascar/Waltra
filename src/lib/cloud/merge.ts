@@ -224,14 +224,22 @@ export function mergeData(base: CloudData | null, local: CloudData, remote: Clou
   }
   const kept = pick(assets).filter((a) => !alias.has(a.id));
   const present = new Set(kept.map((a) => a.id));
-  const equivalent = new Map<string, string>();
-  for (const a of kept) if (!equivalent.has(same(a.id))) equivalent.set(same(a.id), a.id);
+  const withIdentity = new Map<string, string[]>();
+  for (const a of kept) withIdentity.set(identity(a), [...(withIdentity.get(identity(a)) ?? []), a.id]);
+  const assetsOf = { base: byId(base?.assets ?? []), local: byId(local.assets), remote: byId(remote.assets) };
   // Un movimiento cuyo activo el otro lado unifico con uno igual pasa a ese:
-  // si no, quedaria apuntando a un activo que ya no esta.
-  const transactions = pick(txs).map((t) => {
-    if (!t.assetId) return t;
-    const target = alias.get(t.assetId) ?? (present.has(t.assetId) ? t.assetId : equivalent.get(same(t.assetId)));
-    return target && target !== t.assetId ? { ...t, assetId: target } : t;
+  // si no, quedaria apuntando a un activo que ya no esta. Igual es la misma
+  // identidad que tenia el activo del lado de donde sale el movimiento, y uno
+  // solo: un CEDEAR convertido en el lugar comparte id con la accion que fue,
+  // y mandar sus compras a la accion de Nueva York es un error de unidades.
+  const transactions = txs.flatMap((d) => {
+    const t = d.row;
+    if (!t) return [];
+    if (!t.assetId || present.has(t.assetId)) return [t];
+    if (alias.has(t.assetId)) return [{ ...t, assetId: alias.get(t.assetId) }];
+    const known = (t === d.remote ? assetsOf.remote : assetsOf.local).get(t.assetId) ?? assetsOf.base.get(t.assetId);
+    const candidates = known ? withIdentity.get(identity(known)) ?? [] : [];
+    return [candidates.length === 1 ? { ...t, assetId: candidates[0] } : t];
   });
 
   const data: CloudData = {

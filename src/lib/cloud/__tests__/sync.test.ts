@@ -34,14 +34,21 @@ const txs = (...entries: [string, number][]): Transaction[] => entries.map(([id,
 function memoryDrive(initial?: string) {
   let current: CloudVersion | null = initial ? version(initial, "archivo") : null;
   let revision = 1;
-  const store = (payload: string) => {
-    current = { id: "archivo", etag: `"rev-${++revision}"`, payload, at: "2026-10-12T16:00:00Z" };
+  const store = (payload: string, chain: string[] = []) => {
+    current = { id: "archivo", etag: `"rev-${++revision}"`, payload, at: "2026-10-12T16:00:00Z", chain };
     return current;
   };
   return {
     read: vi.fn(async () => (current ? [current] : [])),
-    write: vi.fn(async (payload: string) => store(payload)),
+    write: vi.fn(async (payload: string, _expected?: CloudVersion[], chain?: string[]) => store(payload, chain)),
     store,
+    /** Otro telefono baja la copia, le agrega un movimiento y la sube. */
+    another(id: string, amount: number) {
+      if (!current) throw new Error("No hay copia");
+      const data = decodeData(current.payload);
+      data.transactions = [...data.transactions, ...txs([id, amount])];
+      return store(encodeData(data), [...(current.chain ?? []), `otro-${id}`]);
+    },
     ids: () => (current ? decodeData(current.payload).transactions.map((t) => t.id).sort() : []),
   };
 }
@@ -389,17 +396,15 @@ describe("sincronizacion de la cartera persistida", () => {
     });
     await synchronize(db, drive, owner, () => true);
     // El otro telefono baja lo combinado y agrega "d".
-    const [{ payload }] = await drive.read();
-    const otro = decodeData(payload); otro.transactions = [...otro.transactions, ...txs(["d", 4])];
-    drive.store(encodeData(otro));
+    drive.another("d", 4);
     expect((await synchronize(db, drive, owner, () => true)).status).toBe("ok");
     expect((await db.transactions.toArray()).map((t) => t.id).sort()).toEqual(["a", "c", "d"]);
   });
 
   it("si se pierde la respuesta de una subida que llego, lo borrado despues no vuelve", async () => {
     const drive = await concurrentAdd();
-    drive.write.mockImplementationOnce(async (payload: string) => {
-      drive.store(payload); // Drive la guardo, pero la respuesta no llega
+    drive.write.mockImplementationOnce(async (payload: string, _expected?: CloudVersion[], chain?: string[]) => {
+      drive.store(payload, chain); // Drive la guardo, pero la respuesta no llega
       throw new Error("Failed to fetch");
     });
     await expect(synchronize(db, drive, owner, () => true)).rejects.toThrow("Failed to fetch");
@@ -477,5 +482,57 @@ describe("sincronizacion de la cartera persistida", () => {
     const remote = decodeData(cloud.write.mock.calls[0][0]); remote.settings.goals = "Otra meta";
     await synchronize(db, transport([version(encodeData(remote), "otra")]), owner, () => true);
     expect(await db.settings.get("settings")).toMatchObject({ goals: "Otra meta", provider: "gemini", theme: "mono", haptics: false });
+  });
+
+  it("si se pierde la respuesta y otro telefono sube encima, lo borrado tampoco vuelve", async () => {
+    const drive = await concurrentAdd();
+    drive.write.mockImplementationOnce(async (payload: string, _expected?: CloudVersion[], chain?: string[]) => {
+      drive.store(payload, chain);
+      throw new Error("Failed to fetch");
+    });
+    await expect(synchronize(db, drive, owner, () => true)).rejects.toThrow("Failed to fetch");
+    drive.another("d", 4);
+    await db.transactions.delete("x");
+    expect((await synchronize(db, drive, owner, () => true)).status).toBe("ok");
+    expect((await db.transactions.toArray()).map((t) => t.id).sort()).toEqual(["a", "c", "d"]);
+    expect(drive.ids()).toEqual(["a", "c", "d"]);
+  });
+
+  it("una subida que se reconoce queda anotada aunque la pasada choque con otra", async () => {
+    const drive = await concurrentAdd();
+    drive.write.mockImplementationOnce(async (payload: string, _expected?: CloudVersion[], chain?: string[]) => {
+      drive.store(payload, chain);
+      throw new Error("Failed to fetch");
+    });
+    await expect(synchronize(db, drive, owner, () => true)).rejects.toThrow("Failed to fetch");
+    await db.transactions.delete("x");
+    // La pasada siguiente reconoce la subida, pero su propia subida choca: otro
+    // telefono subio en el medio.
+    drive.write.mockImplementationOnce(async () => {
+      drive.another("d", 4);
+      throw new GoogleError("changed", 412);
+    });
+    expect((await synchronize(db, drive, owner, () => true)).status).toBe("pending");
+    expect((await synchronize(db, drive, owner, () => true)).status).toBe("ok");
+    expect((await db.transactions.toArray()).map((t) => t.id).sort()).toEqual(["a", "c", "d"]);
+  });
+
+  it("una resolucion que descarta lo de este telefono guarda la copia aunque no se aplique en el momento", async () => {
+    await db.transactions.put(tx(100));
+    const base = await readData(db);
+    await db.cloudState.put({ id: "cloud", owner, base });
+    // Choca el deposito; "n" no choca, asi que quedarse con Drive igual sube.
+    await db.transactions.bulkPut([tx(200), ...txs(["n", 7])]);
+    const remote = decodeData(base); remote.transactions = [tx(400)];
+    const drive = memoryDrive(encodeData(remote));
+    const result = await synchronize(db, drive, owner, () => true);
+    drive.write.mockImplementationOnce(async (payload: string, _expected?: CloudVersion[], chain?: string[]) => {
+      const saved = drive.store(payload, chain);
+      await db.transactions.bulkPut(txs(["z", 9])); // se carga algo mientras sube
+      return saved;
+    });
+    expect((await choose(result, "drive-wins", drive)).status).toBe("pending");
+    const saved = await db.cloudBackups.toArray();
+    expect(saved.map((s) => [s.origin, JSON.parse(s.payload).transactions[0].amount])).toEqual([["device", 200]]);
   });
 });

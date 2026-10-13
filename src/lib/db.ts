@@ -59,15 +59,16 @@ export interface CloudState {
   /** Ultima copia confirmada por el servidor, para detectar cambios offline. */
   base: string | null;
   /** La revision de Drive que corresponde a `base`: si no cambio, no se baja. */
-  remote?: { id: string; etag: string };
+  remote?: { id: string; etag: string; chain?: string[] };
   syncedAt?: string;
   /** El usuario toco Desconectar: el APK no vuelve a entrar solo al abrir. */
   paused?: boolean;
   /**
-   * Una subida en vuelo: de que copia local salio y que se mando. Si la
-   * respuesta se pierde, la proxima pasada sabe que Drive ya la tiene.
+   * Una subida en vuelo: de que copia local salio y con que id. Si la respuesta
+   * se pierde, la proxima pasada busca ese id en la cadena de la copia de
+   * Drive para saber si la subida llego, aunque otro equipo haya subido encima.
    */
-  sending?: { base: string; payload: string };
+  sending?: { base: string; id: string };
 }
 
 export interface CloudBackup {

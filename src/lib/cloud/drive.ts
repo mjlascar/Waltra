@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { decodeData, encodeData, MAX_PAYLOAD_BYTES } from "./data";
+import { CloudFormatError, decodeData, encodeData, MAX_PAYLOAD_BYTES } from "./data";
 import { GoogleError, googleRequest, readGoogleText } from "./google";
 
 const API = "https://www.googleapis.com/drive/v2/files";
@@ -13,7 +13,41 @@ const fileSchema = z.object({
   modifiedDate: z.string(), fileSize: z.string().regex(/^\d+$/),
 });
 type DriveFile = z.infer<typeof fileSchema>;
-export interface CloudVersion { id: string; etag: string; payload: string; at: string }
+export interface CloudVersion {
+  id: string; etag: string; payload: string; at: string;
+  /** Las ultimas subidas que produjeron esta copia, de la mas vieja a la mas nueva. */
+  chain?: string[];
+}
+
+/**
+ * Cuantas subidas recuerda cada copia: tiene que cubrir lo que otros equipos
+ * suban mientras uno reintenta una subida cuya respuesta se perdio.
+ */
+export const CHAIN_LENGTH = 20;
+/** Lo que el archivo agrega a la cartera: la cadena de subidas. */
+const FILE_OVERHEAD = 4096;
+
+/**
+ * El archivo es la cartera mas `chain`, los ids de las subidas que la
+ * produjeron. Asi un telefono que perdio la respuesta de su subida sabe si lo
+ * que hay en Drive sale de ella, aunque despues otro equipo haya subido
+ * encima. La cadena no es parte de la cartera: no se combina ni se compara.
+ */
+function unpack(text: string): { payload: string; chain: string[] } {
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new CloudFormatError("La copia de Drive está dañada: no es un archivo de Waltra. No se modificó nada.");
+  }
+  const { chain, ...data } = (json && typeof json === "object" ? json : {}) as Record<string, unknown>;
+  const ids = Array.isArray(chain)
+    ? chain.filter((c): c is string => typeof c === "string" && /^[\w-]{1,64}$/.test(c)).slice(-CHAIN_LENGTH)
+    : [];
+  return { payload: encodeData(decodeData(JSON.stringify(data))), chain: ids };
+}
+
+const pack = (payload: string, chain: string[]) => JSON.stringify({ ...JSON.parse(payload), chain });
 export function versionToken(version: Pick<CloudVersion, "id" | "etag">): string {
   return JSON.stringify([version.id, version.etag]);
 }
@@ -23,7 +57,8 @@ export interface CloudTransport {
    * Drive sigue en esa misma revision, no se vuelve a bajar.
    */
   read(known?: CloudVersion): Promise<CloudVersion[]>;
-  write(payload: string, expected: CloudVersion[]): Promise<CloudVersion>;
+  /** `chain`: la de la copia que se reemplaza, con el id de esta subida al final. */
+  write(payload: string, expected: CloudVersion[], chain?: string[]): Promise<CloudVersion>;
 }
 
 function changed(): GoogleError {
@@ -48,7 +83,7 @@ export class DriveTransport implements CloudTransport {
       throw new Error("Hay demasiadas copias de Waltra en Drive. No se crearon archivos ni se modificaron tus datos.");
     }
     for (const file of batch.items) {
-      if (BigInt(file.fileSize) > BigInt(MAX_PAYLOAD_BYTES)) throw new Error("La copia de Drive supera el límite de 5 MiB.");
+      if (BigInt(file.fileSize) > BigInt(MAX_PAYLOAD_BYTES + FILE_OVERHEAD)) throw new Error("La copia de Drive supera el límite de 5 MiB.");
     }
     return batch.items.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   }
@@ -64,16 +99,18 @@ export class DriveTransport implements CloudTransport {
       }
       const path = `${API}/${encodeURIComponent(file.id)}`;
       const res = await googleRequest(this.token, `${path}?alt=media`);
-      const payload = encodeData(decodeData(await readGoogleText(res, MAX_PAYLOAD_BYTES)));
+      const { payload, chain } = unpack(await readGoogleText(res, MAX_PAYLOAD_BYTES + FILE_OVERHEAD));
       const current = fileSchema.parse(await this.metadata(`${path}?fields=${FIELDS}`));
       if (current.etag !== file.etag) throw changed();
-      versions.push({ id: file.id, etag: file.etag, at: file.modifiedDate, payload });
+      versions.push({ id: file.id, etag: file.etag, at: file.modifiedDate, payload, chain });
     }
     return versions;
   }
 
-  async write(input: string, expected: CloudVersion[]): Promise<CloudVersion> {
+  async write(input: string, expected: CloudVersion[], chain: string[] = []): Promise<CloudVersion> {
     const payload = encodeData(decodeData(input));
+    const lineage = chain.slice(-CHAIN_LENGTH);
+    const content = pack(payload, lineage);
     // Detecta también otro equipo que creó la primera copia mientras leíamos.
     const files = await this.list();
     if (!this.active()) throw changed();
@@ -85,14 +122,14 @@ export class DriveTransport implements CloudTransport {
       // escritura basada en una versión que otro equipo modificó.
       file = fileSchema.parse(await this.metadata(
         `${UPLOAD}/${encodeURIComponent(target.id)}?uploadType=media&newRevision=false&pinned=false&fields=${FIELDS}`, {
-          method: "PUT", headers: { "Content-Type": "application/json; charset=UTF-8", "If-Match": target.etag }, body: payload,
+          method: "PUT", headers: { "Content-Type": "application/json; charset=UTF-8", "If-Match": target.etag }, body: content,
         }));
     } else {
       const boundary = `waltra_${crypto.randomUUID()}`;
       const metadata = { title: "waltra.json", parents: [{ id: "appDataFolder" }], mimeType: "application/json",
         properties: [{ key: "kind", value: KIND, visibility: "PRIVATE" }] };
       const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
-        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${payload}\r\n--${boundary}--`;
+        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${content}\r\n--${boundary}--`;
       file = fileSchema.parse(await this.metadata(`${UPLOAD}?uploadType=multipart&pinned=false&fields=${FIELDS}`, {
         method: "POST", headers: { "Content-Type": `multipart/related; boundary=${boundary}` }, body,
       }));
@@ -109,6 +146,6 @@ export class DriveTransport implements CloudTransport {
         method: "DELETE", headers: { "If-Match": duplicate.etag },
       });
     }
-    return { id: file.id, etag: file.etag, at: file.modifiedDate, payload };
+    return { id: file.id, etag: file.etag, at: file.modifiedDate, payload, chain: lineage };
   }
 }
