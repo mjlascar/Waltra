@@ -18,7 +18,11 @@ export function versionToken(version: Pick<CloudVersion, "id" | "etag">): string
   return JSON.stringify([version.id, version.etag]);
 }
 export interface CloudTransport {
-  read(): Promise<CloudVersion[]>;
+  /**
+   * Las copias que hay en Drive. `known` es la ultima version confirmada: si
+   * Drive sigue en esa misma revision, no se vuelve a bajar.
+   */
+  read(known?: CloudVersion): Promise<CloudVersion[]>;
   write(payload: string, expected: CloudVersion[]): Promise<CloudVersion>;
 }
 
@@ -49,9 +53,15 @@ export class DriveTransport implements CloudTransport {
     return batch.items.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   }
 
-  async read(): Promise<CloudVersion[]> {
+  async read(known?: CloudVersion): Promise<CloudVersion[]> {
     const versions: CloudVersion[] = [];
     for (const file of await this.list()) {
+      // Se revisa cada minuto con la app abierta: sin esto, eran hasta 5 MiB
+      // por minuto para enterarse de que no habia nada nuevo.
+      if (known && file.id === known.id && file.etag === known.etag) {
+        versions.push({ ...known, at: file.modifiedDate });
+        continue;
+      }
       const path = `${API}/${encodeURIComponent(file.id)}`;
       const res = await googleRequest(this.token, `${path}?alt=media`);
       const payload = encodeData(decodeData(await readGoogleText(res, MAX_PAYLOAD_BYTES)));

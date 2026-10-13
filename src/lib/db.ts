@@ -57,6 +57,8 @@ export interface CloudState {
   email?: string;
   /** Ultima copia confirmada por el servidor, para detectar cambios offline. */
   base: string | null;
+  /** La revision de Drive que corresponde a `base`: si no cambio, no se baja. */
+  remote?: { id: string; etag: string };
   syncedAt?: string;
   /** El usuario toco Desconectar: el APK no vuelve a entrar solo al abrir. */
   paused?: boolean;

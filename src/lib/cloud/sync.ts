@@ -160,7 +160,8 @@ export async function synchronize(
   if (!state) return pending();
   const local = await readData(db);
   let read: CloudVersion[];
-  try { read = await transport.read(); }
+  const known = state.base !== null && state.remote ? { ...state.remote, payload: state.base, at: "" } : undefined;
+  try { read = await transport.read(known); }
   catch (err) { if (err instanceof GoogleError && [404, 412].includes(err.status ?? 0)) return pending(); throw err; }
   const versions = read.map((version) => ({
     ...version, payload: encodeData(decodeData(version.payload)),
@@ -193,13 +194,14 @@ export async function synchronize(
   };
   const remote = versions[0]?.payload ?? null;
   const at = new Date().toISOString();
+  let confirmed: CloudVersion | undefined = versions[0];
   if (selected !== remote || versions.length > 1) {
     // Lo que la subida pisa se guarda antes de subir: Drive no conserva la
     // version anterior.
     const lost = versions.filter((v) => v.payload !== selected && loses(v.payload));
     if (lost.length) await saveRecovery(db, lost.map((v) => ({ payload: v.payload, origin: "drive" as const })), at);
     if (!active()) return pending();
-    try { await transport.write(selected, versions); }
+    try { confirmed = await transport.write(selected, versions); }
     catch (err) { if (err instanceof GoogleError && [404, 412].includes(err.status ?? 0)) return pending(); throw err; }
     if (!active()) return pending();
   }
@@ -221,7 +223,8 @@ export async function synchronize(
       await replaceData(db, selected);
       downloaded = true;
     }
-    await db.cloudState.put({ ...currentState, base: selected, syncedAt: at });
+    await db.cloudState.put({ ...currentState, base: selected, syncedAt: at,
+      remote: confirmed && { id: confirmed.id, etag: confirmed.etag } });
     return { status: selected === currentLocal || downloaded ? "ok" : "pending", at, downloaded };
   });
 }

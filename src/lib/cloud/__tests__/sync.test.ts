@@ -325,4 +325,16 @@ describe("sincronizacion de la cartera persistida", () => {
     const saved = await db.cloudBackups.toArray();
     expect(saved.map((s) => [s.origin, JSON.parse(s.payload).transactions.length])).toEqual([["device", 3]]);
   });
+
+  it("le pasa a Drive la revision confirmada para no bajarla de nuevo", async () => {
+    await db.transactions.put(tx(100));
+    const cloud = transport();
+    await synchronize(db, cloud, owner, () => true);
+    const uploaded = cloud.write.mock.calls[0][0] as string;
+    expect(await db.cloudState.get("cloud")).toMatchObject({ remote: { id: "uploaded", etag: '"rev-1"' } });
+    cloud.read.mockResolvedValue([version(uploaded, "uploaded")]);
+    expect((await synchronize(db, cloud, owner, () => true)).status).toBe("ok");
+    expect(cloud.read.mock.calls[1][0]).toMatchObject({ id: "uploaded", etag: '"rev-1"', payload: uploaded });
+    expect(cloud.write).toHaveBeenCalledTimes(1);
+  });
 });

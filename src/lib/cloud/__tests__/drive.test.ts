@@ -24,6 +24,20 @@ describe("protocolo de almacenamiento privado en Drive", () => {
     expect(calls).toHaveLength(3);
   });
 
+  it("no vuelve a bajar una revision que ya conoce", async () => {
+    const calls: URL[] = [];
+    vi.stubGlobal("fetch", async (input: string) => {
+      const url = new URL(input); calls.push(url);
+      if (url.searchParams.get("alt") === "media") return new Response(payload);
+      return Response.json(url.pathname.endsWith("/files") ? { items: [file()] } : file());
+    });
+    expect(await new DriveTransport("token").read(version())).toEqual([version()]);
+    expect(calls).toHaveLength(1);
+    // Otra revision del mismo archivo si se baja.
+    await new DriveTransport("token").read({ ...version(), etag: '"rev-0"' });
+    expect(calls).toHaveLength(4);
+  });
+
   it("sobrescribe el mismo archivo repetidamente sin nuevas copias ni revisiones", async () => {
     const writes: { url: URL; init: RequestInit }[] = [];
     let revision = 1;
