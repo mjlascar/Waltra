@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { AjustesShell } from "@/components/ajustes/Shell";
 import { Notice } from "@/components/ui/Notice";
 import { useCloud } from "@/lib/cloud/provider";
 import { decodeData } from "@/lib/cloud/data";
 import { versionToken } from "@/lib/cloud/drive";
+import { MAX_RECOVERY, type CloudConflict, type OptionKind } from "@/lib/cloud/sync";
 import { saveBackupFile } from "@/lib/backup-file";
+import type { CloudBackup } from "@/lib/db";
 import { useStore } from "@/lib/store";
 import { relativeTime } from "@/lib/format";
 import { NATIVE } from "@/lib/platform";
@@ -20,19 +22,70 @@ const STATUS = {
   conflict: "Hay versiones distintas para revisar", error: "No se pudo sincronizar",
 };
 
+const OPTION: Record<OptionKind, { label: string; detail: string }> = {
+  device: { label: "Los datos de este dispositivo", detail: "Reemplaza la copia de Drive." },
+  drive: { label: "La copia de Drive", detail: "Reemplaza los datos de este dispositivo." },
+  "device-wins": { label: "Combinar, y donde chocan, este dispositivo", detail: "Se suma todo lo que no choca." },
+  "drive-wins": { label: "Combinar, y donde chocan, Drive", detail: "Se suma todo lo que no choca." },
+  join: {
+    label: "Juntar los dos",
+    detail: "Suma los movimientos de los dos lados. Si cargaste lo mismo en los dos, va a quedar repetido.",
+  },
+  apply: { label: "Confirmar el borrado", detail: "Queda así en este dispositivo y en Drive." },
+};
+
+function explain(conflict: CloudConflict): { title: string; body: string } {
+  switch (conflict.kind) {
+    case "first":
+      return {
+        title: "Hay datos acá y en tu Drive",
+        body: "Es la primera vez que este dispositivo se conecta a esta cuenta y los dos lados tienen datos. Elegí con cuáles seguir.",
+      };
+    case "both":
+      return conflict.clashes > 0 ? {
+        title: "Los dos lados cambiaron lo mismo",
+        body: `${conflict.clashes === 1 ? "Un cambio choca" : `${conflict.clashes} cambios chocan`}: se editó lo mismo acá y en otro dispositivo, o se cargó un ajuste o un split de un activo que el otro también tocó. Todo lo demás se combina igual.`,
+      } : {
+        title: "No se pueden combinar los dos lados",
+        body: "Combinarlos dejaría movimientos apuntando a una cuenta o un activo que se borró del otro lado. Elegí uno de los dos.",
+      };
+    case "shrink":
+      return {
+        title: "Se borraría casi toda la cartera",
+        body: "Sincronizar dejaría muchos menos movimientos de los que hay de un lado. Si borraste a propósito, confirmalo; si no, quedate con los movimientos.",
+      };
+    case "missing":
+      return {
+        title: "La copia de Drive ya no está",
+        body: "Se borró la copia de Waltra de tu Drive, o se le quitó el acceso a la app. Podés volver a crearla con los datos de este dispositivo.",
+      };
+    case "copies":
+      return {
+        title: "Hay más de una copia en Drive",
+        body: "Dos dispositivos se conectaron por primera vez al mismo tiempo. Elegí cuál queda; las demás se borran de Drive.",
+      };
+  }
+}
+
+const movimientos = (n: number) => `${n} ${n === 1 ? "movimiento" : "movimientos"}`;
+
 export default function CuentaAjustes() {
   const cloud = useCloud();
   const { db, ready, dbError } = useStore();
   const [choice, setChoice] = useState("");
   const [message, setMessage] = useState<string | null>(null);
-  const recovery = useLiveQuery(() => db?.cloudBackups.orderBy("id").last(), [db]);
+  const recoveries = useLiveQuery(() => db ? db.cloudBackups.orderBy("id").reverse().toArray() : [], [db]);
+  const copies = useMemo(() => (recoveries ?? []).map((copy) => ({
+    copy, transactions: decodeData(copy.payload).transactions.length,
+  })), [recoveries]);
   const busy = cloud.status === "loading" || cloud.status === "syncing" || !ready || Boolean(dbError);
+  const conflict = cloud.conflict;
+  const text = conflict ? explain(conflict) : null;
 
-  async function exportRecovery() {
-    if (!recovery) return;
+  async function exportRecovery(copy: CloudBackup) {
     try {
-      const result = await saveBackupFile("waltra-antes-de-sincronizar.json", JSON.stringify({
-        ...decodeData(recovery.payload), exportedAt: recovery.at,
+      const result = await saveBackupFile(`waltra-recuperacion-${copy.at.slice(0, 10)}.json`, JSON.stringify({
+        ...decodeData(copy.payload), exportedAt: copy.at,
       }, null, 2));
       setMessage(result.message);
     } catch (err) { setMessage(err instanceof Error ? err.message : "No se pudo exportar la copia."); }
@@ -53,7 +106,7 @@ export default function CuentaAjustes() {
           <Notice tone="info">Esta versión necesita el cliente de Google de Waltra. Una vez configurado, cada usuario guarda sus datos en su propio Drive.</Notice>
         ) : cloud.user ? (
           <div className="flex flex-wrap gap-2">
-            <button className="btn btn-sm" disabled={busy || Boolean(cloud.conflict)} onClick={() => void cloud.sync()}>Sincronizar ahora</button>
+            <button className="btn btn-sm" disabled={busy || Boolean(conflict)} onClick={() => void cloud.sync()}>Sincronizar ahora</button>
             <button className="btn btn-sm" disabled={busy} onClick={() => void cloud.login()}>Reconectar Google</button>
             <button className="btn btn-sm btn-ghost" disabled={cloud.status === "loading"} onClick={() => void cloud.logout()}>Desconectar</button>
           </div>
@@ -61,40 +114,55 @@ export default function CuentaAjustes() {
           <button className="btn btn-primary w-full" disabled={busy} onClick={() => void cloud.login()}>Conectar Google Drive</button>
         )}
         <p className="label leading-relaxed">
-          Al conectar, autorizás a Waltra a sincronizar cuentas, activos, movimientos,
-          perfil e informes. La copia es privada y está oculta en el espacio de Waltra
-          dentro de tu Drive. La app solo pide acceso a sus propios archivos.
-          Se conserva una única copia de hasta 5 MiB, reemplazada al sincronizar.
+          Al conectar, autorizás a Waltra a sincronizar cuentas, activos, movimientos
+          (con sus notas y la frase con que los cargaste), perfil, preferencias e
+          informes. La copia es privada y está oculta en el espacio de Waltra dentro
+          de tu Drive; la app solo pide acceso a sus propios archivos y no la cifra
+          aparte. Se conserva una única copia de hasta 5 MiB.
         </p>
       </div>
 
-      {cloud.conflict && <section className="card mb-4 space-y-3 p-3" aria-label="Resolver versiones distintas">
-        <h2 className="text-[14px] font-medium">Elegí qué versión conservar</h2>
-        <Notice>Hay cambios en más de un equipo, o una copia anterior en Drive. Se pausó la sincronización para que puedas revisarlos. Elegir una versión reemplaza la otra. No se conserva un historial en Drive.</Notice>
-        <fieldset className="space-y-2" disabled={busy}>
-          <legend className="label mb-2">Versión que se usará en tus equipos</legend>
-          <label className="flex items-start gap-2 text-[12px]">
-            <input type="radio" name="version" value="local" checked={choice === "local"} onChange={() => setChoice("local")} />
-            Este dispositivo · {decodeData(cloud.conflict.local).transactions.length} movimientos
-          </label>
-          {cloud.conflict.versions.map((version) => <label key={version.id} className="flex items-start gap-2 text-[12px]">
-            <input type="radio" name="version" value={version.id} checked={choice === version.id} onChange={() => setChoice(version.id)} />
-            Drive · {decodeData(version.payload).transactions.length} movimientos · {new Date(version.at).toLocaleString("es-AR")}
+      {conflict && text && <section className="card mb-4 space-y-3 p-3" aria-label="Resolver versiones distintas">
+        <h2 className="text-[14px] font-medium">{text.title}</h2>
+        <Notice>{text.body} La sincronización queda en pausa hasta que elijas.</Notice>
+        <fieldset className="space-y-3" disabled={busy}>
+          <legend className="label mb-2">Con qué seguir, en este dispositivo y en Drive</legend>
+          {conflict.options.map((option) => <label key={option.id} className="flex items-start gap-2 text-[12px]">
+            <input type="radio" name="version" value={option.id} checked={choice === option.id} onChange={() => setChoice(option.id)} />
+            <span className="min-w-0">
+              <span className="block">
+                {OPTION[option.kind].label} · {movimientos(option.transactions)}
+                {option.at && ` · ${new Date(option.at).toLocaleString("es-AR")}`}
+              </span>
+              <span className="label block leading-snug">{OPTION[option.kind].detail}</span>
+            </span>
           </label>)}
         </fieldset>
-        <button className="btn btn-sm w-full" disabled={busy || !choice || (choice !== "local" && !cloud.conflict.versions.some((v) => v.id === choice))} onClick={() => {
-          const conflict = cloud.conflict;
-          if (!conflict) return;
+        <button className="btn btn-sm w-full" disabled={busy || !conflict.options.some((o) => o.id === choice)} onClick={() => {
           void cloud.sync({ local: conflict.local, tokens: conflict.versions.map(versionToken), choice });
           setChoice("");
-        }}>Confirmar y sincronizar esta versión</button>
-        <p className="label leading-relaxed">Si elegís Drive, se guarda una copia local de recuperación antes de reemplazar los datos del dispositivo. Podés exportar tus datos actuales desde Ajustes → Tus datos antes de confirmar.</p>
+        }}>Confirmar</button>
+        <p className="label leading-relaxed">
+          Lo que se reemplace queda guardado en este dispositivo como copia de
+          recuperación. Igual podés exportar tus datos desde Ajustes → Tus datos antes de confirmar.
+        </p>
       </section>}
 
-      {recovery && <div className="card mb-4 space-y-2 p-3">
-        <h2 className="text-[14px] font-medium">Copia anterior del dispositivo</h2>
-        <p className="label">Guardada el {new Date(recovery.at).toLocaleString("es-AR")}, antes de descargar otra versión.</p>
-        <button className="btn btn-sm w-full" onClick={() => void exportRecovery()}>Exportar copia de recuperación</button>
+      {copies.length > 0 && <div className="card mb-4 space-y-2 p-3">
+        <h2 className="text-[14px] font-medium">Copias de recuperación</h2>
+        <p className="label leading-relaxed">
+          Lo que la sincronización reemplazó. Se guardan las últimas {MAX_RECOVERY}, solo en este
+          dispositivo. Exportada, una copia se importa desde Ajustes → Tus datos, y suma sin borrar.
+        </p>
+        <ul className="divide-hairline">
+          {copies.map(({ copy, transactions }) => <li key={copy.id} className="flex items-center justify-between gap-2 py-2">
+            <span className="min-w-0 text-[12px]">
+              {copy.origin === "drive" ? "De Drive" : "De este dispositivo"} · {new Date(copy.at).toLocaleString("es-AR")}
+              <span className="label block">{movimientos(transactions)}</span>
+            </span>
+            <button className="btn btn-sm shrink-0" onClick={() => void exportRecovery(copy)}>Exportar</button>
+          </li>)}
+        </ul>
       </div>}
       <p className="label leading-relaxed">
         Las claves de Anthropic, Gemini y del servidor quedan en este dispositivo.

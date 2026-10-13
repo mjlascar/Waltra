@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { DEFAULT_SETTINGS, defaultAccounts, type WaltraDB } from "@/lib/db";
-import type { Settings } from "@/lib/types";
+import { underlyingId } from "@/lib/engine/cedear-ratio";
+import type { Asset, Settings } from "@/lib/types";
 
 const currency = z.enum(["USD", "ARS"]);
 const id = z.string().min(1).max(1000);
@@ -172,12 +173,20 @@ export function isPristine(payload: string): boolean {
     JSON.stringify(canonical(data.settings)) === JSON.stringify(canonical(upload.shape.settings.parse(DEFAULT_SETTINGS)));
 }
 
+/** Lo que cambia de donde sale la cotizacion de un activo. */
+const quotedAs = (a: Asset) => [a.source, a.sourceSymbol, a.currency, a.kind, a.priceUnit ?? 1].join("|");
+
 /** Debe ejecutarse dentro de una transaccion junto con el estado de sincronizacion. */
 export async function replaceData(db: WaltraDB, payload: string): Promise<void> {
   const data = decodeData(payload);
-  const local = await db.settings.get("settings");
+  const [local, before] = await Promise.all([db.settings.get("settings"), db.assets.toArray()]);
+  // Los precios son del mercado, no del usuario: con cada movimiento que
+  // llega de otro telefono no se vuelve a bajar la historia de todo. Solo se
+  // olvida la de los activos que ya no estan o que ahora cotizan en otro lado.
+  const next = new Map(data.assets.map((a) => [a.id, quotedAs(a)]));
+  const stale = before.filter((a) => next.get(a.id) !== quotedAs(a)).map((a) => a.id);
   await Promise.all([db.accounts.clear(), db.assets.clear(), db.transactions.clear(), db.insights.clear(),
-    db.priceSeries.clear(), db.quotes.clear(), db.fx.clear()]);
+    db.priceSeries.bulkDelete([...stale, ...stale.map(underlyingId)]), db.quotes.bulkDelete(stale)]);
   await db.accounts.bulkPut(data.accounts);
   await db.assets.bulkPut(data.assets);
   await db.transactions.bulkPut(data.transactions);

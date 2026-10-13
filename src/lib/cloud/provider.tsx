@@ -66,7 +66,8 @@ export function CloudProvider({ children }: { children: ReactNode }) {
       else {
         setConflict(null); stopped.current = false;
         if (result.status === "ok") setLastSync(result.at);
-        if (result.downloaded) void refreshing.current({ force: true });
+        // Solo trae lo que falta: los precios que ya estaban siguen sirviendo.
+        if (result.downloaded) void refreshing.current();
       }
     } catch (err) {
       if (!active()) return;

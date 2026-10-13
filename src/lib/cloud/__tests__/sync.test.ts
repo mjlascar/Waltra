@@ -3,10 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_SETTINGS, WaltraDB, ensureSeeded } from "@/lib/db";
 import type { Transaction } from "@/lib/types";
 import { decodeData, encodeData, readData } from "../data";
-import { synchronize } from "../sync";
+import { MAX_RECOVERY, synchronize, type CloudSyncResult, type OptionKind } from "../sync";
 import { GoogleError } from "../google";
 import { MAX_PAYLOAD_BYTES } from "../data";
-import type { CloudTransport, CloudVersion } from "../drive";
+import { versionToken, type CloudTransport, type CloudVersion } from "../drive";
 
 let db: WaltraDB;
 const owner = "google-user-a";
@@ -20,6 +20,16 @@ function transport(versions: CloudVersion[] = []): CloudTransport & { read: Retu
     write: vi.fn(async (payload: string) => version(payload, "uploaded")),
   };
 }
+
+/** Resuelve un conflicto eligiendo la opcion de ese tipo, como lo haria la pantalla. */
+async function choose(result: CloudSyncResult, kind: OptionKind, cloud: CloudTransport) {
+  if (result.status !== "conflict") throw new Error(`Se esperaba un conflicto y llego ${result.status}`);
+  const option = result.options.find((o) => o.kind === kind);
+  if (!option) throw new Error(`No se ofrecio ${kind}: ${result.options.map((o) => o.kind).join(", ")}`);
+  return synchronize(db, cloud, owner, () => true, { local: result.local, tokens: result.versions.map(versionToken), choice: option.id });
+}
+const txs = (...entries: [string, number][]): Transaction[] => entries.map(([id, amount]) => ({ ...tx(amount), id }));
+const amounts = async () => (await db.transactions.toArray()).map((t) => `${t.id}:${t.amount}`).sort();
 
 beforeEach(async () => {
   await new WaltraDB().delete(); db = new WaltraDB(); await db.open(); await ensureSeeded(db);
@@ -65,9 +75,12 @@ describe("sincronizacion de la cartera persistida", () => {
     expect((await db.transactions.get("deposit"))?.amount).toBe(200);
     expect(cloud.write).not.toHaveBeenCalled();
     if (result.status !== "conflict") throw new Error("Se esperaba un conflicto");
-    await synchronize(db, cloud, owner, () => true, { local: result.local, tokens: [JSON.stringify(["remote", '"rev-1"'])], choice: "remote" });
+    expect(result).toMatchObject({ kind: "both", clashes: 1 });
+    await choose(result, "drive-wins", cloud);
     expect((await db.transactions.get("deposit"))?.amount).toBe(400);
     const saved = await db.cloudBackups.toArray();
+    expect(saved).toHaveLength(1);
+    expect(saved[0].origin).toBe("device");
     expect(JSON.parse(saved[0].payload).transactions[0].amount).toBe(200);
   });
 
@@ -76,8 +89,9 @@ describe("sincronizacion de la cartera persistida", () => {
     const local = await readData(db);
     const other = decodeData(local); other.transactions = [tx(600)];
     const cloud = transport([version(local, "device-a"), version(encodeData(other), "device-b")]);
-    expect((await synchronize(db, cloud, owner, () => true)).status).toBe("conflict");
-    await synchronize(db, cloud, owner, () => true, { local, tokens: [JSON.stringify(["device-a", '"rev-1"']), JSON.stringify(["device-b", '"rev-1"'])], choice: "local" });
+    const result = await synchronize(db, cloud, owner, () => true);
+    expect(result).toMatchObject({ status: "conflict", kind: "copies" });
+    await choose(result, "device", cloud);
     expect(cloud.write.mock.calls[0][1]).toEqual([version(local, "device-a"), version(encodeData(other), "device-b")]);
     expect(JSON.parse(cloud.write.mock.calls[0][0]).transactions[0].amount).toBe(100);
   });
@@ -177,17 +191,31 @@ describe("sincronizacion de la cartera persistida", () => {
     expect((await db.transactions.get("deposit"))?.amount).toBe(250);
   });
 
-  it("reemplaza la copia local de recuperacion en sucesivas descargas", async () => {
+  it("una descarga que no pisa nada propio no deja copias que roten las utiles", async () => {
     await db.transactions.put(tx(100));
     const base = await readData(db);
     await db.cloudState.put({ id: "cloud", owner, base });
     for (const amount of [200, 300, 400, 500]) {
       const remote = decodeData(base); remote.transactions = [tx(amount)];
       await synchronize(db, transport([version(encodeData(remote))]), owner, () => true);
-      expect(await db.cloudBackups.count()).toBe(1);
     }
-    const saved = await db.cloudBackups.toArray();
-    expect(JSON.parse(saved[0].payload).transactions[0].amount).toBe(400);
+    expect((await db.transactions.get("deposit"))?.amount).toBe(500);
+    expect(await db.cloudBackups.count()).toBe(0);
+  });
+
+  it("guarda como mucho las ultimas copias de recuperacion, sin repetirlas", async () => {
+    for (const amount of [200, 300, 400, 500, 600]) {
+      await db.transactions.put(tx(100));
+      const base = await readData(db);
+      await db.cloudState.put({ id: "cloud", owner, base });
+      await db.transactions.put(tx(amount));
+      const remote = decodeData(base); remote.transactions = [tx(amount + 1)];
+      const cloud = transport([version(encodeData(remote))]);
+      await choose(await synchronize(db, cloud, owner, () => true), "drive-wins", cloud);
+    }
+    const saved = await db.cloudBackups.orderBy("id").toArray();
+    expect(saved).toHaveLength(MAX_RECOVERY);
+    expect(saved.map((s) => JSON.parse(s.payload).transactions[0].amount)).toEqual([400, 500, 600]);
   });
 
   it("rechaza una cartera local excesiva antes de consultar o publicar en Drive", async () => {
@@ -197,5 +225,79 @@ describe("sincronizacion de la cartera persistida", () => {
     expect(cloud.read).not.toHaveBeenCalled();
     expect(cloud.write).not.toHaveBeenCalled();
     expect((await db.settings.get("settings"))?.goals.length).toBe(MAX_PAYLOAD_BYTES / 2);
+  });
+
+  it("combina movimientos cargados sin conexion en dos equipos, sin preguntar", async () => {
+    await db.transactions.bulkPut(txs(["a", 100]));
+    const base = await readData(db);
+    await db.cloudState.put({ id: "cloud", owner, base });
+    await db.transactions.bulkPut(txs(["b", 200]));
+    const remote = decodeData(base); remote.transactions = txs(["a", 100], ["c", 300]);
+    const cloud = transport([version(encodeData(remote))]);
+    const result = await synchronize(db, cloud, owner, () => true);
+    expect(result).toMatchObject({ status: "ok", downloaded: true });
+    expect(await amounts()).toEqual(["a:100", "b:200", "c:300"]);
+    expect(decodeData(cloud.write.mock.calls[0][0]).transactions.map((t) => t.id)).toEqual(["a", "b", "c"]);
+    expect(await db.cloudBackups.count()).toBe(0);
+  });
+
+  it("no sube una cartera vaciada sin preguntar, y si se confirma guarda antes la de Drive", async () => {
+    await db.transactions.bulkPut(txs(["a", 1], ["b", 2], ["c", 3]));
+    const base = await readData(db);
+    await db.cloudState.put({ id: "cloud", owner, base });
+    await db.transactions.clear();
+    const cloud = transport([version(base)]);
+    const result = await synchronize(db, cloud, owner, () => true);
+    expect(result).toMatchObject({ status: "conflict", kind: "shrink" });
+    expect(cloud.write).not.toHaveBeenCalled();
+    cloud.write.mockImplementation(async (payload: string) => {
+      // La copia de Drive ya esta a salvo cuando se la pisa.
+      const saved = await db.cloudBackups.toArray();
+      expect(saved.map((s) => s.origin)).toEqual(["drive"]);
+      expect(JSON.parse(saved[0].payload).transactions).toHaveLength(3);
+      return version(payload, "uploaded");
+    });
+    await choose(result, "apply", cloud);
+    expect(decodeData(cloud.write.mock.calls[0][0]).transactions).toEqual([]);
+  });
+
+  it("tampoco baja sin preguntar una cartera que otro equipo vacio", async () => {
+    await db.transactions.bulkPut(txs(["a", 1], ["b", 2], ["c", 3]));
+    const base = await readData(db);
+    await db.cloudState.put({ id: "cloud", owner, base });
+    const vacia = decodeData(base); vacia.transactions = [];
+    const cloud = transport([version(encodeData(vacia))]);
+    const result = await synchronize(db, cloud, owner, () => true);
+    expect(result).toMatchObject({ status: "conflict", kind: "shrink" });
+    expect(await db.transactions.count()).toBe(3);
+    await choose(result, "device", cloud);
+    expect(decodeData(cloud.write.mock.calls[0][0]).transactions).toHaveLength(3);
+    expect(await db.transactions.count()).toBe(3);
+  });
+
+  it("en la primera conexion con datos en los dos lados ofrece juntarlos", async () => {
+    await db.transactions.bulkPut(txs(["a", 100]));
+    const remote = decodeData(await readData(db)); remote.transactions = txs(["b", 200]);
+    const cloud = transport([version(encodeData(remote))]);
+    const result = await synchronize(db, cloud, owner, () => true);
+    if (result.status !== "conflict") throw new Error("Se esperaba un conflicto");
+    expect(result.kind).toBe("first");
+    expect(result.options.map((o) => o.kind)).toEqual(["device", "drive", "join"]);
+    await choose(result, "join", cloud);
+    expect(await amounts()).toEqual(["a:100", "b:200"]);
+    expect(decodeData(cloud.write.mock.calls[0][0]).transactions).toHaveLength(2);
+  });
+
+  it("al quedarse con este dispositivo guarda la version de Drive que pisa", async () => {
+    await db.transactions.put(tx(100));
+    const base = await readData(db);
+    await db.cloudState.put({ id: "cloud", owner, base });
+    await db.transactions.put(tx(200));
+    const remote = decodeData(base); remote.transactions = [tx(400)];
+    const cloud = transport([version(encodeData(remote))]);
+    await choose(await synchronize(db, cloud, owner, () => true), "device-wins", cloud);
+    expect(decodeData(cloud.write.mock.calls[0][0]).transactions[0].amount).toBe(200);
+    const saved = await db.cloudBackups.toArray();
+    expect(saved.map((s) => [s.origin, JSON.parse(s.payload).transactions[0].amount])).toEqual([["drive", 400]]);
   });
 });

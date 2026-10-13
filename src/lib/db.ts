@@ -58,6 +58,8 @@ export interface CloudBackup {
   id?: number;
   at: string;
   payload: string;
+  /** De donde salio lo que se iba a pisar: este dispositivo o la copia de Drive. */
+  origin?: "device" | "drive";
 }
 
 let instance: WaltraDB | null = null;

@@ -1,23 +1,134 @@
-import type { CloudState, WaltraDB } from "@/lib/db";
+import type { CloudBackup, CloudState, WaltraDB } from "@/lib/db";
 import { decodeData, encodeData, isPristine, readData, replaceData } from "./data";
 import type { CloudTransport, CloudVersion } from "./drive";
 import { versionToken } from "./drive";
 import { GoogleError } from "./google";
+import { discards, mergeData, shrinks } from "./merge";
 
-export type CloudSyncResult =
-  | { status: "ok" | "pending"; at: string; downloaded: boolean }
-  | { status: "conflict"; local: string; versions: CloudVersion[] };
+/** Por que se freno la sincronizacion: decide que se le explica al usuario. */
+export type ConflictKind =
+  /** Primera conexion de este dispositivo, con datos propios y en Drive. */
+  | "first"
+  /** Los dos lados cambiaron lo mismo desde la ultima sincronizacion. */
+  | "both"
+  /** El resultado se llevaria la mayor parte de los movimientos. */
+  | "shrink"
+  /** La copia de Drive desaparecio despues de haber sincronizado. */
+  | "missing"
+  /** Varias copias en Drive: dos primeras conexiones a la vez. */
+  | "copies";
+
+/**
+ * Que hace cada salida: reemplazar con un lado entero, combinar dejando que un
+ * lado gane los choques, juntar los dos en la primera conexion o confirmar un
+ * borrado grande.
+ */
+export type OptionKind = "device" | "drive" | "device-wins" | "drive-wins" | "join" | "apply";
+
+export interface ConflictOption {
+  id: string;
+  kind: OptionKind;
+  payload: string;
+  transactions: number;
+  /** La fecha de la copia de Drive, cuando la opcion es una de ellas. */
+  at?: string;
+}
+
+export interface CloudConflict {
+  status: "conflict";
+  kind: ConflictKind;
+  local: string;
+  versions: CloudVersion[];
+  options: ConflictOption[];
+  /** Lo que cambio distinto en los dos lados (solo en `both`). */
+  clashes: number;
+}
+
+export type CloudSyncResult = { status: "ok" | "pending"; at: string; downloaded: boolean } | CloudConflict;
 export interface Resolution { local: string; tokens: string[]; choice: string }
 
 export class CloudOwnerError extends Error {
   constructor() { super("Los datos de este dispositivo están vinculados a otra cuenta de Google. Conectá la cuenta original para sincronizarlos."); }
 }
 
+/** Copias de recuperacion que se guardan en el dispositivo. Drive no conserva versiones. */
+export const MAX_RECOVERY = 3;
+
+type Plan = { selected: string } | Omit<CloudConflict, "status" | "local" | "versions">;
+
+function option(kind: OptionKind, payload: string, version?: CloudVersion): ConflictOption {
+  return {
+    id: version ? `${kind}:${version.id}` : kind, kind, payload,
+    transactions: decodeData(payload).transactions.length,
+    ...(version ? { at: version.at } : {}),
+  };
+}
+
 /**
- * Copias completas y eliminaciones incluidas. Una edicion en ambos lados se
- * resuelve explicitamente; no se decide por el reloj del telefono.
- * Una sola copia reemplazable en Drive; el transporte controla la revision
- * antes de sobrescribir. No hay historial remoto acumulativo.
+ * Que hacer con `local` y las copias de Drive, sabiendo cual fue la ultima
+ * confirmada (`base`). Es una funcion pura: una resolucion se vuelve a calcular
+ * con los datos de ese momento y tiene que dar las mismas opciones.
+ */
+function plan(base: string | null, local: string, versions: CloudVersion[]): Plan {
+  const remote = versions[0]?.payload ?? null;
+  const head = versions[0];
+  if (new Set(versions.map((v) => v.payload)).size > 1) {
+    return { kind: "copies", clashes: 0, options: [option("device", local), ...versions.map((v) => option("drive", v.payload, v))] };
+  }
+  if (remote === local) return { selected: local };
+  if (remote === null) {
+    // La copia remota desaparecio. No se vuelve a subir nada sin preguntar.
+    if (base !== null) return { kind: "missing", clashes: 0, options: [option("device", local)] };
+    return { selected: local };
+  }
+  if (base === null) {
+    if (isPristine(local)) return { selected: remote };
+    // Juntar sin una base comun puede repetir lo que se cargo en los dos
+    // lados por separado: se ofrece, pero no se hace solo.
+    const joined = mergeData(null, decodeData(local), decodeData(remote), "local");
+    return { kind: "first", clashes: 0, options: [
+      option("device", local), option("drive", remote, head),
+      ...(joined.consistent ? [option("join", encodeData(joined.data))] : []),
+    ] };
+  }
+  const [b, l, r] = [decodeData(base), decodeData(local), decodeData(remote)];
+  const merged = mergeData(b, l, r);
+  if (merged.clashes > 0 || !merged.consistent) {
+    const wins = (prefer: "local" | "remote") => {
+      const result = mergeData(b, l, r, prefer);
+      // Si ni asi cierra (un movimiento nuevo de un activo que el otro lado
+      // borro), queda elegir un lado entero.
+      if (!result.consistent) return prefer === "local" ? option("device", local) : option("drive", remote, head);
+      return option(prefer === "local" ? "device-wins" : "drive-wins", encodeData(result.data), prefer === "local" ? undefined : head);
+    };
+    return { kind: "both", clashes: merged.clashes, options: [wins("local"), wins("remote")] };
+  }
+  if (shrinks(l, merged.data) || shrinks(r, merged.data)) {
+    const keep = l.transactions.length >= r.transactions.length ? option("device", local) : option("drive", remote, head);
+    return { kind: "shrink", clashes: 0, options: [option("apply", encodeData(merged.data)), keep] };
+  }
+  return { selected: encodeData(merged.data) };
+}
+
+/** Guarda lo que se va a pisar, sin repetir copias iguales y quedandose con las ultimas. */
+async function saveRecovery(db: WaltraDB, copies: Pick<CloudBackup, "payload" | "origin">[], at: string): Promise<void> {
+  await db.transaction("rw", db.cloudBackups, async () => {
+    const saved = await db.cloudBackups.toArray();
+    for (const copy of copies) {
+      if (saved.some((s) => s.payload === copy.payload)) continue;
+      await db.cloudBackups.add({ at, ...copy });
+    }
+    const all = await db.cloudBackups.orderBy("id").primaryKeys();
+    await db.cloudBackups.bulkDelete(all.slice(0, Math.max(0, all.length - MAX_RECOVERY)));
+  });
+}
+
+/**
+ * Lee Drive, combina con lo local desde la ultima copia confirmada y escribe
+ * de los dos lados lo que haga falta. Lo que cambio distinto en los dos lados,
+ * o un borrado de casi todo, se frena y lo decide el usuario; nunca el reloj
+ * del telefono. Una sola copia en Drive; el transporte controla la revision
+ * antes de sobrescribir.
  */
 export async function synchronize(
   db: WaltraDB, transport: CloudTransport, owner: string,
@@ -41,40 +152,44 @@ export async function synchronize(
     ...version, payload: encodeData(decodeData(version.payload)),
   }));
   if (!active()) return pending();
-  const conflict = (): CloudSyncResult => ({ status: "conflict", local, versions });
   const tokens = versions.map(versionToken).sort();
-  const unique = new Set(versions.map((v) => v.payload));
-  const remote = versions[0]?.payload ?? null;
+  const decision = plan(state.base, local, versions);
   let selected: string;
 
-  if (resolution) {
-    // Una confirmacion vieja no autoriza pisar cambios que llegaron despues.
-    if (resolution.local !== local || JSON.stringify([...resolution.tokens].sort()) !== JSON.stringify(tokens)) return conflict();
-    const chosen = resolution.choice === "local" ? local : versions.find((v) => v.id === resolution.choice)?.payload;
-    if (!chosen) return conflict();
-    selected = chosen;
+  if ("selected" in decision) {
+    // Tambien con una resolucion en mano: si lo que llego despues ya se puede
+    // combinar solo, no hay nada que preguntar.
+    selected = decision.selected;
   } else {
-    if (unique.size > 1) return conflict();
-    if (remote === local) selected = local;
-    else if (remote === null) {
-      // La copia remota desaparecio. No se vuelve a subir nada sin preguntar.
-      if (state.base !== null) return conflict();
-      selected = local;
-    } else if (local === state.base || (state.base === null && isPristine(local))) selected = remote;
-    else if (remote === state.base) selected = local;
-    else return conflict();
+    const conflict: CloudConflict = { status: "conflict", local, versions, ...decision };
+    // Una confirmacion vieja no autoriza pisar cambios que llegaron despues.
+    if (!resolution || resolution.local !== local || JSON.stringify([...resolution.tokens].sort()) !== JSON.stringify(tokens)) return conflict;
+    const chosen = decision.options.find((o) => o.id === resolution.choice);
+    if (!chosen) return conflict;
+    selected = chosen.payload;
   }
 
-  decodeData(selected); // Limite y forma comprobados antes de cualquier escritura.
-  const needsUpload = selected !== remote || versions.length > 1;
-  if (needsUpload) {
+  const result = decodeData(selected); // Limite y forma comprobados antes de cualquier escritura.
+  const base = state.base === null ? null : decodeData(state.base);
+  // Un lado pierde algo si el resultado deja afuera lo que ese lado cambio, o
+  // si se confirmo un borrado grande: esos datos no quedan en ningun otro lado.
+  const loses = (side: string) => {
+    const data = decodeData(side);
+    return discards(base, data, result) || shrinks(data, result);
+  };
+  const remote = versions[0]?.payload ?? null;
+  const at = new Date().toISOString();
+  if (selected !== remote || versions.length > 1) {
+    // Lo que la subida pisa se guarda antes de subir: Drive no conserva la
+    // version anterior.
+    const lost = versions.filter((v) => v.payload !== selected && loses(v.payload));
+    if (lost.length) await saveRecovery(db, lost.map((v) => ({ payload: v.payload, origin: "drive" as const })), at);
     if (!active()) return pending();
     try { await transport.write(selected, versions); }
     catch (err) { if (err instanceof GoogleError && [404, 412].includes(err.status ?? 0)) return pending(); throw err; }
     if (!active()) return pending();
   }
 
-  const at = new Date().toISOString();
   return db.transaction("rw", db.tables, async () => {
     if (!active()) return pending();
     const currentState = await db.cloudState.get("cloud");
@@ -85,14 +200,13 @@ export async function synchronize(
     let downloaded = false;
     if (selected !== local) {
       if (currentLocal !== local) return pending();
-      if (!isPristine(local)) {
-        await db.cloudBackups.clear();
-        await db.cloudBackups.add({ at, payload: local });
+      if (!isPristine(local) && loses(local)) {
+        await saveRecovery(db, [{ payload: local, origin: "device" }], at);
       }
       await replaceData(db, selected);
       downloaded = true;
     }
-    await db.cloudState.put({ id: "cloud", owner, base: selected, syncedAt: at });
+    await db.cloudState.put({ ...currentState, base: selected, syncedAt: at });
     return { status: selected === currentLocal || downloaded ? "ok" : "pending", at, downloaded };
   });
 }
