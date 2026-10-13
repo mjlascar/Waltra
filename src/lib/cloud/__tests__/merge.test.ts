@@ -126,8 +126,10 @@ describe("combinar dos carteras desde la ultima copia confirmada", () => {
     expect(discards(base, local, merged)).toBe(false);
     expect(discards(base, remote, merged)).toBe(false);
     expect(discards(base, remote, local)).toBe(true);
-    // Lo que el lado no toco no cuenta como descartado.
+    // Lo que el lado no toco no cuenta como descartado, y un borrado que no
+    // se aplica tampoco: lo borrado sigue estando.
     expect(discards(base, base, remote)).toBe(false);
+    expect(discards(base, data(), base)).toBe(false);
   });
 
   it("frena los borrados grandes, no el del movimiento de prueba", () => {

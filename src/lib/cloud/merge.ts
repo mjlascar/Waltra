@@ -211,20 +211,22 @@ export function mergeData(base: CloudData | null, local: CloudData, remote: Clou
 }
 
 /**
- * Si `result` deja afuera algo que `side` cambio desde `base`. Es lo que
- * decide si hay que guardar una copia de recuperacion antes de pisar ese lado:
- * una combinacion limpia no pierde nada y no deja copias que roten las utiles.
+ * Si `result` deja afuera algo que `side` agrego o edito desde `base`. Es lo
+ * que decide si hay que guardar una copia de recuperacion antes de pisar ese
+ * lado: una combinacion limpia no pierde nada y no deja copias que roten las
+ * utiles. Un borrado que no se aplica tampoco pierde nada: lo borrado sigue en
+ * el resultado.
  */
 export function discards(base: CloudData | null, side: CloudData, result: CloudData): boolean {
   for (const table of ["accounts", "assets", "transactions", "insights"] as const) {
-    const [b, s, r] = [byId<{ id: string }>(base?.[table] ?? []), byId<{ id: string }>(side[table]), byId<{ id: string }>(result[table])];
-    for (const id of new Set([...b.keys(), ...s.keys()])) {
-      const mine = content(s.get(id));
-      if (mine !== content(b.get(id)) && mine !== content(r.get(id))) return true;
+    const [b, r] = [byId<{ id: string }>(base?.[table] ?? []), byId<{ id: string }>(result[table])];
+    for (const row of side[table]) {
+      const mine = content(row);
+      if (mine !== content(b.get(row.id)) && mine !== content(r.get(row.id))) return true;
     }
   }
   const read = (s: Settings | undefined, key: string) => (s as Record<string, unknown> | undefined)?.[key];
-  for (const key of new Set([...Object.keys(base?.settings ?? {}), ...Object.keys(side.settings)])) {
+  for (const key of Object.keys(side.settings)) {
     const mine = stable(read(side.settings, key));
     if (mine !== stable(read(base?.settings, key)) && mine !== stable(read(result.settings, key))) return true;
   }
