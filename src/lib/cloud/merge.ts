@@ -63,9 +63,11 @@ function decide<T extends { id: string }>(base: T[], local: T[], remote: T[], pr
     const remoteMoved = !agree && cr !== cb;
     let row: T | undefined;
     let clash = false;
-    // Con el mismo contenido gana la fila local: asi un cambio solo de marcas
-    // de tiempo no reemplaza la base del telefono ni vuelve a bajar precios.
-    if (agree) row = vl ?? vr;
+    // Con el mismo contenido gana siempre la fila de Drive. Si cada telefono
+    // se quedara con la suya, la misma fila con otras marcas de tiempo (guardar
+    // sin cambiar nada, reimportar el mismo archivo de Binance) se subiria de
+    // un lado y del otro para siempre.
+    if (agree) row = vr ?? vl;
     else if (!localMoved) row = vr;
     else if (!remoteMoved) row = vl;
     else {
@@ -80,9 +82,36 @@ const identity = (asset: AssetRow) =>
   [asset.symbol.toUpperCase(), asset.source, asset.sourceSymbol, asset.currency, asset.kind].join("|");
 
 /**
+ * Que ids son el mismo activo: comparten identidad en alguna version. Agrupa
+ * los movimientos para la regla de ajustes y splits aunque cada telefono le
+ * haya dado al activo un id distinto.
+ */
+function sameAssets(assets: (AssetRow | undefined)[]): (id: string) => string {
+  const parent = new Map<string, string>();
+  const find = (id: string): string => {
+    const up = parent.get(id);
+    if (!up || up === id) return id;
+    const root = find(up);
+    parent.set(id, root);
+    return root;
+  };
+  const first = new Map<string, string>();
+  for (const asset of assets) {
+    if (!asset) continue;
+    const key = identity(asset);
+    const other = first.get(key);
+    if (other === undefined) { first.set(key, asset.id); continue; }
+    const [x, y] = [find(other), find(asset.id)];
+    if (x !== y) parent.set(x < y ? y : x, x < y ? x : y);
+  }
+  return find;
+}
+
+/**
  * El mismo activo dado de alta sin conexion en los dos telefonos: los ids son
- * aleatorios, asi que llegarian dos SPY.BA. Se queda uno y los movimientos del
- * otro pasan a el. Los repetidos que ya existian no se tocan.
+ * aleatorios, asi que llegarian dos SPY.BA. Se queda el que ya esta en Drive
+ * (el otro telefono puede seguir cargando movimientos con ese id) y los
+ * movimientos del otro pasan a el. Los repetidos que ya existian no se tocan.
  */
 function aliases(decisions: Decision<AssetRow>[]): Map<string, string> {
   const groups = new Map<string, Decision<AssetRow>[]>();
@@ -96,7 +125,7 @@ function aliases(decisions: Decision<AssetRow>[]): Map<string, string> {
     const onlyLocal = group.filter((d) => !d.versions[0] && d.local && !d.remote);
     const onlyRemote = group.filter((d) => !d.versions[0] && d.remote && !d.local);
     if (!onlyLocal.length || !onlyRemote.length) continue;
-    const keep = group.find((d) => d.versions[0]) ?? group[0];
+    const keep = group.find((d) => d.versions[0]) ?? group.find((d) => d.remote) ?? group[0];
     for (const d of [...onlyLocal, ...onlyRemote]) if (d.id !== keep.id) alias.set(d.id, keep.id);
   }
   return alias;
@@ -108,11 +137,11 @@ function aliases(decisions: Decision<AssetRow>[]): Map<string, string> {
  * telefono mientras el otro cargaba operaciones del mismo activo, sumar los
  * dos lados cuenta dos veces. Ahi el choque es el activo entero.
  */
-function assetClashes(txs: Decision<Tx>[], alias: Map<string, string>): Map<string, string[]> {
+function assetClashes(txs: Decision<Tx>[], same: (id: string) => string): Map<string, string[]> {
   interface Group { ids: string[]; local: Set<string>; remote: Set<string> }
   const groups = new Map<string, Group>();
   for (const d of txs) {
-    const assets = new Set(d.versions.flatMap((v) => (v?.assetId ? [alias.get(v.assetId) ?? v.assetId] : [])));
+    const assets = new Set(d.versions.flatMap((v) => (v?.assetId ? [same(v.assetId)] : [])));
     const types = new Set(d.versions.flatMap((v) => (v ? [v.type] : [])));
     for (const asset of assets) {
       const group = groups.get(asset) ?? { ids: [], local: new Set<string>(), remote: new Set<string>() };
@@ -184,21 +213,31 @@ export function mergeData(base: CloudData | null, local: CloudData, remote: Clou
   const txs = decide(base?.transactions ?? [], local.transactions, remote.transactions, prefer);
   const settings = mergeSettings(base?.settings, local.settings, remote.settings, prefer);
 
+  const same = sameAssets(assets.flatMap((d) => d.versions));
   const alias = aliases(assets);
-  const clashedAssets = assetClashes(txs, alias);
+  const clashedAssets = assetClashes(txs, same);
   const inClashedAsset = new Set([...clashedAssets.values()].flat());
   for (const d of txs) {
     if (!inClashedAsset.has(d.id)) continue;
     // El activo entero queda como lo dejo el lado elegido.
     d.row = prefer === "remote" ? d.remote : d.local;
   }
-  const transactions = pick(txs).map((t) =>
-    t.assetId && alias.has(t.assetId) ? { ...t, assetId: alias.get(t.assetId) } : t);
+  const kept = pick(assets).filter((a) => !alias.has(a.id));
+  const present = new Set(kept.map((a) => a.id));
+  const equivalent = new Map<string, string>();
+  for (const a of kept) if (!equivalent.has(same(a.id))) equivalent.set(same(a.id), a.id);
+  // Un movimiento cuyo activo el otro lado unifico con uno igual pasa a ese:
+  // si no, quedaria apuntando a un activo que ya no esta.
+  const transactions = pick(txs).map((t) => {
+    if (!t.assetId) return t;
+    const target = alias.get(t.assetId) ?? (present.has(t.assetId) ? t.assetId : equivalent.get(same(t.assetId)));
+    return target && target !== t.assetId ? { ...t, assetId: target } : t;
+  });
 
   const data: CloudData = {
     app: "waltra", version: 1,
     accounts: pick(accounts),
-    assets: pick(assets).filter((a) => !alias.has(a.id)),
+    assets: kept,
     transactions,
     settings: settings.settings,
     insights: pick(insights),
@@ -218,12 +257,30 @@ export function mergeData(base: CloudData | null, local: CloudData, remote: Clou
  * el resultado.
  */
 export function discards(base: CloudData | null, side: CloudData, result: CloudData): boolean {
-  for (const table of ["accounts", "assets", "transactions", "insights"] as const) {
+  // Los activos se comparan por identidad y no por id: lo que solo cambio de
+  // id al juntar repetidos no se perdio, y no tiene que gastar una copia.
+  const named = (data: CloudData | null) => {
+    const ids = new Map((data?.assets ?? []).map((a) => [a.id, identity(a)]));
+    return (row: object | undefined) => {
+      const assetId = (row as { assetId?: string } | undefined)?.assetId;
+      return content(row && assetId && ids.has(assetId) ? { ...row, assetId: ids.get(assetId) } : row);
+    };
+  };
+  const [inBase, inSide, inResult] = [named(base), named(side), named(result)];
+  for (const table of ["accounts", "transactions", "insights"] as const) {
     const [b, r] = [byId<{ id: string }>(base?.[table] ?? []), byId<{ id: string }>(result[table])];
     for (const row of side[table]) {
-      const mine = content(row);
-      if (mine !== content(b.get(row.id)) && mine !== content(r.get(row.id))) return true;
+      const mine = inSide(row);
+      if (mine !== inBase(b.get(row.id)) && mine !== inResult(r.get(row.id))) return true;
     }
+  }
+  const withoutId = (asset: AssetRow) => content({ ...asset, id: "" });
+  const baseAssets = byId(base?.assets ?? []);
+  const resultAssets = new Set(result.assets.map(withoutId));
+  for (const asset of side.assets) {
+    const mine = withoutId(asset);
+    const before = baseAssets.get(asset.id);
+    if ((!before || mine !== withoutId(before)) && !resultAssets.has(mine)) return true;
   }
   const read = (s: Settings | undefined, key: string) => (s as Record<string, unknown> | undefined)?.[key];
   for (const key of Object.keys(side.settings)) {

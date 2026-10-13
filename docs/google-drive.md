@@ -62,8 +62,10 @@ SHA-1 y también impide actualizar un APK anterior conservando sus datos.
   aparte: la protege la cuenta de Google del usuario, igual que un backup
   exportado a Drive. La pantalla lo dice antes de conectar.
 - Las claves de Anthropic, Gemini y de acceso al servidor nunca se incluyen, ni
-  lo que es del dispositivo (`LOCAL_SETTINGS` en `src/lib/cloud/data.ts`). Los
-  precios y cotizaciones se regeneran en cada equipo, sin subir su caché.
+  lo que es de cada teléfono (`LOCAL_SETTINGS` en `src/lib/cloud/data.ts`): el
+  proveedor y el modelo de los informes, que van con esas claves, la apariencia
+  y la vibración. Los precios y cotizaciones se regeneran en cada equipo, sin
+  subir su caché.
 - Se sincroniza al conectar, después de editar datos, al recuperar conexión y
   al volver a la app. Mientras está visible se revisa Drive cada minuto; si la
   revisión de Drive es la misma de la última sincronización, no se baja nada.
@@ -72,7 +74,7 @@ SHA-1 y también impide actualizar un APK anterior conservando sus datos.
   vencer el token hay que reconectar con un toque: sin un servidor, Google no
   da otro token solo. Lo que se cargue mientras tanto se combina al reconectar.
 - En el APK la sesión se renueva sola mientras la app está abierta y se retoma
-  al abrirla, salvo que el usuario haya tocado *Desconectar*. Usa `refresh` del
+  al abrirla, salvo que el usuario haya tocado _Desconectar_. Usa `refresh` del
   plugin, que no muestra nada si la cuenta ya dio el permiso. Si el permiso se
   revocó, la app pide reconectar; los cambios quedan locales.
 - Se conserva **un archivo de hasta 5 MiB por usuario**, sin historial remoto.
@@ -87,17 +89,28 @@ descarta lo que no está en la lista; al bajar se rechaza. Un campo o un valor
 desconocido viene de un teléfono con una versión más nueva de Waltra, y
 descartarlo y después subir se lo borraría a ese teléfono. Por eso la versión
 vieja frena, pide actualizar la app y no toca nada. Un test de paridad no
-compila si un tipo sincronizado gana un campo que el esquema no tiene.
+compila si un tipo sincronizado gana un campo que el esquema no tiene. Un
+campo sincronizado no se saca nunca del esquema: las copias que ya lo tienen
+se leerían como de una versión más nueva.
 
 ## Cómo se combinan dos equipos
 
-Cada instalación guarda la última copia que confirmó con Drive (la *base*).
+Cada instalación guarda la última copia que confirmó con Drive (la _base_).
 Al sincronizar, lo que cambió de un solo lado desde la base se toma de ese
 lado —altas, ediciones y borrados—, así que cargar movimientos en dos equipos
 sin conexión no obliga a elegir entre ellos. La historia es lineal: cada
 subida lleva `If-Match` sobre la revisión leída, y un 412 deja los cambios
 pendientes para la próxima pasada. La configuración real debe validar este
 contrato con Google.
+
+Con el mismo contenido gana la fila de Drive, aunque las marcas de tiempo
+difieran: si cada equipo se quedara con la suya, se la subirían uno al otro
+para siempre. Y la base tiene que ser siempre el ancestro común: después de
+una subida aceptada que no se pudo aplicar en el equipo (hubo cambios mientras
+subía, o se desconectó), la base pasa a ser la copia local de la que salió; y
+antes de cada subida queda anotado qué se mandó, por si la respuesta se pierde
+o se cierra la app. Sin eso, lo que se borra justo después de cargarlo
+volvería como si lo hubiera agregado otro equipo.
 
 La sincronización se pausa y pregunta solo en estos casos:
 
@@ -112,16 +125,17 @@ La sincronización se pausa y pregunta solo en estos casos:
   otro lado borró**: se elige un lado entero.
 - **Un borrado grande**, en cualquiera de las dos direcciones: el resultado se
   lleva todos los movimientos de una cartera con tres o más, o más de la mitad
-  de una con diez o más. Es lo que hace *Borrar todo*, o una base que se perdió
+  de una con diez o más. Es lo que hace _Borrar todo_, o una base que se perdió
   a medias. Los datos de ejemplo no cuentan: se limpian de a muchos a propósito.
 - **La primera conexión, con datos en los dos lados.** Sin una base común, juntar
   puede repetir lo que se cargó por separado en cada uno: se ofrece, pero no se
-  hace solo.
+  hace solo, y solo si nada choca.
 - **La copia de Drive desapareció** después de haber sincronizado: no se vuelve
   a crear sin preguntar.
 
 El mismo activo dado de alta sin conexión en los dos equipos (los ids son
-aleatorios) queda uno solo, con los movimientos de los dos. Una decisión se
+aleatorios) queda uno solo —el que ya estaba en Drive—, con los movimientos de
+los dos. Una decisión se
 vuelve a comprobar contra las versiones actuales antes de aplicarla: si algo
 cambió en el medio, se vuelve a preguntar, o se combina solo si ya se puede.
 
@@ -148,7 +162,7 @@ de Drive antes de subir. "Algo que se pierde" es lo que un lado agregó o editó
 y el resultado deja afuera, o los datos de un borrado grande que se confirmó;
 una combinación que no pierde nada no deja copias, para no desplazar las
 útiles. Se conservan **las últimas tres**, sin credenciales. Se exportan desde
-la pantalla de cuenta y se importan desde *Tus datos*, que suma sin borrar.
+la pantalla de cuenta y se importan desde _Tus datos_, que suma sin borrar.
 
 El usuario puede borrar los datos de Waltra desde la administración de
 aplicaciones de Drive.
@@ -160,9 +174,9 @@ su identificador de Google, no el cliente OAuth, así que cambiar de proyecto en
 Google Cloud no deja a nadie trabado (el Drive nuevo aparece vacío y se
 pregunta). Conectar otra cuenta no sube la cartera a ella.
 
-*Desconectar* pausa la sincronización y conserva todo. *Desvincular* olvida la
+_Desconectar_ pausa la sincronización y conserva todo. _Desvincular_ olvida la
 cuenta y la base: los datos quedan en el dispositivo y en ese Drive, y la
-próxima conexión es una primera conexión. *Borrar todo* no desvincula; con
+próxima conexión es una primera conexión. _Borrar todo_ no desvincula; con
 Google conectado, la app pregunta antes de vaciar también la copia de Drive.
 
 ## Validación y límites
@@ -174,7 +188,7 @@ desvinculación y versiones de la app.
 
 `npm run e2e:drive` recorre la pantalla con dos teléfonos contra un Drive en
 memoria y un Google simulado: conectar, bajar en un equipo nuevo, combinar,
-frenar un *Borrar todo*, resolver un choque y desvincular. Necesita la app
+frenar un _Borrar todo_, resolver un choque y desvincular. Necesita la app
 levantada con un cliente de mentira:
 
 ```bash

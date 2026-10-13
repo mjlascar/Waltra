@@ -330,7 +330,9 @@ Drive de cada usuario; sin él, la sección no aparece y la app dice lo de
 siempre. IndexedDB sigue siendo la fuente. Viaja la cartera entera, notas y
 frases originales incluidas, a propósito: es la del usuario, en su cuenta,
 como un backup exportado a Drive, y la pantalla lo dice antes de conectar. No
-la cifra la app. Las claves no viajan nunca (`LOCAL_SETTINGS`).
+la cifra la app. Lo que es de cada teléfono no viaja (`LOCAL_SETTINGS`): las
+claves, y con ellas el proveedor y el modelo de los informes —un teléfono sin
+clave de Gemini no puede heredar Gemini—, la apariencia y la vibración.
 
 Se combina desde la última copia confirmada (`base` en `cloudState`): lo que
 cambió de un solo lado se toma de ese lado, borrados incluidos, y solo se
@@ -341,7 +343,17 @@ split no conmutan**: un ajuste hecho en un teléfono mientras el otro operaba
 el mismo activo contaría las unidades dos veces, así que ahí el choque es el
 activo entero. Un tipo de movimiento nuevo que anote un estado (como
 `adjust`) y no un hecho va en esa regla. El mismo activo dado de alta en los
-dos teléfonos queda uno solo.
+dos teléfonos queda uno solo, el que ya estaba en Drive. **Con el mismo
+contenido gana la fila de Drive**, no la local: guardar sin cambiar nada o
+reimportar Binance cambia las marcas de tiempo, y si cada teléfono se quedara
+con la suya se la subirían uno al otro para siempre.
+
+La base tiene que ser el ancestro común de los dos lados, o lo que se borra
+vuelve. Después de una subida aceptada que no se pudo aplicar acá (hubo
+cambios mientras subía, o se desconectó), la base es la copia local de la
+que salió; y antes de cada subida queda anotado qué se mandó (`sending`), por
+si la respuesta se pierde o se cierra la app: la pasada siguiente reconoce
+que Drive ya la tiene.
 
 **Una cartera vaciada no pisa a la otra sin preguntar** (`shrinks`), en
 ninguna de las dos direcciones: es el principio de las copias automáticas. Y
@@ -353,7 +365,10 @@ una versión vieja que descartara un campo nuevo y después subiera se lo
 borraría al que lo entiende. Agregar un campo a cuentas, activos,
 movimientos, informes o ajustes no compila hasta ponerlo en el esquema, o en
 `LOCAL_SETTINGS` si es del dispositivo (`data.test.ts`). Los teléfonos sin
-actualizar frenan hasta actualizarse, y es a propósito.
+actualizar frenan hasta actualizarse, y es a propósito. Al revés no hay
+vuelta: **un campo sincronizado no se saca del esquema**, se deja de usar.
+Sacarlo haría que las copias que ya lo tienen se lean como de una versión
+más nueva.
 
 La instalación queda vinculada a la cuenta (`sub`, no el cliente OAuth: cambiar
 de proyecto no puede trabar a nadie) y se puede desvincular. En el APK la

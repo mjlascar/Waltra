@@ -29,6 +29,35 @@ async function choose(result: CloudSyncResult, kind: OptionKind, cloud: CloudTra
   return synchronize(db, cloud, owner, () => true, { local: result.local, tokens: result.versions.map(versionToken), choice: option.id });
 }
 const txs = (...entries: [string, number][]): Transaction[] => entries.map(([id, amount]) => ({ ...tx(amount), id }));
+
+/** Un Drive con memoria: lo que se sube es lo que se lee despues. */
+function memoryDrive(initial?: string) {
+  let current: CloudVersion | null = initial ? version(initial, "archivo") : null;
+  let revision = 1;
+  const store = (payload: string) => {
+    current = { id: "archivo", etag: `"rev-${++revision}"`, payload, at: "2026-10-12T16:00:00Z" };
+    return current;
+  };
+  return {
+    read: vi.fn(async () => (current ? [current] : [])),
+    write: vi.fn(async (payload: string) => store(payload)),
+    store,
+    ids: () => (current ? decodeData(current.payload).transactions.map((t) => t.id).sort() : []),
+  };
+}
+
+/**
+ * Prepara el caso de la revision: este telefono agrego "x", otro agrego "c" y
+ * lo subio. Sincronizar combina las dos cosas y sube.
+ */
+async function concurrentAdd() {
+  await db.transactions.bulkPut(txs(["a", 1]));
+  const base = await readData(db);
+  await db.cloudState.put({ id: "cloud", owner, base });
+  const remote = decodeData(base); remote.transactions = txs(["a", 1], ["c", 3]);
+  await db.transactions.bulkPut(txs(["x", 500]));
+  return memoryDrive(encodeData(remote));
+}
 const amounts = async () => (await db.transactions.toArray()).map((t) => `${t.id}:${t.amount}`).sort();
 
 beforeEach(async () => {
@@ -336,5 +365,117 @@ describe("sincronizacion de la cartera persistida", () => {
     expect((await synchronize(db, cloud, owner, () => true)).status).toBe("ok");
     expect(cloud.read.mock.calls[1][0]).toMatchObject({ id: "uploaded", etag: '"rev-1"', payload: uploaded });
     expect(cloud.write).toHaveBeenCalledTimes(1);
+  });
+
+  it("lo que se borra mientras sube una combinacion no vuelve en la pasada siguiente", async () => {
+    const drive = await concurrentAdd();
+    drive.write.mockImplementationOnce(async (payload: string) => {
+      const saved = drive.store(payload);
+      await db.transactions.delete("x"); // el usuario se arrepiente mientras sube
+      return saved;
+    });
+    expect((await synchronize(db, drive, owner, () => true)).status).toBe("pending");
+    expect((await synchronize(db, drive, owner, () => true)).status).toBe("ok");
+    expect((await db.transactions.toArray()).map((t) => t.id).sort()).toEqual(["a", "c"]);
+    expect(drive.ids()).toEqual(["a", "c"]);
+  });
+
+  it("y tampoco vuelve si antes de la pasada siguiente otro telefono subio algo", async () => {
+    const drive = await concurrentAdd();
+    drive.write.mockImplementationOnce(async (payload: string) => {
+      const saved = drive.store(payload);
+      await db.transactions.delete("x");
+      return saved;
+    });
+    await synchronize(db, drive, owner, () => true);
+    // El otro telefono baja lo combinado y agrega "d".
+    const [{ payload }] = await drive.read();
+    const otro = decodeData(payload); otro.transactions = [...otro.transactions, ...txs(["d", 4])];
+    drive.store(encodeData(otro));
+    expect((await synchronize(db, drive, owner, () => true)).status).toBe("ok");
+    expect((await db.transactions.toArray()).map((t) => t.id).sort()).toEqual(["a", "c", "d"]);
+  });
+
+  it("si se pierde la respuesta de una subida que llego, lo borrado despues no vuelve", async () => {
+    const drive = await concurrentAdd();
+    drive.write.mockImplementationOnce(async (payload: string) => {
+      drive.store(payload); // Drive la guardo, pero la respuesta no llega
+      throw new Error("Failed to fetch");
+    });
+    await expect(synchronize(db, drive, owner, () => true)).rejects.toThrow("Failed to fetch");
+    await db.transactions.delete("x");
+    expect((await synchronize(db, drive, owner, () => true)).status).toBe("ok");
+    expect((await db.transactions.toArray()).map((t) => t.id).sort()).toEqual(["a", "c"]);
+    expect(drive.ids()).toEqual(["a", "c"]);
+    expect((await db.cloudState.get("cloud"))?.sending).toBeUndefined();
+  });
+
+  it("desconectar a mitad de una subida deja anotado de donde salio lo que se subio", async () => {
+    const drive = await concurrentAdd();
+    let active = true;
+    drive.write.mockImplementationOnce(async (payload: string) => {
+      active = false;
+      return drive.store(payload);
+    });
+    expect((await synchronize(db, drive, owner, () => active)).status).toBe("pending");
+    // Sin conexion, se borra lo que se habia agregado; al volver no reaparece.
+    await db.transactions.delete("x");
+    expect((await synchronize(db, drive, owner, () => true)).status).toBe("ok");
+    expect((await db.transactions.toArray()).map((t) => t.id).sort()).toEqual(["a", "c"]);
+  });
+
+  it("dos telefonos con la misma fila y otras marcas de tiempo no se la pasan para siempre", async () => {
+    const other = new WaltraDB("waltra-otro-telefono");
+    await other.delete(); await other.open(); await ensureSeeded(other);
+    try {
+      await db.transactions.put(tx(100));
+      const drive = memoryDrive();
+      await synchronize(db, drive, owner, () => true);
+      await synchronize(other, drive, owner, () => true);
+      // El otro guarda el mismo movimiento sin cambiarlo.
+      await other.transactions.update("deposit", { updatedAt: "2026-10-13T00:00:00Z" });
+      for (let round = 0; round < 3; round++) {
+        await synchronize(db, drive, owner, () => true);
+        await synchronize(other, drive, owner, () => true);
+      }
+      expect(drive.write.mock.calls.length).toBeLessThanOrEqual(2);
+      const mine = await db.transactions.get("deposit");
+      const theirs = await other.transactions.get("deposit");
+      expect(mine?.updatedAt).toBe(theirs?.updatedAt);
+    } finally {
+      other.close(); await other.delete();
+    }
+  });
+
+  it("no ofrece juntar si hay algo que choca", async () => {
+    await db.transactions.bulkPut(txs(["a", 100]));
+    const remote = decodeData(await readData(db)); remote.transactions = txs(["a", 200], ["b", 300]);
+    const result = await synchronize(db, transport([version(encodeData(remote))]), owner, () => true);
+    if (result.status !== "conflict") throw new Error("Se esperaba un conflicto");
+    expect(result.options.map((o) => o.kind)).toEqual(["device", "drive"]);
+  });
+
+  it("un indice de referencia que cambio en otro telefono vuelve a bajar su serie", async () => {
+    await db.transactions.put(tx(100));
+    const base = await readData(db);
+    await db.cloudState.put({ id: "cloud", owner, base });
+    await db.priceSeries.bulkPut([
+      { assetId: "__benchmark", currency: "USD", points: [{ date: "2026-10-01", close: 1 }], updatedAt: "2026-10-12" },
+      { assetId: "otro", currency: "USD", points: [{ date: "2026-10-01", close: 2 }], updatedAt: "2026-10-12" },
+    ]);
+    const remote = decodeData(base); remote.settings.benchmark = "QQQ";
+    await synchronize(db, transport([version(encodeData(remote))]), owner, () => true);
+    expect(await db.priceSeries.get("__benchmark")).toBeUndefined();
+    expect(await db.priceSeries.get("otro")).toBeDefined();
+  });
+
+  it("proveedor, modelo, tema y vibracion son de cada telefono", async () => {
+    await db.settings.update("settings", { provider: "gemini", model: "gemini-x", theme: "mono", haptics: false });
+    const cloud = transport();
+    await synchronize(db, cloud, owner, () => true);
+    expect(cloud.write.mock.calls[0][0]).not.toMatch(/"provider"|"model"|"theme"|"haptics"/);
+    const remote = decodeData(cloud.write.mock.calls[0][0]); remote.settings.goals = "Otra meta";
+    await synchronize(db, transport([version(encodeData(remote), "otra")]), owner, () => true);
+    expect(await db.settings.get("settings")).toMatchObject({ goals: "Otra meta", provider: "gemini", theme: "mono", haptics: false });
   });
 });

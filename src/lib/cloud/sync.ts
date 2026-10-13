@@ -1,5 +1,5 @@
 import type { CloudBackup, CloudState, WaltraDB } from "@/lib/db";
-import { decodeData, encodeData, isPristine, readData, replaceData } from "./data";
+import { CloudFormatError, decodeData, encodeData, isPristine, readData, replaceData, type CloudData } from "./data";
 import type { CloudTransport, CloudVersion } from "./drive";
 import { versionToken } from "./drive";
 import { GoogleError } from "./google";
@@ -79,6 +79,19 @@ function option(kind: OptionKind, payload: string, version?: CloudVersion): Conf
 }
 
 /**
+ * Una opcion que sale de combinar. Si la combinacion pasa el limite de 5 MiB
+ * no se ofrece, en vez de trabar la sincronizacion antes de preguntar.
+ */
+function combined(kind: OptionKind, data: CloudData, version?: CloudVersion): ConflictOption[] {
+  try {
+    return [option(kind, encodeData(data), version)];
+  } catch (err) {
+    if (err instanceof CloudFormatError) return [];
+    throw err;
+  }
+}
+
+/**
  * Que hacer con `local` y las copias de Drive, sabiendo cual fue la ultima
  * confirmada (`base`). Es una funcion pura: una resolucion se vuelve a calcular
  * con los datos de ese momento y tiene que dar las mismas opciones.
@@ -98,28 +111,31 @@ function plan(base: string | null, local: string, versions: CloudVersion[]): Pla
   if (base === null) {
     if (isPristine(local)) return { selected: remote };
     // Juntar sin una base comun puede repetir lo que se cargo en los dos
-    // lados por separado: se ofrece, pero no se hace solo.
-    const joined = mergeData(null, decodeData(local), decodeData(remote), "local");
+    // lados por separado: se ofrece, pero no se hace solo. Y solo si no hay
+    // nada que choque: "suma los de los dos lados" no puede tirar ninguno.
+    const joined = mergeData(null, decodeData(local), decodeData(remote));
     return { kind: "first", clashes: 0, options: [
       option("device", local), option("drive", remote, head),
-      ...(joined.consistent ? [option("join", encodeData(joined.data))] : []),
+      ...(joined.clashes === 0 && joined.consistent ? combined("join", joined.data) : []),
     ] };
   }
   const [b, l, r] = [decodeData(base), decodeData(local), decodeData(remote)];
   const merged = mergeData(b, l, r);
   if (merged.clashes > 0 || !merged.consistent) {
     const wins = (prefer: "local" | "remote") => {
+      const whole = prefer === "local" ? option("device", local) : option("drive", remote, head);
       const result = mergeData(b, l, r, prefer);
       // Si ni asi cierra (un movimiento nuevo de un activo que el otro lado
       // borro), queda elegir un lado entero.
-      if (!result.consistent) return prefer === "local" ? option("device", local) : option("drive", remote, head);
-      return option(prefer === "local" ? "device-wins" : "drive-wins", encodeData(result.data), prefer === "local" ? undefined : head);
+      if (!result.consistent) return [whole];
+      const options = combined(prefer === "local" ? "device-wins" : "drive-wins", result.data, prefer === "local" ? undefined : head);
+      return options.length ? options : [whole];
     };
-    return { kind: "both", clashes: merged.clashes, options: [wins("local"), wins("remote")] };
+    return { kind: "both", clashes: merged.clashes, options: [...wins("local"), ...wins("remote")] };
   }
   if (shrinks(l, merged.data) || shrinks(r, merged.data)) {
     const keep = l.transactions.length >= r.transactions.length ? option("device", local) : option("drive", remote, head);
-    return { kind: "shrink", clashes: 0, options: [option("apply", encodeData(merged.data)), keep] };
+    return { kind: "shrink", clashes: 0, options: [...combined("apply", merged.data), keep] };
   }
   return { selected: encodeData(merged.data) };
 }
@@ -167,8 +183,14 @@ export async function synchronize(
     ...version, payload: encodeData(decodeData(version.payload)),
   }));
   if (!active()) return pending();
+  // Si la pasada anterior subio y no llego a anotarlo (se perdio la respuesta,
+  // se cerro la app), lo que hay en Drive salio de `sending.base`, y ese es el
+  // ancestro comun. Con la base vieja, lo que se borro aca despues de subirlo
+  // volveria como si lo hubiera agregado otro equipo.
+  const landed = state.sending && versions.length === 1 && versions[0].payload === state.sending.payload;
+  const baseline = landed && state.sending ? state.sending.base : state.base;
   const tokens = versions.map(versionToken).sort();
-  const decision = plan(state.base, local, versions);
+  const decision = plan(baseline, local, versions);
   let selected: string;
 
   if ("selected" in decision) {
@@ -185,7 +207,7 @@ export async function synchronize(
   }
 
   const result = decodeData(selected); // Limite y forma comprobados antes de cualquier escritura.
-  const base = state.base === null ? null : decodeData(state.base);
+  const base = baseline === null ? null : decodeData(baseline);
   // Un lado pierde algo si el resultado deja afuera lo que ese lado cambio, o
   // si se confirmo un borrado grande: esos datos no quedan en ningun otro lado.
   const loses = (side: string) => {
@@ -195,36 +217,51 @@ export async function synchronize(
   const remote = versions[0]?.payload ?? null;
   const at = new Date().toISOString();
   let confirmed: CloudVersion | undefined = versions[0];
+  let uploaded = false;
   if (selected !== remote || versions.length > 1) {
     // Lo que la subida pisa se guarda antes de subir: Drive no conserva la
     // version anterior.
     const lost = versions.filter((v) => v.payload !== selected && loses(v.payload));
     if (lost.length) await saveRecovery(db, lost.map((v) => ({ payload: v.payload, origin: "drive" as const })), at);
     if (!active()) return pending();
-    try { confirmed = await transport.write(selected, versions); }
+    await db.cloudState.update("cloud", { sending: { base: local, payload: selected } });
+    try { confirmed = await transport.write(selected, versions); uploaded = true; }
     catch (err) { if (err instanceof GoogleError && [404, 412].includes(err.status ?? 0)) return pending(); throw err; }
-    if (!active()) return pending();
   }
 
   return db.transaction("rw", db.tables, async () => {
-    if (!active()) return pending();
     const currentState = await db.cloudState.get("cloud");
-    // Se desvinculo o se cambio de cuenta mientras se subia: no se confirma nada.
+    // Se desvinculo o se cambio de cuenta mientras tanto: no se confirma nada.
     if (currentState?.owner !== owner) return pending();
     // Otra pestana termino antes. Su baseline manda; releer en la proxima pasada.
     if (currentState.base !== state.base) return pending();
+    const settle = (confirmedBase: string, revision?: CloudVersion) => db.cloudState.put({
+      ...currentState, base: confirmedBase, syncedAt: at, sending: undefined,
+      remote: revision && { id: revision.id, etag: revision.etag },
+    });
     const currentLocal = await readData(db);
+    if (selected !== local && (!active() || currentLocal !== local)) {
+      // Lo combinado no se puede aplicar aca: se desconecto, o hubo cambios
+      // mientras subia. Si ya se subio, Drive tiene algo que sale de `local`:
+      // ese es el ancestro comun para la proxima pasada. Sin la revision, la
+      // proxima pasada baja la copia en vez de suponer que es `local`.
+      if (uploaded) await settle(local);
+      return pending();
+    }
+    if (!active()) {
+      // Se desconecto despues de subir lo de este dispositivo: queda anotado.
+      if (uploaded) await settle(selected, confirmed);
+      return pending();
+    }
     let downloaded = false;
     if (selected !== local) {
-      if (currentLocal !== local) return pending();
       if (!isPristine(local) && loses(local)) {
         await saveRecovery(db, [{ payload: local, origin: "device" }], at);
       }
       await replaceData(db, selected);
       downloaded = true;
     }
-    await db.cloudState.put({ ...currentState, base: selected, syncedAt: at,
-      remote: confirmed && { id: confirmed.id, etag: confirmed.etag } });
+    await settle(selected, confirmed);
     return { status: selected === currentLocal || downloaded ? "ok" : "pending", at, downloaded };
   });
 }

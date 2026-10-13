@@ -138,7 +138,7 @@ export default function DatosAjustes() {
             <p className="label mb-2 leading-snug">
               Escribí <strong style={{ color: "var(--color-ink)" }}>BORRAR</strong> para
               habilitar. Se va todo: movimientos, activos, cuentas e informes.
-              {GOOGLE_CLIENT_ID && " Si conectaste Google, la app te va a preguntar antes de vaciar también la copia de tu Drive."}
+              {GOOGLE_CLIENT_ID && " Con Google conectado, la app pregunta antes de vaciar también la copia de tu Drive, salvo que la cartera tenga menos de tres movimientos."}
             </p>
             <div className="flex gap-2">
               <input

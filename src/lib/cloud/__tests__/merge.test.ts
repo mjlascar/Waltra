@@ -58,12 +58,12 @@ describe("combinar dos carteras desde la ultima copia confirmada", () => {
 
   it("los ajustes se combinan campo por campo", () => {
     const base = data();
-    const local = data({ settings: { ...DEFAULT_SETTINGS, theme: "mono" } });
+    const local = data({ settings: { ...DEFAULT_SETTINGS, compareMethod: "mensual" } });
     const remote = data({ settings: { ...DEFAULT_SETTINGS, goals: "La casa" } });
     const merged = mergeData(base, local, remote);
     expect(merged.clashes).toBe(0);
-    expect(merged.data.settings).toMatchObject({ theme: "mono", goals: "La casa" });
-    const otra = data({ settings: { ...DEFAULT_SETTINGS, theme: "color" } });
+    expect(merged.data.settings).toMatchObject({ compareMethod: "mensual", goals: "La casa" });
+    const otra = data({ settings: { ...DEFAULT_SETTINGS, compareMethod: "inicio" } });
     expect(mergeData(base, local, otra).clashes).toBe(1);
   });
 
@@ -141,5 +141,41 @@ describe("combinar dos carteras desde la ultima copia confirmada", () => {
     expect(shrinks(con(9), con(1))).toBe(false);
     // Limpiar los datos de ejemplo se hace de a muchos a proposito.
     expect(shrinks(con(30, "demo-tx-"), con(0))).toBe(false);
+  });
+
+  it("con el mismo contenido gana la fila de Drive, asi dos telefonos convergen", () => {
+    // Guardar sin cambiar nada o reimportar el mismo archivo deja otras marcas
+    // de tiempo. Si cada lado se quedara con la suya, se la subirian para siempre.
+    const base = data({ transactions: [tx("a")] });
+    const local = data({ transactions: [tx("a", { updatedAt: "2026-10-05T00:00:00Z" })] });
+    const remote = data({ transactions: [tx("a", { updatedAt: "2026-10-06T00:00:00Z" })] });
+    expect(mergeData(base, local, remote).data.transactions[0].updatedAt).toBe("2026-10-06T00:00:00Z");
+    expect(mergeData(base, remote, local).data.transactions[0].updatedAt).toBe("2026-10-05T00:00:00Z");
+  });
+
+  it("al unificar un activo repetido se queda con el que ya esta en Drive", () => {
+    // El otro telefono puede seguir cargando movimientos con ese id.
+    const spy = (id: string) => asset(id, "SPY.BA", { kind: "cedear", source: "byma", sourceSymbol: "SPY", currency: "ARS" });
+    const enDrive = data({ assets: [spy("zzz")], transactions: [buy("b1", "zzz")] });
+    const deB = mergeData(data(), data({ assets: [spy("aaa")], transactions: [buy("b2", "aaa")] }), enDrive);
+    expect(deB.data.assets.map((a) => a.id)).toEqual(["zzz"]);
+    expect(deB.data.transactions.map((t) => t.assetId)).toEqual(["zzz", "zzz"]);
+    // El telefono que lo cargo primero sigue operando y combina sin preguntar.
+    const deA = mergeData(enDrive, data({ assets: [spy("zzz")], transactions: [buy("b1", "zzz"), buy("b3", "zzz")] }), deB.data);
+    expect(deA).toMatchObject({ clashes: 0, consistent: true });
+    expect(ids(deA.data)).toEqual(["b1", "b2", "b3"]);
+    // Juntar repetidos no cuenta como algo perdido.
+    expect(discards(data(), data({ assets: [spy("aaa")], transactions: [buy("b2", "aaa")] }), deB.data)).toBe(false);
+  });
+
+  it("un movimiento de un activo que el otro lado unifico pasa al que quedo", () => {
+    const spy = (id: string) => asset(id, "SPY.BA", { kind: "cedear", source: "byma", sourceSymbol: "SPY", currency: "ARS" });
+    const base = data({ assets: [spy("zzz")], transactions: [buy("b1", "zzz")] });
+    const local = data({ assets: [spy("zzz")], transactions: [buy("b1", "zzz"), buy("b3", "zzz")] });
+    // Del otro lado, una version vieja unifico al reves y "zzz" ya no esta.
+    const remote = data({ assets: [spy("aaa")], transactions: [buy("b1", "aaa"), buy("b2", "aaa")] });
+    const merged = mergeData(base, local, remote);
+    expect(merged.consistent).toBe(true);
+    expect(merged.data.transactions.find((t) => t.id === "b3")?.assetId).toBe("aaa");
   });
 });

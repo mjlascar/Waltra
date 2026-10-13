@@ -26,8 +26,9 @@ export class WaltraDB extends Dexie {
   cloudState!: Table<CloudState, string>;
   cloudBackups!: Table<CloudBackup, number>;
 
-  constructor() {
-    super("waltra");
+  /** El nombre solo cambia en los tests, para tener dos telefonos a la vez. */
+  constructor(name = "waltra") {
+    super(name);
     this.version(1).stores({
       accounts: "id, broker, name",
       assets: "id, symbol, kind, source",
@@ -62,6 +63,11 @@ export interface CloudState {
   syncedAt?: string;
   /** El usuario toco Desconectar: el APK no vuelve a entrar solo al abrir. */
   paused?: boolean;
+  /**
+   * Una subida en vuelo: de que copia local salio y que se mando. Si la
+   * respuesta se pierde, la proxima pasada sabe que Drive ya la tiene.
+   */
+  sending?: { base: string; payload: string };
 }
 
 export interface CloudBackup {

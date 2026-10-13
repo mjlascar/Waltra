@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DEFAULT_SETTINGS, defaultAccounts, type WaltraDB } from "@/lib/db";
+import { BENCHMARK_ASSET_ID } from "@/lib/benchmark";
 import { underlyingId } from "@/lib/engine/cedear-ratio";
 import type { Asset, Settings } from "@/lib/types";
 
@@ -10,11 +11,17 @@ const reportKind = z.enum(["cartera", "mercado", "conducta", "riesgo", "posicion
 
 /**
  * Los ajustes que son de este dispositivo y no viajan nunca: credenciales,
- * permisos que pidio este telefono y marcas de su propia sincronizacion. Lo
- * que no esta en el esquema de abajo tiene que estar aca, y al reves: el test
- * de paridad no compila si un campo nuevo de `Settings` no eligio lado.
+ * permisos que pidio este telefono, marcas de su propia sincronizacion, el
+ * proveedor y el modelo de los informes (van con las claves, que tampoco
+ * viajan: un telefono sin clave de Gemini no puede heredar Gemini), y la
+ * apariencia y la vibracion, que son del telefono. Lo que no esta en el
+ * esquema de abajo tiene que estar aca, y al reves: el test de paridad no
+ * compila si un campo nuevo de `Settings` no eligio lado.
  */
-export const LOCAL_SETTINGS = ["lastQuoteSync", "accessKey", "apiKey", "geminiKey", "updateNotify", "notifAsked"] as const;
+export const LOCAL_SETTINGS = [
+  "lastQuoteSync", "accessKey", "apiKey", "geminiKey", "updateNotify", "notifAsked",
+  "provider", "model", "theme", "haptics",
+] as const;
 
 /**
  * El mismo esquema en dos versiones. Al subir se descarta lo que no esta en la
@@ -32,9 +39,7 @@ function schemas(strict: boolean) {
     id: z.literal("settings"), baseCurrency: currency,
     riskProfile: z.enum(["conservador", "moderado", "agresivo"]),
     horizonYears: number, goals: z.string(), benchmark: z.string().optional(),
-    onboarded: z.boolean().optional(), provider: z.enum(["anthropic", "gemini"]).optional(),
-    model: z.string().optional(), compareMethod: z.enum(["aportes", "mensual", "inicio"]).optional(),
-    theme: z.enum(["color", "mono"]).optional(), haptics: z.boolean().optional(),
+    onboarded: z.boolean().optional(), compareMethod: z.enum(["aportes", "mensual", "inicio"]).optional(),
     alerts: object({
       enabled: z.boolean(), defaultPct: number, perAsset: z.record(z.string(), number),
       portfolioPct: number, digestHour: number.nullable(), quietFrom: number, quietTo: number,
@@ -185,6 +190,11 @@ export async function replaceData(db: WaltraDB, payload: string): Promise<void> 
   // olvida la de los activos que ya no estan o que ahora cotizan en otro lado.
   const next = new Map(data.assets.map((a) => [a.id, quotedAs(a)]));
   const stale = before.filter((a) => next.get(a.id) !== quotedAs(a)).map((a) => a.id);
+  // Lo mismo con el indice de referencia: si otro telefono lo cambio, la
+  // serie guardada es la del indice anterior.
+  if ((data.settings.benchmark ?? DEFAULT_SETTINGS.benchmark) !== (local?.benchmark ?? DEFAULT_SETTINGS.benchmark)) {
+    stale.push(BENCHMARK_ASSET_ID);
+  }
   await Promise.all([db.accounts.clear(), db.assets.clear(), db.transactions.clear(), db.insights.clear(),
     db.priceSeries.bulkDelete([...stale, ...stale.map(underlyingId)]), db.quotes.bulkDelete(stale)]);
   await db.accounts.bulkPut(data.accounts);
