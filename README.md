@@ -341,6 +341,10 @@ npm run check   # tipos + lint + tests + escaneo de credenciales
   cualquier error en la consola del navegador.
 - **`npm run pwa`**: contra un build de producción, verifica manifest, íconos,
   service worker y que la app abra y acepte movimientos **con la red cortada**.
+- **`npm run e2e:drive`**: dos teléfonos contra un Drive en memoria y un
+  Google simulado. Conectan, bajan, combinan movimientos cargados en los dos,
+  frenan un *Borrar todo* y resuelven un choque. Necesita la app levantada con
+  `NEXT_PUBLIC_GOOGLE_CLIENT_ID` de mentira ([detalles](docs/google-drive.md)).
 - **`npm run native`**: sirve la exportación estática que va adentro del APK
   como archivos sueltos, igual que el WebView, y la recorre en el navegador.
   No prueba los plugins nativos (para eso hace falta un Android de verdad),
@@ -377,9 +381,10 @@ node scripts/icons.mjs   # regenera los íconos de la PWA
   nunca lo hace más seguido que cada 15 minutos. En los Samsung conviene sacar
   a Waltra de *Ajustes → Batería → Apps en suspensión*, o se van a espaciar
   solas. No sirven para operar al segundo; sirven para enterarte.
-- Cada instalación se vincula a una cuenta para evitar mezclar carteras.
-  Google Drive permite sincronizar entre equipos; los cambios simultáneos se
-  resuelven eligiendo una versión completa. En web hay que reconectar al
-  recargar o vencer el token. La carpeta de Waltra está oculta en el Drive del
-  usuario: una copia de hasta 5 MiB, sobrescrita sin acumular archivos ni revisiones.
-  [Detalles y configuración](docs/google-drive.md).
+- Cada instalación se vincula a una cuenta para evitar mezclar carteras, y se
+  puede desvincular. Google Drive permite sincronizar entre equipos: los
+  cambios de cada uno se combinan movimiento por movimiento, y solo se pregunta
+  lo que cambió distinto en los dos o un borrado grande. En web hay que
+  reconectar al recargar o vencer el token. La carpeta de Waltra está oculta en
+  el Drive del usuario: una copia de hasta 5 MiB, sobrescrita sin acumular
+  archivos ni revisiones. [Detalles y configuración](docs/google-drive.md).

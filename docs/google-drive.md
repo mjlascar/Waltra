@@ -57,36 +57,73 @@ SHA-1 y también impide actualizar un APK anterior conservando sus datos.
 
 ## Qué se guarda y cuándo
 
-- Se sincronizan cuentas, activos, movimientos, perfil, preferencias e informes.
-  Las eliminaciones forman parte de la copia completa.
-- Las claves de Anthropic, Gemini y de acceso al servidor nunca se incluyen.
-  Los precios y cotizaciones se regeneran en cada equipo, sin subir su caché.
+- Se sincronizan cuentas, activos, movimientos —con sus notas y la frase con
+  que se cargaron—, perfil, preferencias e informes. La app no cifra la copia
+  aparte: la protege la cuenta de Google del usuario, igual que un backup
+  exportado a Drive. La pantalla lo dice antes de conectar.
+- Las claves de Anthropic, Gemini y de acceso al servidor nunca se incluyen, ni
+  lo que es del dispositivo (`LOCAL_SETTINGS` en `src/lib/cloud/data.ts`). Los
+  precios y cotizaciones se regeneran en cada equipo, sin subir su caché.
 - Se sincroniza al conectar, después de editar datos, al recuperar conexión y
-  al volver a la app. Mientras está visible se revisa Drive cada minuto. No hay
-  ejecución de sincronización con el APK cerrado.
+  al volver a la app. Mientras está visible se revisa Drive cada minuto; si la
+  revisión de Drive es la misma de la última sincronización, no se baja nada.
+  No hay sincronización con el APK cerrado.
 - En web, el token OAuth solo vive en memoria. Al recargar, cerrar la app o
-  vencer el token, hay que reconectar desde un toque del usuario. Google no
-  ofrece renovación automática de este flujo sin servidor.
-- Android puede restaurar una sesión vigente mediante el SDK nativo. Si el
-  permiso vence o se revoca, la app pide reconectar; los cambios quedan locales.
+  vencer el token hay que reconectar con un toque: sin un servidor, Google no
+  da otro token solo. Lo que se cargue mientras tanto se combina al reconectar.
+- En el APK la sesión se renueva sola mientras la app está abierta y se retoma
+  al abrirla, salvo que el usuario haya tocado *Desconectar*. Usa `refresh` del
+  plugin, que no muestra nada si la cuenta ya dio el permiso. Si el permiso se
+  revocó, la app pide reconectar; los cambios quedan locales.
 - Se conserva **un archivo de hasta 5 MiB por usuario**, sin historial remoto.
   Se comprueba el tamaño UTF-8 antes de consultar/subir y durante la descarga,
   incluso si Google no envía `Content-Length`. Los metadatos admiten hasta 64 KiB.
   Si se supera el límite o Drive rechaza el pedido, se conservan los datos locales.
 
-## Conflictos y recuperación
+## Formato y versiones de la app
 
-La copia es `waltra.json` en la **carpeta oculta `appDataFolder` del Drive del
-usuario**. No aparece en Mi unidad ni se comparte con otras personas.
-Al sincronizar se sobrescribe ese mismo archivo mediante Drive API v2,
-`files.update` con `newRevision=false` y `pinned=false`: reemplaza el contenido
-actual sin crear archivos ni revisiones por cada edición. Se usa v2 porque v3
-no expone la opción para reemplazar el blob sin generar una revisión.
+La copia se valida con un esquema que tiene dos versiones: al subir se
+descarta lo que no está en la lista; al bajar se rechaza. Un campo o un valor
+desconocido viene de un teléfono con una versión más nueva de Waltra, y
+descartarlo y después subir se lo borraría a ese teléfono. Por eso la versión
+vieja frena, pide actualizar la app y no toca nada. Un test de paridad no
+compila si un tipo sincronizado gana un campo que el esquema no tiene.
 
-El ETag identifica la revisión leída. La subida lleva `If-Match`; si otro equipo
-modificó el archivo, una respuesta 412 deja los cambios pendientes y obliga a
-releer. Una resolución de conflicto también comprueba el ETag, aunque siga
-siendo el mismo archivo. La configuración real debe validar este contrato con Google.
+## Cómo se combinan dos equipos
+
+Cada instalación guarda la última copia que confirmó con Drive (la *base*).
+Al sincronizar, lo que cambió de un solo lado desde la base se toma de ese
+lado —altas, ediciones y borrados—, así que cargar movimientos en dos equipos
+sin conexión no obliga a elegir entre ellos. La historia es lineal: cada
+subida lleva `If-Match` sobre la revisión leída, y un 412 deja los cambios
+pendientes para la próxima pasada. La configuración real debe validar este
+contrato con Google.
+
+La sincronización se pausa y pregunta solo en estos casos:
+
+- **Lo mismo cambió distinto en los dos lados**: un movimiento, una cuenta, un
+  activo, un informe o un campo del perfil. Las opciones combinan todo lo demás
+  y dejan que un lado gane lo que choca.
+- **Un ajuste o un split de un activo que el otro lado también tocó.** Un ajuste
+  anota la diferencia de ese día contra el broker y un split reemplaza los del
+  activo: sumados a operaciones cargadas en el otro equipo, cuentan las
+  unidades dos veces. Ahí lo que choca es el activo entero.
+- **Combinar dejaría un movimiento apuntando a una cuenta o un activo que el
+  otro lado borró**: se elige un lado entero.
+- **Un borrado grande**, en cualquiera de las dos direcciones: el resultado se
+  lleva todos los movimientos de una cartera con tres o más, o más de la mitad
+  de una con diez o más. Es lo que hace *Borrar todo*, o una base que se perdió
+  a medias. Los datos de ejemplo no cuentan: se limpian de a muchos a propósito.
+- **La primera conexión, con datos en los dos lados.** Sin una base común, juntar
+  puede repetir lo que se cargó por separado en cada uno: se ofrece, pero no se
+  hace solo.
+- **La copia de Drive desapareció** después de haber sincronizado: no se vuelve
+  a crear sin preguntar.
+
+El mismo activo dado de alta sin conexión en los dos equipos (los ids son
+aleatorios) queda uno solo, con los movimientos de los dos. Una decisión se
+vuelve a comprobar contra las versiones actuales antes de aplicarla: si algo
+cambió en el medio, se vuelve a preguntar, o se combina solo si ya se puede.
 
 Drive no ofrece una creación única por nombre. Si dos instalaciones crean la
 primera copia exactamente a la vez, pueden existir duplicados temporales. Se
@@ -96,39 +133,59 @@ Se examinan hasta tres copias (máximo 15 MiB de contenido en ese caso excepcion
 si hay más o hay páginas adicionales, se detiene sin subir ni borrar. Este
 control no representa una cuota atómica del proveedor frente a creaciones simultáneas.
 
-Si la base local y Drive cambiaron desde la última sincronización, la app pausa
-la sincronización. El usuario elige conservar el dispositivo o una versión de
-Drive. Una decisión se vuelve a comprobar contra las versiones actuales antes
-de aplicarla. Elegir una versión completa no combina movimientos de las otras.
+## Recuperación
 
-Antes de reemplazar datos locales, se guarda una copia sin credenciales en
-IndexedDB. Se conserva **una sola copia de recuperación**, reemplazable y de
-hasta 5 MiB; se puede exportar desde la pantalla de cuenta e importar desde Tus
-datos, incluidos los informes. Sigue siendo recomendable
-exportar un archivo propio antes de resolver un conflicto.
+La copia es `waltra.json` en la **carpeta oculta `appDataFolder` del Drive del
+usuario**. No aparece en Mi unidad ni se comparte con otras personas. Se
+sobrescribe ese mismo archivo con Drive API v2, `files.update` con
+`newRevision=false` y `pinned=false`: reemplaza el contenido sin crear archivos
+ni revisiones por cada edición. Se usa v2 porque v3 no expone la opción para
+reemplazar el blob sin generar una revisión.
 
-No se conservan versiones anteriores en Drive. El usuario puede borrar los datos
-de Waltra desde la administración de aplicaciones de Drive. Si la copia ya
-sincronizada desaparece, Waltra pregunta antes de recrearla.
+Como Drive no conserva versiones, antes de pisar algo que se pierde se guarda
+una copia en IndexedDB: la del dispositivo antes de reemplazar sus datos, y la
+de Drive antes de subir. "Algo que se pierde" es lo que un lado agregó o editó
+y el resultado deja afuera, o los datos de un borrado grande que se confirmó;
+una combinación que no pierde nada no deja copias, para no desplazar las
+útiles. Se conservan **las últimas tres**, sin credenciales. Se exportan desde
+la pantalla de cuenta y se importan desde *Tus datos*, que suma sin borrar.
 
-La primera cuenta queda vinculada a esta instalación. Conectar otra cuenta no
-sube la cartera anterior a ella. Para empezar con otra cuenta, exportar antes
-los datos y limpiar el almacenamiento de la aplicación/navegador. Desconectar
-por sí solo pausa la sincronización y conserva la cartera en el dispositivo;
-no es un bloqueo de acceso local. Borrar datos desde Tus datos, estando conectado,
-sincroniza la cartera vacía, reemplazando la copia remota anterior.
+El usuario puede borrar los datos de Waltra desde la administración de
+aplicaciones de Drive.
+
+## Cuenta vinculada
+
+La instalación queda vinculada a la cuenta con que sincroniza por primera vez:
+su identificador de Google, no el cliente OAuth, así que cambiar de proyecto en
+Google Cloud no deja a nadie trabado (el Drive nuevo aparece vacío y se
+pregunta). Conectar otra cuenta no sube la cartera a ella.
+
+*Desconectar* pausa la sincronización y conserva todo. *Desvincular* olvida la
+cuenta y la base: los datos quedan en el dispositivo y en ese Drive, y la
+próxima conexión es una primera conexión. *Borrar todo* no desvincula; con
+Google conectado, la app pregunta antes de vaciar también la copia de Drive.
 
 ## Validación y límites
 
-Los tests de `src/lib/cloud/__tests__` ejercitan IndexedDB y el contrato HTTP de
-Drive con respuestas controladas. Protegen credenciales, conflictos, cambios en
-vuelo, desconexión y separación de cuentas. No sustituyen probar Google real.
+Los tests de `src/lib/cloud/__tests__` ejercitan la combinación, IndexedDB y el
+contrato HTTP de Drive con respuestas controladas: credenciales, conflictos,
+borrados grandes, copias de recuperación, cambios en vuelo, desconexión,
+desvinculación y versiones de la app.
 
-Para validar la configuración completa: conectar una cuenta de prueba, cargar un
-movimiento, abrir un segundo equipo con esa misma cuenta, comprobar descarga,
-editar sin conexión, reconectar y resolver un cambio simultáneo. Repetir en un
-APK firmado con su SHA-1 registrada. El cliente OAuth, su consentimiento y las
-llamadas reales a Google requieren configuración externa.
+`npm run e2e:drive` recorre la pantalla con dos teléfonos contra un Drive en
+memoria y un Google simulado: conectar, bajar en un equipo nuevo, combinar,
+frenar un *Borrar todo*, resolver un choque y desvincular. Necesita la app
+levantada con un cliente de mentira:
+
+```bash
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=prueba.apps.googleusercontent.com WALTRA_MOCK=1 npm run dev
+```
+
+Nada de eso sustituye probar Google real: conectar una cuenta de prueba, cargar
+un movimiento, abrir un segundo equipo con esa misma cuenta, comprobar la
+descarga, editar sin conexión en los dos, reconectar y resolver un cambio
+simultáneo. Repetirlo en un APK firmado con su SHA-1 registrada, dejándolo
+abierto más de una hora para ver la renovación del token.
 
 Referencias: [datos privados de la app en Drive](https://developers.google.com/workspace/drive/api/guides/appdata),
 [OAuth sin backend en el navegador](https://developers.google.com/identity/oauth2/web/guides/use-token-model),
