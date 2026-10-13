@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Header } from "@/components/ui/Header";
 import { IconChevron } from "@/components/icons";
 import { useStore } from "@/lib/store";
+import { useCloud } from "@/lib/cloud/provider";
 import { ON_DEVICE } from "@/lib/backend";
 import { alertRules } from "@/lib/alerts/plan";
 import { keyFor, providerInfo, resolveModel, resolveProvider } from "@/lib/insights/providers";
@@ -24,6 +25,7 @@ import { useUpdate } from "@/lib/use-update";
  */
 export default function Ajustes() {
   const { accounts, assets, transactions, settings, portfolio } = useStore();
+  const cloud = useCloud();
 
   const reglas = alertRules(settings);
   const provider = resolveProvider(settings.provider);
@@ -34,6 +36,13 @@ export default function Ajustes() {
   const update = useUpdate();
 
   const secciones = [
+    {
+      href: "/ajustes/cuenta",
+      titulo: "Cuenta y sincronización",
+      detalle: "Google y copia privada en tu Drive",
+      estado: cloud.user ? "conectada" : "solo en este dispositivo",
+      alerta: cloud.status === "conflict" ? "hay un conflicto" : cloud.status === "error" ? "revisar conexión" : null,
+    },
     {
       href: "/ajustes/cartera",
       titulo: "Cuentas y activos",

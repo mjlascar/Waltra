@@ -1,14 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Ni backup en la nube ni transferencia directa entre equipos. Los datos de
-  Waltra salen del telefono unicamente por el backup manual de Ajustes, que es
-  un archivo que el usuario decide donde guardar.
+  Waltra salen por el backup manual o la sincronizacion optativa de Drive.
+  Las credenciales del SDK de Google no deben migrarse entre equipos.
 -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="root" />
+        <exclude domain="sharedpref" path="GOOGLE_LOGIN_F13oz0I_SHARED_PERF.xml" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="root" />
+        <exclude domain="sharedpref" path="GOOGLE_LOGIN_F13oz0I_SHARED_PERF.xml" />
     </device-transfer>
 </data-extraction-rules>

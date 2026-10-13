@@ -340,8 +340,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // Releemos los ajustes en vez de usar los del closure: si el usuario
         // toco su perfil mientras la sincronizacion estaba en vuelo, escribir
         // la copia vieja le borraria el cambio.
-        const current = (await db.settings.get("settings")) ?? settings;
-        await db.settings.put({ ...current, lastQuoteSync: at });
+        await db.settings.update("settings", { lastQuoteSync: at });
 
         const down = proveedoresCaidos(data.quotes);
         // El dolar tiene su propio proveedor y su propio silencio.
@@ -445,7 +444,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         await db?.accounts.delete(id);
       },
       updateSettings: async (patch) => {
-        await db?.settings.put({ ...settings, ...patch, id: "settings" });
+        if (!db) return;
+        await db.transaction("rw", db.settings, async () => {
+          const current = await db.settings.get("settings");
+          await db.settings.put({ ...DEFAULT_SETTINGS, ...current, ...patch, id: "settings" });
+        });
       },
       saveInsight: async (report) => {
         if (!db) return;

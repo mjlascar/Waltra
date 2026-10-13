@@ -451,8 +451,17 @@ describe("la corrida completa", () => {
     };
   }
 
-  async function correr(env: ReturnType<typeof entorno>) {
-    const { listeners } = cargar(env.globals);
+  async function correr(env: ReturnType<typeof entorno>, ahora?: Date) {
+    // Las cotizaciones sin fecha dependen del horario de mercado. Fijar solo
+    // el reloj del VM conserva los temporizadores reales del test.
+    const timestamp = ahora?.getTime() ?? Date.now();
+    const reloj = ahora ? {
+      Date: class extends Date {
+        constructor(value: string | number = timestamp) { super(value); }
+        static now() { return timestamp; }
+      },
+    } : {};
+    const { listeners } = cargar({ ...env.globals, ...reloj });
     await new Promise<void>((done, fail) => listeners.checkPrices(done, fail));
   }
 
@@ -487,7 +496,7 @@ describe("la corrida completa", () => {
         },
       },
     );
-    await correr(env);
+    await correr(env, MEDIODIA);
     const [aviso] = env.programadas[0] as { title: string }[];
     expect(aviso.title).toBe("QQQ -7,0%");
   });
@@ -500,7 +509,7 @@ describe("la corrida completa", () => {
       }),
       { "data912.com": [{ symbol: "GGAL", c: 5000, pct_change: 8.5 }] },
     );
-    await correr(env);
+    await correr(env, MEDIODIA);
     const [aviso] = env.programadas[0] as { title: string; body: string }[];
     expect(aviso.title).toBe("GGAL +8,5%");
     expect(aviso.body).toContain("$ 5.000,00");
