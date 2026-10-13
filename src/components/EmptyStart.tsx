@@ -8,6 +8,7 @@ import { BulkImport } from "@/components/BulkImport";
 import { BackupList } from "@/components/DataRescue";
 import { listBackups } from "@/lib/auto-backup";
 import { NATIVE } from "@/lib/platform";
+import { GOOGLE_CLIENT_ID } from "@/lib/cloud/google";
 import Link from "next/link";
 
 /**
@@ -74,7 +75,9 @@ export function EmptyStart() {
           ["Se carga escribiendo, como una nota", "«pasé 100 dólares a cocos», «compré 50 de QQQ a 480»"],
           ["El capital no se mezcla con el rendimiento", "Una línea es el capital aportado. La otra, el valor de la cartera."],
           ["Precios al día", "Acciones, ETFs, CEDEARs, cripto y dólar MEP."],
-          ["Tus datos, bajo tu control", "Usala sin cuenta o conectá Google desde Ajustes para guardar una copia privada en tu Drive."],
+          GOOGLE_CLIENT_ID
+            ? ["Tus datos, bajo tu control", "Usala sin cuenta o conectá Google desde Ajustes para guardar una copia privada en tu Drive."]
+            : ["Todo vive en tu teléfono", "Sin cuenta, sin nube y sin que tus números salgan de acá."],
         ].map(([title, detail]) => (
           <li key={title} className="p-3">
             <div className="text-[13px] font-medium">{title}</div>

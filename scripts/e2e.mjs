@@ -894,6 +894,11 @@ await goto("/ajustes");
 check("es un índice de secciones", await has("Cuentas y activos"));
 check("resume el estado de cada una sin entrar", await has("Tu perfil como inversor"));
 check("no vuelca todo en una sola pantalla", !(await has("Tolerancia al riesgo")));
+// Sin el cliente de Google compilado no hay nada que conectar, y la seccion
+// no aparece; con el cliente, aparece y no dice que falta configurarlo.
+const conGoogle = await has("Cuenta y sincronización");
+await goto("/ajustes/cuenta");
+check("Google aparece en Ajustes solo si está configurado", conGoogle !== (await has("Google todavía no está configurado")));
 
 await goto("/ajustes/perfil");
 await page.getByRole("button", { name: /^Agresivo$/ }).click();
