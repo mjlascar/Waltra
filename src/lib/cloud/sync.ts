@@ -48,7 +48,21 @@ export type CloudSyncResult = { status: "ok" | "pending"; at: string; downloaded
 export interface Resolution { local: string; tokens: string[]; choice: string }
 
 export class CloudOwnerError extends Error {
-  constructor() { super("Los datos de este dispositivo están vinculados a otra cuenta de Google. Conectá la cuenta original para sincronizarlos."); }
+  constructor(linked?: string) {
+    super(`Esta instalación está vinculada a otra cuenta de Google${linked ? ` (${linked})` : ""}. Conectá esa cuenta, o desvinculá la instalación para usar otra.`);
+  }
+}
+
+/**
+ * Olvida la cuenta y la ultima copia confirmada. Los datos quedan como estan,
+ * aca y en ese Drive; la proxima conexion es una primera conexion.
+ */
+export async function unlinkCloud(db: WaltraDB): Promise<void> {
+  await db.cloudState.delete("cloud");
+}
+
+export async function setPaused(db: WaltraDB, paused: boolean): Promise<void> {
+  await db.cloudState.update("cloud", { paused });
 }
 
 /** Copias de recuperacion que se guardan en el dispositivo. Drive no conserva versiones. */
@@ -132,14 +146,14 @@ async function saveRecovery(db: WaltraDB, copies: Pick<CloudBackup, "payload" | 
  */
 export async function synchronize(
   db: WaltraDB, transport: CloudTransport, owner: string,
-  active: () => boolean, resolution?: Resolution,
+  active: () => boolean, resolution?: Resolution, email?: string,
 ): Promise<CloudSyncResult> {
   const pending = (): CloudSyncResult => ({ status: "pending", at: new Date().toISOString(), downloaded: false });
   const state = await db.transaction("rw", db.cloudState, async () => {
     if (!active()) return null;
     const current = await db.cloudState.get("cloud");
-    if (current && current.owner !== owner) throw new CloudOwnerError();
-    const row: CloudState = current ?? { id: "cloud", owner, base: null };
+    if (current && current.owner !== owner) throw new CloudOwnerError(current.email);
+    const row: CloudState = current ?? { id: "cloud", owner, base: null, ...(email ? { email } : {}) };
     if (!current) await db.cloudState.put(row);
     return row;
   });
@@ -193,7 +207,8 @@ export async function synchronize(
   return db.transaction("rw", db.tables, async () => {
     if (!active()) return pending();
     const currentState = await db.cloudState.get("cloud");
-    if (currentState?.owner !== owner) throw new CloudOwnerError();
+    // Se desvinculo o se cambio de cuenta mientras se subia: no se confirma nada.
+    if (currentState?.owner !== owner) return pending();
     // Otra pestana termino antes. Su baseline manda; releer en la proxima pasada.
     if (currentState.base !== state.base) return pending();
     const currentLocal = await readData(db);

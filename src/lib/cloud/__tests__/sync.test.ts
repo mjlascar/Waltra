@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_SETTINGS, WaltraDB, ensureSeeded } from "@/lib/db";
 import type { Transaction } from "@/lib/types";
 import { decodeData, encodeData, readData } from "../data";
-import { MAX_RECOVERY, synchronize, type CloudSyncResult, type OptionKind } from "../sync";
+import { MAX_RECOVERY, synchronize, unlinkCloud, type CloudSyncResult, type OptionKind } from "../sync";
 import { GoogleError } from "../google";
 import { MAX_PAYLOAD_BYTES } from "../data";
 import { versionToken, type CloudTransport, type CloudVersion } from "../drive";
@@ -299,5 +299,30 @@ describe("sincronizacion de la cartera persistida", () => {
     expect(decodeData(cloud.write.mock.calls[0][0]).transactions[0].amount).toBe(200);
     const saved = await db.cloudBackups.toArray();
     expect(saved.map((s) => [s.origin, JSON.parse(s.payload).transactions[0].amount])).toEqual([["drive", 400]]);
+  });
+
+  it("dice con que cuenta quedo vinculada, y desvincular deja usar otra sin perder la cartera", async () => {
+    await db.transactions.put(tx(250));
+    await db.cloudState.put({ id: "cloud", owner, email: "a@example.com", base: null });
+    const cloud = transport();
+    await expect(synchronize(db, cloud, "otra-cuenta", () => true)).rejects.toThrow(/a@example\.com/);
+    expect(cloud.read).not.toHaveBeenCalled();
+    await unlinkCloud(db);
+    expect((await synchronize(db, cloud, "otra-cuenta", () => true, undefined, "b@example.com")).status).toBe("ok");
+    expect(decodeData(cloud.write.mock.calls[0][0]).transactions[0].amount).toBe(250);
+    expect(await db.cloudState.get("cloud")).toMatchObject({ owner: "otra-cuenta", email: "b@example.com" });
+    expect((await db.transactions.get("deposit"))?.amount).toBe(250);
+  });
+
+  it("aplicar un borrado hecho en otro equipo guarda antes los datos de este", async () => {
+    await db.transactions.bulkPut(txs(["a", 1], ["b", 2], ["c", 3]));
+    const base = await readData(db);
+    await db.cloudState.put({ id: "cloud", owner, base });
+    const vacia = decodeData(base); vacia.transactions = [];
+    const cloud = transport([version(encodeData(vacia))]);
+    await choose(await synchronize(db, cloud, owner, () => true), "apply", cloud);
+    expect(await db.transactions.count()).toBe(0);
+    const saved = await db.cloudBackups.toArray();
+    expect(saved.map((s) => [s.origin, JSON.parse(s.payload).transactions.length])).toEqual([["device", 3]]);
   });
 });

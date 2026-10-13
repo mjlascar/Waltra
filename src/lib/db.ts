@@ -47,11 +47,19 @@ export class WaltraDB extends Dexie {
 
 export interface CloudState {
   id: "cloud";
-  /** Cliente OAuth y usuario: nunca se publica esta base con otra identidad. */
+  /**
+   * La cuenta de Google (`sub`): nunca se publica esta base en el Drive de otra.
+   * No incluye el cliente OAuth, para que cambiarlo no deje a todas las
+   * instalaciones trabadas; un Drive nuevo y vacio se pregunta igual.
+   */
   owner: string;
+  /** Solo para decirle al usuario con que cuenta quedo vinculada. */
+  email?: string;
   /** Ultima copia confirmada por el servidor, para detectar cambios offline. */
   base: string | null;
   syncedAt?: string;
+  /** El usuario toco Desconectar: el APK no vuelve a entrar solo al abrir. */
+  paused?: boolean;
 }
 
 export interface CloudBackup {

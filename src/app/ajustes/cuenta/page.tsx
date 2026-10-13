@@ -74,6 +74,7 @@ export default function CuentaAjustes() {
   const { db, ready, dbError } = useStore();
   const [choice, setChoice] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [unlinking, setUnlinking] = useState(false);
   const recoveries = useLiveQuery(() => db ? db.cloudBackups.orderBy("id").reverse().toArray() : [], [db]);
   const copies = useMemo(() => (recoveries ?? []).map((copy) => ({
     copy, transactions: decodeData(copy.payload).transactions.length,
@@ -95,10 +96,12 @@ export default function CuentaAjustes() {
     <AjustesShell title="Cuenta y sincronización" intro="Tu cartera, guardada en tu cuenta de Google. Podés seguir usando Waltra sin conexión." message={message}>
       <div className="card mb-4 space-y-3 p-3">
         <div className="eyebrow">Google Drive</div>
-        {cloud.user && <div className="min-w-0">
+        {cloud.user ? <div className="min-w-0">
           <p className="text-[14px] font-medium break-words">{cloud.user.name ?? "Tu cuenta de Google"}</p>
           <p className="label break-all">{cloud.user.email}</p>
-        </div>}
+        </div> : cloud.linked && <p className="label leading-relaxed break-words">
+          Vinculada a {cloud.linked.email ?? "la cuenta con que la conectaste"}. Conectá esa cuenta para seguir sincronizando.
+        </p>}
         <p role="status" aria-live="polite" className="text-[12px] leading-relaxed">{STATUS[cloud.status]}</p>
         {cloud.lastSync && <p className="label">Última sincronización: {relativeTime(cloud.lastSync)}</p>}
         {cloud.message && <div role="alert"><Notice>{cloud.message}</Notice></div>}
@@ -164,11 +167,25 @@ export default function CuentaAjustes() {
           </li>)}
         </ul>
       </div>}
+      {cloud.linked && <div className="card mb-4 space-y-2 p-3">
+        <h2 className="text-[14px] font-medium">Desvincular esta instalación</h2>
+        <p className="label leading-relaxed">
+          Esta instalación sincroniza solo con {cloud.linked.email ?? "la cuenta con que la conectaste"}, para
+          no mezclar carteras. Desvincularla desconecta Google y la deja como si nunca se hubiera
+          conectado: tus datos quedan acá y en ese Drive. Si la próxima cuenta que conectes ya tiene
+          datos de Waltra, vas a elegir con cuáles seguir.
+        </p>
+        {unlinking ? <div className="flex flex-wrap gap-2">
+          <button className="btn btn-sm" disabled={busy} onClick={() => { setUnlinking(false); void cloud.unlink(); }}>Sí, desvincular</button>
+          <button className="btn btn-sm btn-ghost" onClick={() => setUnlinking(false)}>Cancelar</button>
+        </div> : <button className="btn btn-sm btn-ghost" disabled={busy} onClick={() => setUnlinking(true)}>Desvincular</button>}
+      </div>}
       <p className="label leading-relaxed">
         Las claves de Anthropic, Gemini y del servidor quedan en este dispositivo.
         Desconectar pausa la sincronización y conserva los datos locales y de Drive.
-        Esta instalación queda vinculada a la primera cuenta que conectes para evitar mezclar carteras.
-        {!NATIVE && " En el navegador, reconectá Google después de cerrar o recargar la app, o cuando venza el permiso."}
+        {NATIVE
+          ? " Mientras la app está abierta, la sesión de Google se renueva sola."
+          : " En el navegador, reconectá Google después de cerrar o recargar la app, o cuando venza el permiso: los cambios de mientras tanto se combinan al volver."}
       </p>
     </AjustesShell>
   );

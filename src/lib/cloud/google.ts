@@ -58,7 +58,14 @@ const userSchema = z.object({ sub: z.string().min(1), email: z.string().email(),
 export type GoogleUser = z.infer<typeof userSchema>;
 export interface GoogleSession { user: GoogleUser; token: string; expiresAt: number }
 
-async function session(token: string, expiresIn = 3600): Promise<GoogleSession> {
+/**
+ * Cuanto se le cree a un token del APK. El plugin no dice cuando vence, y uno
+ * guardado puede tener 59 minutos: se renueva seguido, que es barato mientras
+ * siga vigente, y un 401 igual dispara una renovacion.
+ */
+const NATIVE_TOKEN_SECONDS = 10 * 60;
+
+async function session(token: string, expiresIn: number): Promise<GoogleSession> {
   const res = await googleRequest(token, "https://openidconnect.googleapis.com/v1/userinfo");
   return { user: userSchema.parse(JSON.parse(await readGoogleText(res, 16 * 1024))), token, expiresAt: Date.now() + expiresIn * 1000 };
 }
@@ -108,7 +115,7 @@ export async function loginGoogle(): Promise<GoogleSession> {
     if (result.responseType !== "online" || !result.accessToken?.token) {
       throw new Error("Google no otorgó acceso a Drive. Volvé a conectar y aceptá el permiso.");
     }
-    return session(result.accessToken.token);
+    return session(result.accessToken.token, NATIVE_TOKEN_SECONDS);
   }
   const identity = window.google;
   if (!identity) throw new Error("No se pudo cargar el acceso a Google.");
@@ -128,14 +135,23 @@ export async function loginGoogle(): Promise<GoogleSession> {
   return session(token.access_token!, Number(token.expires_in) || 3600);
 }
 
-/** Solo Android restaura la sesion desde el SDK. En web el token queda en memoria. */
-export async function restoreGoogle(): Promise<GoogleSession | null> {
+/**
+ * Solo en el APK: un token nuevo sin mostrar nada, si la cuenta ya dio el
+ * permiso. Sirve para retomar la sesion al abrir la app y para seguir cuando
+ * vence, que es a la hora. En la web el token vive en memoria y Google no da
+ * otro sin un toque del usuario.
+ *
+ * No pasa por `isLoggedIn`: con el id token vencido, el plugin cierra la
+ * sesion y le borra a Android el estado de la credencial, que es justo lo que
+ * hace falta para entrar de nuevo sin preguntar.
+ */
+export async function renewGoogle(): Promise<GoogleSession | null> {
   if (!NATIVE || !GOOGLE_CLIENT_ID) return null;
   await prepareGoogle();
   const { SocialLogin } = await import("@capgo/capacitor-social-login");
-  if (!(await SocialLogin.isLoggedIn({ provider: "google" })).isLoggedIn) return null;
-  const result = await SocialLogin.getAuthorizationCode({ provider: "google" });
-  return result.accessToken ? session(result.accessToken) : null;
+  await SocialLogin.refresh({ provider: "google", options: { scopes: SCOPES } });
+  const { accessToken } = await SocialLogin.getAuthorizationCode({ provider: "google" });
+  return accessToken ? session(accessToken, NATIVE_TOKEN_SECONDS) : null;
 }
 
 export async function logoutGoogle(): Promise<void> {

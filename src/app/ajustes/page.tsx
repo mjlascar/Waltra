@@ -40,7 +40,7 @@ export default function Ajustes() {
       href: "/ajustes/cuenta",
       titulo: "Cuenta y sincronización",
       detalle: "Google y copia privada en tu Drive",
-      estado: cloud.user ? "conectada" : "solo en este dispositivo",
+      estado: cloud.user ? "conectada" : cloud.linked ? "vinculada, sin sesión" : "solo en este dispositivo",
       alerta: cloud.status === "conflict" ? "hay un conflicto" : cloud.status === "error" ? "revisar conexión" : null,
     },
     {
