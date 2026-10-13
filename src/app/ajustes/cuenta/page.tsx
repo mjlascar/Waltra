@@ -11,7 +11,7 @@ import { MAX_RECOVERY, type CloudConflict, type OptionKind } from "@/lib/cloud/s
 import { saveBackupFile } from "@/lib/backup-file";
 import type { CloudBackup } from "@/lib/db";
 import { useStore } from "@/lib/store";
-import { relativeTime } from "@/lib/format";
+import { dateTime, relativeTime } from "@/lib/format";
 import { NATIVE } from "@/lib/platform";
 
 const STATUS = {
@@ -135,7 +135,7 @@ export default function CuentaAjustes() {
             <span className="min-w-0">
               <span className="block">
                 {OPTION[option.kind].label} · {movimientos(option.transactions)}
-                {option.at && ` · ${new Date(option.at).toLocaleString("es-AR")}`}
+                {option.at && ` · ${dateTime(option.at)}`}
               </span>
               <span className="label block leading-snug">{OPTION[option.kind].detail}</span>
             </span>
@@ -160,7 +160,7 @@ export default function CuentaAjustes() {
         <ul className="divide-hairline">
           {copies.map(({ copy, transactions }) => <li key={copy.id} className="flex items-center justify-between gap-2 py-2">
             <span className="min-w-0 text-[12px]">
-              {copy.origin === "drive" ? "De Drive" : "De este dispositivo"} · {new Date(copy.at).toLocaleString("es-AR")}
+              {copy.origin === "drive" ? "De Drive" : "De este dispositivo"} · {dateTime(copy.at)}
               <span className="label block">{movimientos(transactions)}</span>
             </span>
             <button className="btn btn-sm shrink-0" onClick={() => void exportRecovery(copy)}>Exportar</button>

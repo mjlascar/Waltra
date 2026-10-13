@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { money, percent, quantity, relativeDate, relativeTime, shortDate } from "@/lib/format";
+import { dateTime, money, percent, quantity, relativeDate, relativeTime, shortDate } from "@/lib/format";
 
 /** El espacio entre simbolo y numero es duro, para que nunca corte de renglon. */
 const plain = (s: string) => s.replace(/ /g, " ");
@@ -91,6 +91,16 @@ describe("hoy es el dia del telefono, no el de UTC", () => {
     const noche = new Date(2026, 5, 15, 21, 30, 0);
     expect(today(noche)).toBe("2026-06-15");
     expect(noche.toISOString().slice(0, 10)).not.toBe("2026-06-15");
+  });
+
+  it("la fecha y hora de una copia es la del telefono, en 24 horas", () => {
+    const year = new Date().getFullYear();
+    const tarde = new Date(year, 5, 15, 18, 38, 30);
+    expect(dateTime(tarde.toISOString()).replace(/\u00a0/g, " ")).toBe("15 jun, 18:38");
+    // 23:30 en Buenos Aires ya es el dia siguiente en UTC.
+    const noche = new Date(year, 5, 15, 23, 30, 0);
+    expect(dateTime(noche.toISOString()).replace(/\u00a0/g, " ")).toBe("15 jun, 23:30");
+    expect(dateTime("no es una fecha")).toBe("—");
   });
 
   it("relativeDate usa la misma referencia local", () => {

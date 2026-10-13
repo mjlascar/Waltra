@@ -123,6 +123,18 @@ export function relativeDate(day: string, now = new Date()): string {
   return `hace ${years} ${years === 1 ? "año" : "años"}`;
 }
 
+/**
+ * "13 oct, 18:38": fecha y hora del reloj del telefono, en 24 horas.
+ * `toLocaleString("es-AR")` sale en 12 horas y sin a. m. ni p. m. en Chrome,
+ * y una copia de las 18:38 se leia como de las 06:38.
+ */
+export function dateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${shortDate(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`)}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 /** Hora relativa corta para el "actualizado hace X". */
 export function relativeTime(iso: string, now = new Date()): string {
   const diff = now.getTime() - Date.parse(iso);
