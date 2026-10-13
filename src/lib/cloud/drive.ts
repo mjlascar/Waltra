@@ -21,11 +21,12 @@ export interface CloudVersion {
 
 /**
  * Cuantas subidas recuerda cada copia: tiene que cubrir lo que otros equipos
- * suban mientras uno reintenta una subida cuya respuesta se perdio.
+ * suban mientras uno, con una subida cuya respuesta se perdio, queda dias
+ * sin abrirse. Con ids de 16 caracteres son unos 10 KB.
  */
-export const CHAIN_LENGTH = 20;
+export const CHAIN_LENGTH = 500;
 /** Lo que el archivo agrega a la cartera: la cadena de subidas. */
-const FILE_OVERHEAD = 4096;
+const FILE_OVERHEAD = 16 * 1024;
 
 /**
  * El archivo es la cartera mas `chain`, los ids de las subidas que la

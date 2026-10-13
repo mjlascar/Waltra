@@ -357,6 +357,10 @@ de las últimas subidas que lo produjeron, y antes de cada subida queda
 anotado su id (`sending`): si la pasada siguiente lo encuentra en la cadena,
 la subida llegó, aunque otro equipo haya subido encima, y se anota en el acto.
 Comparar el contenido no alcanzaba: con otra subida encima ya no es igual.
+**La cadena sigue solo si lo subido sale de esa copia** (combinar, sí;
+quedarse con este dispositivo entero, no: arranca una nueva). Heredarla de una
+copia que se reemplazó entera le hace creer a un teléfono con una subida
+pendiente que su copia sigue ahí abajo, y borra lo suyo sin preguntar.
 Un movimiento que apunta a un activo que el otro lado unificó pasa al que
 quedó solo si tiene la misma identidad que la versión que conocía ese lado:
 un CEDEAR convertido en el lugar comparte id con la acción que fue.

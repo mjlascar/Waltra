@@ -112,7 +112,9 @@ Para la respuesta que se pierde o la app que se cierra, el archivo lleva
 `chain`, los ids de las últimas subidas que lo produjeron, y cada equipo anota
 el id de la suya antes de subir: si después lo encuentra en la cadena, la
 subida llegó, aunque otro equipo haya subido encima. Sin eso, lo que se borra
-justo después de cargarlo volvería como si lo hubiera agregado otro equipo.
+justo después de cargarlo volvería como si lo hubiera agregado otro equipo. La
+cadena recuerda 500 subidas y sigue solo cuando lo que se sube sale de esa
+copia: quedarse con los datos de un equipo entero empieza una nueva.
 
 La sincronización se pausa y pregunta solo en estos casos:
 

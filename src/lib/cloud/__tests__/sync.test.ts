@@ -535,4 +535,55 @@ describe("sincronizacion de la cartera persistida", () => {
     const saved = await db.cloudBackups.toArray();
     expect(saved.map((s) => [s.origin, JSON.parse(s.payload).transactions[0].amount])).toEqual([["device", 200]]);
   });
+
+  it("quedarse con este telefono entero no hereda la cadena de la copia que reemplaza", async () => {
+    await db.transactions.bulkPut(txs(["a", 100]));
+    const remote = decodeData(await readData(db)); remote.transactions = txs(["b", 200]);
+    const cloud = transport([{ ...version(encodeData(remote)), chain: ["pendiente-de-otro"] }]);
+    await choose(await synchronize(db, cloud, owner, () => true), "device", cloud);
+    const chain = cloud.write.mock.calls[0][2] as string[];
+    expect(chain).toHaveLength(1);
+    expect(chain).not.toContain("pendiente-de-otro");
+  });
+
+  it("combinar sigue la cadena de la copia de Drive de la que sale", async () => {
+    await db.transactions.bulkPut(txs(["a", 1]));
+    const base = await readData(db);
+    await db.cloudState.put({ id: "cloud", owner, base });
+    await db.transactions.bulkPut(txs(["b", 2]));
+    const remote = decodeData(base); remote.transactions = txs(["a", 1], ["c", 3]);
+    const cloud = transport([{ ...version(encodeData(remote)), chain: ["p1", "p2"] }]);
+    await synchronize(db, cloud, owner, () => true);
+    const chain = cloud.write.mock.calls[0][2] as string[];
+    expect(chain.slice(0, 2)).toEqual(["p1", "p2"]);
+    expect(chain).toHaveLength(3);
+  });
+
+  it("con varias copias, elegir una sigue la cadena de esa", async () => {
+    await db.transactions.bulkPut(txs(["a", 100]));
+    const one = decodeData(await readData(db)); one.transactions = txs(["b", 200]);
+    const two = decodeData(await readData(db)); two.transactions = txs(["c", 300]);
+    const cloud = transport([{ ...version(encodeData(one), "uno"), chain: ["de-uno"] }, { ...version(encodeData(two), "dos"), chain: ["de-dos"] }]);
+    const result = await synchronize(db, cloud, owner, () => true);
+    if (result.status !== "conflict") throw new Error("Se esperaba un conflicto");
+    const dos = result.options.find((o) => o.id === "drive:dos")!;
+    await synchronize(db, cloud, owner, () => true, { local: result.local, tokens: result.versions.map(versionToken), choice: dos.id });
+    expect((cloud.write.mock.calls[0][2] as string[])[0]).toBe("de-dos");
+  });
+
+  it("una subida pendiente frente a una copia reemplazada entera pregunta en vez de borrar", async () => {
+    // La primera subida de este telefono choca con la de otro; el otro elige
+    // sus propios datos enteros, y esa copia ya no sale de la de aca.
+    await db.transactions.bulkPut(txs(["a1", 1], ["a2", 2], ["a3", 3]));
+    const drive = memoryDrive();
+    drive.write.mockImplementationOnce(async (payload: string, _expected?: CloudVersion[], chain?: string[]) => {
+      drive.store(payload, chain);
+      throw new GoogleError("changed", 412);
+    });
+    expect((await synchronize(db, drive, owner, () => true)).status).toBe("pending");
+    const deOtro = decodeData(await readData(db)); deOtro.transactions = txs(["b1", 1], ["b2", 2], ["b3", 3]);
+    drive.store(encodeData(deOtro), ["del-otro"]);
+    expect((await synchronize(db, drive, owner, () => true))).toMatchObject({ status: "conflict", kind: "first" });
+    expect((await db.transactions.toArray()).map((t) => t.id).sort()).toEqual(["a1", "a2", "a3"]);
+  });
 });

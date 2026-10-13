@@ -32,6 +32,12 @@ export interface ConflictOption {
   transactions: number;
   /** La fecha de la copia de Drive, cuando la opcion es una de ellas. */
   at?: string;
+  /**
+   * La copia de Drive de la que sale el resultado, si sale de una: con ella
+   * sigue la cadena de subidas. Quedarse con este dispositivo entero no sale
+   * de ninguna.
+   */
+  parent?: string;
 }
 
 export interface CloudConflict {
@@ -68,23 +74,26 @@ export async function setPaused(db: WaltraDB, paused: boolean): Promise<void> {
 /** Copias de recuperacion que se guardan en el dispositivo. Drive no conserva versiones. */
 export const MAX_RECOVERY = 3;
 
-type Plan = { selected: string } | Omit<CloudConflict, "status" | "local" | "versions">;
+/** `parent`: la copia de Drive de la que sale `selected`, como en `ConflictOption`. */
+type Plan = { selected: string; parent?: CloudVersion } | Omit<CloudConflict, "status" | "local" | "versions">;
 
-function option(kind: OptionKind, payload: string, version?: CloudVersion): ConflictOption {
+function option(kind: OptionKind, payload: string, version?: CloudVersion, parent?: CloudVersion): ConflictOption {
   return {
     id: version ? `${kind}:${version.id}` : kind, kind, payload,
     transactions: decodeData(payload).transactions.length,
     ...(version ? { at: version.at } : {}),
+    ...(parent ? { parent: parent.id } : {}),
   };
 }
 
 /**
- * Una opcion que sale de combinar. Si la combinacion pasa el limite de 5 MiB
- * no se ofrece, en vez de trabar la sincronizacion antes de preguntar.
+ * Una opcion que sale de combinar con `parent`. Si la combinacion pasa el
+ * limite de 5 MiB no se ofrece, en vez de trabar la sincronizacion antes de
+ * preguntar.
  */
-function combined(kind: OptionKind, data: CloudData, version?: CloudVersion): ConflictOption[] {
+function combined(kind: OptionKind, data: CloudData, parent: CloudVersion, version?: CloudVersion): ConflictOption[] {
   try {
-    return [option(kind, encodeData(data), version)];
+    return [option(kind, encodeData(data), version, parent)];
   } catch (err) {
     if (err instanceof CloudFormatError) return [];
     throw err;
@@ -100,44 +109,44 @@ function plan(base: string | null, local: string, versions: CloudVersion[]): Pla
   const remote = versions[0]?.payload ?? null;
   const head = versions[0];
   if (new Set(versions.map((v) => v.payload)).size > 1) {
-    return { kind: "copies", clashes: 0, options: [option("device", local), ...versions.map((v) => option("drive", v.payload, v))] };
+    return { kind: "copies", clashes: 0, options: [option("device", local), ...versions.map((v) => option("drive", v.payload, v, v))] };
   }
-  if (remote === local) return { selected: local };
+  if (remote === local) return { selected: local, parent: head };
   if (remote === null) {
     // La copia remota desaparecio. No se vuelve a subir nada sin preguntar.
     if (base !== null) return { kind: "missing", clashes: 0, options: [option("device", local)] };
     return { selected: local };
   }
   if (base === null) {
-    if (isPristine(local)) return { selected: remote };
+    if (isPristine(local)) return { selected: remote, parent: head };
     // Juntar sin una base comun puede repetir lo que se cargo en los dos
     // lados por separado: se ofrece, pero no se hace solo. Y solo si no hay
     // nada que choque: "suma los de los dos lados" no puede tirar ninguno.
     const joined = mergeData(null, decodeData(local), decodeData(remote));
     return { kind: "first", clashes: 0, options: [
-      option("device", local), option("drive", remote, head),
-      ...(joined.clashes === 0 && joined.consistent ? combined("join", joined.data) : []),
+      option("device", local), option("drive", remote, head, head),
+      ...(joined.clashes === 0 && joined.consistent ? combined("join", joined.data, head) : []),
     ] };
   }
   const [b, l, r] = [decodeData(base), decodeData(local), decodeData(remote)];
   const merged = mergeData(b, l, r);
   if (merged.clashes > 0 || !merged.consistent) {
     const wins = (prefer: "local" | "remote") => {
-      const whole = prefer === "local" ? option("device", local) : option("drive", remote, head);
+      const whole = prefer === "local" ? option("device", local) : option("drive", remote, head, head);
       const result = mergeData(b, l, r, prefer);
       // Si ni asi cierra (un movimiento nuevo de un activo que el otro lado
       // borro), queda elegir un lado entero.
       if (!result.consistent) return [whole];
-      const options = combined(prefer === "local" ? "device-wins" : "drive-wins", result.data, prefer === "local" ? undefined : head);
+      const options = combined(prefer === "local" ? "device-wins" : "drive-wins", result.data, head, prefer === "local" ? undefined : head);
       return options.length ? options : [whole];
     };
     return { kind: "both", clashes: merged.clashes, options: [...wins("local"), ...wins("remote")] };
   }
   if (shrinks(l, merged.data) || shrinks(r, merged.data)) {
-    const keep = l.transactions.length >= r.transactions.length ? option("device", local) : option("drive", remote, head);
-    return { kind: "shrink", clashes: 0, options: [...combined("apply", merged.data), keep] };
+    const keep = l.transactions.length >= r.transactions.length ? option("device", local) : option("drive", remote, head, head);
+    return { kind: "shrink", clashes: 0, options: [...combined("apply", merged.data, head), keep] };
   }
-  return { selected: encodeData(merged.data) };
+  return { selected: encodeData(merged.data), parent: head };
 }
 
 /** Guarda lo que se va a pisar, sin repetir copias iguales y quedandose con las ultimas. */
@@ -206,11 +215,13 @@ export async function synchronize(
   const tokens = versions.map(versionToken).sort();
   const decision = plan(baseline, local, versions);
   let selected: string;
+  let parent: CloudVersion | undefined;
 
   if ("selected" in decision) {
     // Tambien con una resolucion en mano: si lo que llego despues ya se puede
     // combinar solo, no hay nada que preguntar.
     selected = decision.selected;
+    parent = decision.parent;
   } else {
     const conflict: CloudConflict = { status: "conflict", local, versions, ...decision };
     // Una confirmacion vieja no autoriza pisar cambios que llegaron despues.
@@ -218,6 +229,7 @@ export async function synchronize(
     const chosen = decision.options.find((o) => o.id === resolution.choice);
     if (!chosen) return conflict;
     selected = chosen.payload;
+    parent = versions.find((v) => v.id === chosen.parent);
   }
 
   const result = decodeData(selected); // Limite y forma comprobados antes de cualquier escritura.
@@ -242,9 +254,13 @@ export async function synchronize(
     ];
     if (lost.length) await saveRecovery(db, lost, at);
     if (!active()) return pending();
-    const id = crypto.randomUUID();
+    const id = crypto.randomUUID().replaceAll("-", "").slice(0, 16);
     await db.cloudState.update("cloud", { sending: { base: local, id } });
-    const chain = [...(versions[0]?.chain ?? []), id].slice(-CHAIN_LENGTH);
+    // La cadena sigue solo si lo que se sube sale de esa copia. Quedarse con
+    // este dispositivo entero reemplaza lo que habia: heredar su cadena le
+    // haria creer a un telefono con una subida pendiente que su copia sigue
+    // ahi abajo, y borraria lo suyo sin preguntar.
+    const chain = [...(parent?.chain ?? []), id].slice(-CHAIN_LENGTH);
     try { confirmed = await transport.write(selected, versions, chain); uploaded = true; }
     catch (err) { if (err instanceof GoogleError && [404, 412].includes(err.status ?? 0)) return pending(); throw err; }
   }
