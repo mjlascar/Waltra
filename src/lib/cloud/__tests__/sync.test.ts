@@ -586,4 +586,14 @@ describe("sincronizacion de la cartera persistida", () => {
     expect((await synchronize(db, drive, owner, () => true))).toMatchObject({ status: "conflict", kind: "first" });
     expect((await db.transactions.toArray()).map((t) => t.id).sort()).toEqual(["a1", "a2", "a3"]);
   });
+
+  it("al consolidar copias identicas junta sus cadenas", async () => {
+    await db.transactions.bulkPut(txs(["a", 100]));
+    const local = await readData(db);
+    const cloud = transport([{ ...version(local, "uno"), chain: ["de-uno"] }, { ...version(local, "dos"), chain: ["de-dos"] }]);
+    expect((await synchronize(db, cloud, owner, () => true)).status).toBe("ok");
+    const chain = cloud.write.mock.calls[0][2] as string[];
+    expect(chain.slice(0, 2)).toEqual(["de-uno", "de-dos"]);
+    expect(chain).toHaveLength(3);
+  });
 });

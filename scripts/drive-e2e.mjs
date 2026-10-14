@@ -235,7 +235,10 @@ await b.nav("/ajustes/perfil");
 await b.page.locator(".segmented button", { hasText: "Conservador" }).click();
 check("el otro sube su cambio", await b.until(() => remote()?.settings.riskProfile === "conservador"));
 await a.connect();
-check("pregunta por el choque", await a.until("Los dos lados cambiaron lo mismo"), (await a.text()).slice(0, 500));
+const choque = await a.until("Los dos lados cambiaron lo mismo");
+if (!choque) await a.shot("fallo-choque.png");
+check("pregunta por el choque", choque,
+  `Drive tiene ${remote()?.settings.riskProfile}; pantalla: ${(await a.text()).slice(0, 1500)}`);
 await a.shot("5-choque.png");
 await a.choose("Combinar, y donde chocan, Drive");
 check("resuelve hacia Drive", await a.until("Sincronizado"));

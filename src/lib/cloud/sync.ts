@@ -260,7 +260,10 @@ export async function synchronize(
     // este dispositivo entero reemplaza lo que habia: heredar su cadena le
     // haria creer a un telefono con una subida pendiente que su copia sigue
     // ahi abajo, y borraria lo suyo sin preguntar.
-    const chain = [...(parent?.chain ?? []), id].slice(-CHAIN_LENGTH);
+    // Las copias identicas que se consolidan juntan sus cadenas: cualquiera de
+    // ellas puede tener la subida pendiente de otro telefono.
+    const twins = parent ? [parent, ...versions.filter((v) => v !== parent && v.payload === parent.payload)] : [];
+    const chain = [...new Set([...twins.flatMap((v) => v.chain ?? []), id])].slice(-CHAIN_LENGTH);
     try { confirmed = await transport.write(selected, versions, chain); uploaded = true; }
     catch (err) { if (err instanceof GoogleError && [404, 412].includes(err.status ?? 0)) return pending(); throw err; }
   }
