@@ -12,6 +12,7 @@ import { saveBackupFile } from "@/lib/backup-file";
 import { clearDemoData, hasDemoData, loadDemoData } from "@/lib/demo";
 import { BackupList, StorageStatus } from "@/components/DataRescue";
 import { NATIVE } from "@/lib/platform";
+import { GOOGLE_CLIENT_ID } from "@/lib/cloud/google";
 
 /** Backup, importacion y el boton de borrar todo. */
 export default function DatosAjustes() {
@@ -71,8 +72,9 @@ export default function DatosAjustes() {
         )}
         <div className="card p-3">
           <p className="label mb-3 leading-relaxed">
-            Todo vive en este teléfono. Si borrás los datos del navegador o cambiás de
-            equipo, se pierde. El backup es un archivo tuyo, no sube a ningún lado.
+            {GOOGLE_CLIENT_ID
+              ? "Los datos se guardan en este dispositivo. Desde Cuenta y sincronización podés guardar una copia privada en tu Google Drive. Exportar crea además un archivo que podés guardar donde quieras, sin claves de API."
+              : "Todo vive en este teléfono. Si borrás los datos del navegador o cambiás de equipo, se pierde. El backup es un archivo tuyo, no sube a ningún lado."}
           </p>
           <div className="grid grid-cols-2 gap-2">
             <button className="btn btn-sm" onClick={doExport}>
@@ -136,6 +138,7 @@ export default function DatosAjustes() {
             <p className="label mb-2 leading-snug">
               Escribí <strong style={{ color: "var(--color-ink)" }}>BORRAR</strong> para
               habilitar. Se va todo: movimientos, activos, cuentas e informes.
+              {GOOGLE_CLIENT_ID && " Con Google conectado, la app pregunta antes de vaciar también la copia de tu Drive, salvo que la cartera tenga menos de tres movimientos."}
             </p>
             <div className="flex gap-2">
               <input

@@ -28,6 +28,10 @@ npm run build && WALTRA_MOCK=1 npm start          # en una terminal
 BASE_URL=http://127.0.0.1:3000 npm run pwa        # en otra
 ```
 
+`npm run e2e:drive` recorre la sincronización con Google simulado: dos
+teléfonos contra un Drive en memoria. Necesita la app levantada con un
+cliente de mentira, `NEXT_PUBLIC_GOOGLE_CLIENT_ID=prueba.apps.googleusercontent.com WALTRA_MOCK=1 npm run dev`.
+
 `npm run shoot` saca capturas de todas las vistas a `screenshots/`;
 `node scripts/states.mjs` captura estados puntuales (hojas abiertas,
 importación, comparación contra el índice).
@@ -45,6 +49,7 @@ no hay ventana en la que el primer refresco salga por el transporte equivocado.
 | HTTP a proveedores | `fetch` desde el servidor | `CapacitorHttp`, que no tiene CORS |
 | Clave de Anthropic | del entorno del servidor  | la carga el usuario en Ajustes     |
 | Notificaciones     | no hay                    | el vigía de `public/runners/`      |
+| Google Drive       | token en memoria, a mano  | el plugin lo renueva solo          |
 
 Las pantallas hablan con `src/lib/backend/` y no saben cuál de los dos es. Si
 agregás una llamada nueva, va ahí: `fetch("/api/...")` directo desde un
@@ -305,7 +310,9 @@ si alguien promedió a la baja o vendió las ganadoras temprano. Lo que **no**
 viaja son la nota y la frase original de un movimiento, que son texto del
 usuario y pueden decir cualquier cosa; el esquema las descarta aunque alguien
 las mande, y hay un test que lo verifica. Van las 30 operaciones más recientes
-por activo y se cuenta cuántas quedaron afuera. En la web la clave de Anthropic se lee solo en
+por activo y se cuenta cuántas quedaron afuera. Con Google conectado, la
+cartera entera —notas incluidas— va además al Drive del propio usuario (ver
+abajo); las claves, nunca. En la web la clave de Anthropic se lee solo en
 el servidor; en el APK la carga el usuario, no se vuelve a mostrar y queda
 fuera del backup, que es un archivo que termina en Drive o en un mail. El
 backup automático de Android está apagado por lo mismo. El repositorio es
@@ -325,6 +332,69 @@ base**. Se guardan siete. Sobreviven a que la base se pierda (no a
 desinstalar). Una base vacía no se copia: pisaría la última buena. La lista
 para recuperar incluye también los backups manuales que quedaron en la caché
 (Exportar los escribe ahí antes de compartirlos). Recuperar suma, no borra.
+
+**Google Drive es opcional y no cambia dónde viven los datos**
+(`src/lib/cloud/`). Con el cliente compilado (`NEXT_PUBLIC_GOOGLE_CLIENT_ID`),
+Ajustes ofrece guardar una copia en la carpeta oculta `appDataFolder` del
+Drive de cada usuario; sin él, la sección no aparece y la app dice lo de
+siempre. IndexedDB sigue siendo la fuente. Viaja la cartera entera, notas y
+frases originales incluidas, a propósito: es la del usuario, en su cuenta,
+como un backup exportado a Drive, y la pantalla lo dice antes de conectar. No
+la cifra la app. Lo que es de cada teléfono no viaja (`LOCAL_SETTINGS`): las
+claves, y con ellas el proveedor y el modelo de los informes —un teléfono sin
+clave de Gemini no puede heredar Gemini—, la apariencia y la vibración.
+
+Se combina desde la última copia confirmada (`base` en `cloudState`): lo que
+cambió de un solo lado se toma de ese lado, borrados incluidos, y solo se
+pregunta lo que cambió distinto en los dos (`merge.ts`). Antes se reemplazaba
+el archivo entero, y con cambios en dos equipos había que tirar los de uno;
+en la web, que reconecta en cada recarga, pasaba seguido. **Un ajuste o un
+split no conmutan**: un ajuste hecho en un teléfono mientras el otro operaba
+el mismo activo contaría las unidades dos veces, así que ahí el choque es el
+activo entero. Un tipo de movimiento nuevo que anote un estado (como
+`adjust`) y no un hecho va en esa regla. El mismo activo dado de alta en los
+dos teléfonos queda uno solo, el que ya estaba en Drive. **Con el mismo
+contenido gana la fila de Drive**, no la local: guardar sin cambiar nada o
+reimportar Binance cambia las marcas de tiempo, y si cada teléfono se quedara
+con la suya se la subirían uno al otro para siempre.
+
+La base tiene que ser el ancestro común de los dos lados, o lo que se borra
+vuelve como si lo hubiera agregado otro equipo. Después de una subida
+aceptada que no se pudo aplicar acá (hubo cambios mientras subía, o se
+desconectó), la base es la copia local de la que salió. Para la respuesta que
+se pierde o la app que se cierra, el archivo de Drive lleva `chain`, los ids
+de las últimas subidas que lo produjeron, y antes de cada subida queda
+anotado su id (`sending`): si la pasada siguiente lo encuentra en la cadena,
+la subida llegó, aunque otro equipo haya subido encima, y se anota en el acto.
+Comparar el contenido no alcanzaba: con otra subida encima ya no es igual.
+**La cadena sigue solo si lo subido sale de esa copia** (combinar, sí;
+quedarse con este dispositivo entero, no: arranca una nueva). Heredarla de una
+copia que se reemplazó entera le hace creer a un teléfono con una subida
+pendiente que su copia sigue ahí abajo, y borra lo suyo sin preguntar.
+Un movimiento que apunta a un activo que el otro lado unificó pasa al que
+quedó solo si tiene la misma identidad que la versión que conocía ese lado:
+un CEDEAR convertido en el lugar comparte id con la acción que fue.
+
+**Una cartera vaciada no pisa a la otra sin preguntar** (`shrinks`), en
+ninguna de las dos direcciones: es el principio de las copias automáticas. Y
+como Drive no guarda versiones, antes de pisar algo que se pierde queda una
+copia de recuperación, también la de Drive antes de subir.
+
+**El esquema rechaza al bajar lo que no conoce** (`data.ts`): un teléfono con
+una versión vieja que descartara un campo nuevo y después subiera se lo
+borraría al que lo entiende. Agregar un campo a cuentas, activos,
+movimientos, informes o ajustes no compila hasta ponerlo en el esquema, o en
+`LOCAL_SETTINGS` si es del dispositivo (`data.test.ts`). Los teléfonos sin
+actualizar frenan hasta actualizarse, y es a propósito. Al revés no hay
+vuelta: **un campo sincronizado no se saca del esquema**, se deja de usar.
+Sacarlo haría que las copias que ya lo tienen se lean como de una versión
+más nueva.
+
+La instalación queda vinculada a la cuenta (`sub`, no el cliente OAuth: cambiar
+de proyecto no puede trabar a nadie) y se puede desvincular. En el APK la
+sesión la renueva `refresh` del plugin. **No uses `isLoggedIn`** para
+retomarla: con el id token vencido cierra la sesión y borra el estado de la
+credencial de Android, que es lo que deja volver a entrar sin preguntar.
 
 ## Diseño
 
@@ -422,6 +492,7 @@ números distintos a diez píxeles se lee como un error.
 | `src/app/api/`             | Envoltorio fino sobre lo de arriba, para el modo web. La lógica no vive acá.                                                                                   |
 | `src/lib/backend/`         | Elige entre las rutas `/api` y correr todo en el teléfono. Es con quien hablan las pantallas.                                                                  |
 | `src/lib/alerts/`          | El plan que lee el vigía de precios, y el puente a las preferencias de Android.                                                                                |
+| `src/lib/cloud/`           | Google y la copia en Drive: el esquema (`data.ts`), la combinación (`merge.ts`), la decisión de qué hacer (`sync.ts`) y el transporte (`drive.ts`).            |
 | `public/runners/alerts.js` | El vigía. JavaScript plano, sin módulos: corre fuera del WebView.                                                                                              |
 
 ## Al tocar el parser

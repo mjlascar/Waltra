@@ -5,9 +5,9 @@ import { NATIVE } from "@/lib/platform";
  *
  * En un navegador alcanza con un enlace de descarga. Adentro de un WebView de
  * Android, no: `<a download>` sobre un blob es de las cosas que simplemente no
- * hacen nada, sin error ni aviso. Y el backup manual es justamente el unico
- * camino que tienen los datos para salir de este telefono, asi que fallar en
- * silencio ahi seria lo peor que puede pasar.
+ * hacen nada, sin error ni aviso. El backup manual permite recuperar los datos
+ * aun sin conectar Google, asi que debe poder salir del telefono sin fallar
+ * en silencio.
  *
  * En el APK el archivo se escribe en la cache de la app y se abre la hoja de
  * compartir, que es de donde se manda a Drive, a un mail o a donde sea. La

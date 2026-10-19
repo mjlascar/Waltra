@@ -9,6 +9,7 @@ on:
 # una version nueva; el numero que compara la app es la corrida (versionCode).
 env:
   WALTRA_VERSION: "1.1.5"
+  NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
 
 jobs:
   check:
@@ -180,7 +181,7 @@ jobs:
       # leen bien todas las apps ya instaladas: ver releaseBuild en
       # src/lib/update.ts. Si cambia, dejan de avisar sin un solo error.
       - name: Publicar el APK para descargar
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
         env:
           GH_TOKEN: ${{ github.token }}
           ESTABLE: ${{ steps.firma.outputs.estable }}

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { Header } from "@/components/ui/Header";
 import { IconChevron } from "@/components/icons";
 import { useStore } from "@/lib/store";
+import { useCloud } from "@/lib/cloud/provider";
+import { GOOGLE_CLIENT_ID } from "@/lib/cloud/google";
 import { ON_DEVICE } from "@/lib/backend";
 import { alertRules } from "@/lib/alerts/plan";
 import { keyFor, providerInfo, resolveModel, resolveProvider } from "@/lib/insights/providers";
@@ -24,6 +26,7 @@ import { useUpdate } from "@/lib/use-update";
  */
 export default function Ajustes() {
   const { accounts, assets, transactions, settings, portfolio } = useStore();
+  const cloud = useCloud();
 
   const reglas = alertRules(settings);
   const provider = resolveProvider(settings.provider);
@@ -34,6 +37,15 @@ export default function Ajustes() {
   const update = useUpdate();
 
   const secciones = [
+    // Sin el cliente de Google compilado no hay nada que conectar: la seccion
+    // seria una pantalla que solo dice que no se puede.
+    ...(GOOGLE_CLIENT_ID ? [{
+      href: "/ajustes/cuenta",
+      titulo: "Cuenta y sincronización",
+      detalle: "Google y copia privada en tu Drive",
+      estado: cloud.user ? "conectada" : cloud.linked ? "vinculada, sin sesión" : "solo en este dispositivo",
+      alerta: cloud.status === "conflict" ? "hay un conflicto" : cloud.status === "error" ? "revisar conexión" : null,
+    }] : []),
     {
       href: "/ajustes/cartera",
       titulo: "Cuentas y activos",

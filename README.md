@@ -79,11 +79,13 @@ cartel amarillo. Con precios reales ese aviso no aparece.</sub>
   completo para copiar, lo pegás en el chat que uses (un abono de Claude o de
   ChatGPT no da acceso por API, pero sí a mano) y traés la respuesta de vuelta.
   Acepta el JSON estructurado o texto suelto.
-- **Todo vive en tu teléfono.** IndexedDB, sin cuenta ni servidor propio. Backup
-  y restauración a un archivo JSON que es tuyo.
+- **Tus datos, en tu dispositivo y en tu cuenta de Google.** IndexedDB permite
+  trabajar offline. Conectar Google es opcional: sincroniza una copia privada
+  en el Drive de cada usuario, sin un servidor de Waltra ni Firebase. También
+  podés exportar y restaurar un archivo JSON propio. [Configurar Google](docs/google-drive.md).
 - **Instalable y offline.** Es una PWA: se agrega a la pantalla de inicio y abre
   sin conexión (lo único que no anda sin internet es traer precios nuevos).
-- **Y también es un APK.** Empaquetada con Capacitor, sin cuentas ni servidor:
+- **Y también es un APK.** Empaquetada con Capacitor, sin servidor propio:
   la instalás y anda. En esa versión la clave de Anthropic la cargás vos desde
   Ajustes y no sale del teléfono.
 - **Alertas de precio** (solo en el APK). Waltra mira los precios con la
@@ -198,12 +200,12 @@ anda tal cual en Vercel, Railway, Fly o un VPS con Node:
    frase. Queda guardada en el teléfono.
 4. *Agregar a la pantalla principal* y listo.
 
-Tus movimientos **no** viajan al servidor en ninguno de los tres casos: viven
-en el teléfono. El servidor solo busca precios y, si se lo
-pedís, genera los insights.
+El servidor de Waltra solo busca precios y, si se lo pedís, genera los insights.
+Los movimientos viven en el dispositivo; si conectás Google, se guarda además
+una copia privada directamente en tu Drive.
 
-> Si desplegás, hacé backup desde Ajustes igual: los datos siguen atados a
-> este navegador, no al deploy.
+> Hacé backup desde Ajustes aunque conectes Google. La copia local pertenece
+> al navegador o a la app, y las claves de API nunca se sincronizan.
 
 **Sobre los insights en un plan gratuito:** el análisis hace varias búsquedas
 web y puede tardar más de un minuto. Si tu hosting corta las funciones a los
@@ -222,9 +224,10 @@ Copiá `.env.example` a `.env.local`. Todo es opcional.
 | `WALTRA_MODEL` | Modelo por defecto del servidor. Desde Ajustes se elige proveedor y modelo sin redesplegar; cualquier valor fuera de la lista blanca se ignora. |
 | `WALTRA_ACCESS_KEY` | Si publicás la app en internet, exige esta clave en las rutas `/api`. La cargás una vez en Ajustes y queda en el teléfono. |
 | `WALTRA_MOCK` | `1` usa precios simulados para probar la interfaz. La app lo avisa en pantalla con un cartel. |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Cliente OAuth Web de Waltra. Habilita Google y Drive tanto en web como en APK. Se incluye al compilar y no es un secreto. [Configuración sin backend](docs/google-drive.md). |
 
-En el APK no hay servidor, así que ninguna de estas variables aplica: la clave
-de Anthropic la cargás desde *Ajustes* y se guarda en el almacenamiento privado
+En el APK no hay servidor: las claves de los proveedores se cargan desde
+*Ajustes* y se guardan en el almacenamiento privado
 de la app, que Android no deja leer a otras apps. No se vuelve a mostrar, no
 entra en el backup y el backup automático de Android está apagado por lo mismo.
 Cada uno usa su propia clave y paga lo suyo.
@@ -338,6 +341,10 @@ npm run check   # tipos + lint + tests + escaneo de credenciales
   cualquier error en la consola del navegador.
 - **`npm run pwa`**: contra un build de producción, verifica manifest, íconos,
   service worker y que la app abra y acepte movimientos **con la red cortada**.
+- **`npm run e2e:drive`**: dos teléfonos contra un Drive en memoria y un
+  Google simulado. Conectan, bajan, combinan movimientos cargados en los dos,
+  frenan un *Borrar todo* y resuelven un choque. Necesita la app levantada con
+  `NEXT_PUBLIC_GOOGLE_CLIENT_ID` de mentira ([detalles](docs/google-drive.md)).
 - **`npm run native`**: sirve la exportación estática que va adentro del APK
   como archivos sueltos, igual que el WebView, y la recorre en el navegador.
   No prueba los plugins nativos (para eso hace falta un Android de verdad),
@@ -358,10 +365,10 @@ node scripts/icons.mjs   # regenera los íconos de la PWA
 
 ## Límites conocidos
 
-- Los datos viven en este teléfono. Si borrás los datos de la app o cambiás de
-  equipo, se pierden: **hacé backup desde Ajustes**. El backup automático de
-  Android está apagado a propósito, porque subiría tus movimientos y tu clave
-  a Google Drive.
+- Sin conectar Google, los datos viven únicamente en este dispositivo:
+  **hacé backup desde Ajustes**. La sincronización opcional usa tu Drive y
+  excluye las claves de API. El backup automático de Android sigue apagado
+  para que no suba esas claves.
 - Las fuentes de precios son APIs públicas gratuitas y sin garantía de
   disponibilidad. Ajustes → Diagnóstico dice cuál está caída.
 - El MEP histórico viene de una fuente pública; para operaciones viejas en pesos
@@ -374,6 +381,10 @@ node scripts/icons.mjs   # regenera los íconos de la PWA
   nunca lo hace más seguido que cada 15 minutos. En los Samsung conviene sacar
   a Waltra de *Ajustes → Batería → Apps en suspensión*, o se van a espaciar
   solas. No sirven para operar al segundo; sirven para enterarte.
-- La app tiene un solo usuario por teléfono y no hay cuentas ni sincronización
-  entre equipos. Pasar la cartera a otro teléfono es exportar e importar el
-  backup.
+- Cada instalación se vincula a una cuenta para evitar mezclar carteras, y se
+  puede desvincular. Google Drive permite sincronizar entre equipos: los
+  cambios de cada uno se combinan movimiento por movimiento, y solo se pregunta
+  lo que cambió distinto en los dos o un borrado grande. En web hay que
+  reconectar al recargar o vencer el token. La carpeta de Waltra está oculta en
+  el Drive del usuario: una copia de hasta 5 MiB, sobrescrita sin acumular
+  archivos ni revisiones. [Detalles y configuración](docs/google-drive.md).

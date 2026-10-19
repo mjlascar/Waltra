@@ -1,4 +1,5 @@
 import "fake-indexeddb/auto";
+import Dexie from "dexie";
 import { beforeEach, describe, expect, it } from "vitest";
 import { WaltraDB, ensureSeeded, exportBackup, importBackup, parseBackup, wipeAll } from "@/lib/db";
 import { clearDemoData, hasDemoData, loadDemoData } from "@/lib/demo";
@@ -26,6 +27,24 @@ const tx = (over: Partial<Transaction> = {}): Transaction => ({
 });
 
 describe("ensureSeeded", () => {
+  it("migra una cartera anterior sin borrar movimientos al agregar sincronizacion", async () => {
+    db.close();
+    await new WaltraDB().delete();
+    const previous = new Dexie("waltra");
+    previous.version(1).stores({
+      accounts: "id, broker, name", assets: "id, symbol, kind, source",
+      transactions: "id, date, type, accountId, assetId", priceSeries: "assetId",
+      quotes: "assetId", fx: "date", settings: "id", insights: "id, createdAt",
+    });
+    await previous.open();
+    await previous.table("transactions").put(tx({ amount: 750 }));
+    previous.close();
+    db = new WaltraDB();
+    await db.open();
+    expect((await db.transactions.get("t1"))?.amount).toBe(750);
+    expect(await db.cloudState.count()).toBe(0);
+    expect(await db.cloudBackups.count()).toBe(0);
+  });
   it("crea cuentas y ajustes la primera vez", async () => {
     await ensureSeeded(db);
     expect(await db.accounts.count()).toBe(2);
@@ -47,14 +66,22 @@ describe("backup", () => {
   it("exporta e importa sin perder nada", async () => {
     await ensureSeeded(db);
     await db.transactions.bulkPut([tx({ id: "t1" }), tx({ id: "t2", amount: 250 })]);
+    const report = {
+      id: "informe-1", createdAt: "2026-01-15T00:00:00.000Z", model: "externo",
+      marketBrief: "Resumen guardado", signals: [], sources: [], portfolioDigest: "Cartera",
+      profileRead: { summary: "Perfil", observations: [], risks: [], suggestions: [] },
+    };
+    await db.insights.put(report);
     const backup = await exportBackup(db);
     expect(backup.app).toBe("waltra");
     expect(backup.transactions).toHaveLength(2);
 
     await db.transactions.clear();
+    await db.insights.clear();
     const summary = await importBackup(db, backup, "replace");
     expect(summary.transactions).toBe(2);
     expect(await db.transactions.count()).toBe(2);
+    expect(await db.insights.get(report.id)).toEqual(report);
   });
 
   it("no incluye ninguna credencial en el archivo", async () => {
@@ -97,15 +124,20 @@ describe("backup", () => {
     expect(ids).toEqual(["nuevo"]);
   });
 
-  it("la clave local no se pisa al importar", async () => {
+  it("las claves locales no se pisan al importar una copia de recuperacion", async () => {
     await ensureSeeded(db);
     await db.settings.put({
       id: "settings", baseCurrency: "USD", riskProfile: "moderado",
       horizonYears: 5, goals: "", accessKey: "local",
+      apiKey: "local-anthropic", geminiKey: "local-gemini",
     });
     const backup = await exportBackup(db);
+    backup.settings.apiKey = "otra-clave";
+    backup.settings.geminiKey = "otra-clave-gemini";
     await importBackup(db, backup, "merge");
-    expect((await db.settings.get("settings"))?.accessKey).toBe("local");
+    expect(await db.settings.get("settings")).toMatchObject({
+      accessKey: "local", apiKey: "local-anthropic", geminiKey: "local-gemini",
+    });
   });
 });
 
@@ -168,10 +200,12 @@ describe("wipeAll", () => {
   it("deja la base vacia", async () => {
     await ensureSeeded(db);
     await loadDemoData(db);
+    await db.cloudBackups.add({ at: "2026-10-12", payload: "copia anterior" });
     await wipeAll(db);
     expect(await db.transactions.count()).toBe(0);
     expect(await db.accounts.count()).toBe(0);
     expect(await db.assets.count()).toBe(0);
     expect(await db.settings.count()).toBe(0);
+    expect(await db.cloudBackups.count()).toBe(0);
   });
 });
