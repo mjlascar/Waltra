@@ -381,8 +381,8 @@ export function computePortfolio(input: PortfolioInput): Portfolio {
       applyTransaction(state, tx, assetsById, fx, base);
     }
     contributed += flow;
-    const { nav } = valueAt(state, day, assetsById, prices, fx, splits, base);
-    daily.push({ day, nav, flow });
+    const { nav, invested } = valueAt(state, day, assetsById, prices, fx, splits, base);
+    daily.push({ day, nav, flow, invested });
     contributions.push({ day, value: contributed });
     if (day === lastDay) break;
   }

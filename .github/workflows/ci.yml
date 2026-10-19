@@ -8,7 +8,7 @@ on:
 # El nombre de la version, el que muestra Android. Se cambia a mano al sacar
 # una version nueva; el numero que compara la app es la corrida (versionCode).
 env:
-  WALTRA_VERSION: "1.1.4"
+  WALTRA_VERSION: "1.1.5"
   NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
 
 jobs:

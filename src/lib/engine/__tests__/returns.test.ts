@@ -32,6 +32,41 @@ describe("timeWeightedReturn", () => {
   });
 });
 
+describe("timeWeightedReturn con días casi sin capital", () => {
+  // El caso real: compras cargadas antes que el ingreso que las pagó dejan el
+  // efectivo en negativo, y la cartera vale casi cero esos días. Dividir por
+  // ese casi cero daba un rendimiento de miles por ciento negativo, el índice
+  // cruzaba a negativo y el TWR desaparecía de la pantalla para siempre.
+  // 300 en activos y -299,6 de efectivo: la cartera "vale" 0,40.
+  const casiCero = [
+    { day: "2024-01-01", nav: 0.4, flow: 0, invested: 300 },
+    { day: "2024-01-02", nav: -3, flow: 0, invested: 296.6 },
+    { day: "2024-01-03", nav: 1000, flow: 1003, invested: 1000 },
+    { day: "2024-01-04", nav: 1100, flow: 0, invested: 1100 },
+  ];
+
+  it("no deja el índice en negativo", () => {
+    const twr = timeWeightedReturn(casiCero);
+    for (const p of twr) expect(p.index).toBeGreaterThan(0);
+  });
+
+  it("mide lo que pasó con capital de verdad", () => {
+    const twr = timeWeightedReturn(casiCero);
+    expect(twr.at(-1)!.cumulative).toBeCloseTo(0.1, 6);
+  });
+
+  it("un día que pierde todo no apaga el índice para siempre", () => {
+    const twr = timeWeightedReturn([
+      { day: "2024-01-01", nav: 100, flow: 100 },
+      { day: "2024-01-02", nav: 0, flow: 0 },
+      { day: "2024-01-03", nav: 100, flow: 100 },
+      { day: "2024-01-04", nav: 110, flow: 0 },
+    ]);
+    for (const p of twr) expect(Number.isFinite(p.index)).toBe(true);
+    expect(twr.at(-1)!.index).toBeGreaterThan(0);
+  });
+});
+
 describe("xirr", () => {
   it("resuelve un 10% anual simple", () => {
     const r = xirr([
