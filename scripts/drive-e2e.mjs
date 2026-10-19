@@ -218,7 +218,7 @@ await a.nav("/ajustes/cuenta");
 check("frena y pregunta", await a.until("Se borraría casi toda la cartera"), (await a.text()).slice(0, 500));
 check("Drive sigue con la cartera", amounts().length === inicial + 2, `${amounts().length} movimientos`);
 await a.shot("4-borrado-frenado.png");
-await a.choose("La copia de Drive");
+await a.choose("^Drive ·");
 check("elegir Drive la recupera", await a.until("Sincronizado"));
 await a.nav("/");
 check("la cartera vuelve al teléfono", await a.until("Valor total"));
@@ -240,7 +240,7 @@ if (!choque) await a.shot("fallo-choque.png");
 check("pregunta por el choque", choque,
   `Drive tiene ${remote()?.settings.riskProfile}; pantalla: ${(await a.text()).slice(0, 1500)}`);
 await a.shot("5-choque.png");
-await a.choose("Combinar, y donde chocan, Drive");
+await a.choose("Combinar, gana Drive");
 check("resuelve hacia Drive", await a.until("Sincronizado"));
 check("queda la copia de recuperación de este teléfono", await a.until("De este dispositivo"));
 await a.shot("5-recuperacion.png");
