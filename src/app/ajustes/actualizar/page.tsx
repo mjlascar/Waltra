@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AjustesShell } from "@/components/ajustes/Shell";
 import { Notice } from "@/components/ui/Notice";
 import { ON_DEVICE } from "@/lib/backend";
 import { useStore } from "@/lib/store";
 import { useUpdate } from "@/lib/use-update";
 import { relativeTime } from "@/lib/format";
+import { installStatus, installUpdate, openInstallSettings } from "@/lib/self-update";
+import type { ReleaseInfo } from "@/lib/update";
 import {
   notificationPermission,
   readWatcherState,
@@ -18,10 +20,10 @@ import {
 /**
  * Actualizar la app sin pasar por GitHub.
  *
- * El APK se baja con el navegador y Android pide confirmar la instalacion:
- * son dos toques y la app no necesita el permiso de instalar paquetes. Como
+ * La app baja el APK y se lo instala (`self-update.ts`): la primera vez pide
+ * el permiso de instalar apps, y desde Android 12 no vuelve a preguntar. Como
  * esta firmado siempre con la misma clave, se instala encima y los datos
- * quedan.
+ * quedan. El navegador queda de respaldo.
  */
 export default function ActualizarAjustes() {
   const { settings, updateSettings } = useStore();
@@ -71,7 +73,7 @@ export default function ActualizarAjustes() {
   return (
     <AjustesShell
       title="Actualizaciones"
-      intro="Cada cambio que se publica genera una versión nueva de la app. Desde acá la bajás sin entrar a GitHub."
+      intro="Instalá la versión nueva sin salir de la app."
     >
       <div className="card p-3">
         <div className="flex items-baseline justify-between gap-3">
@@ -96,23 +98,7 @@ export default function ActualizarAjustes() {
       )}
 
       {u.available && u.release ? (
-        <div className="mt-4">
-          {/* Un enlace y no un fetch: la descarga la hace el navegador, que
-              sabe guardar el APK y ofrecer abrirlo al terminar. */}
-          <a
-            href={u.release.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn btn-primary block w-full text-center"
-          >
-            Descargar la versión {u.release.version}
-          </a>
-          <p className="label mt-2 leading-relaxed">
-            Se baja con el navegador. Cuando termine, tocá la descarga y confirmá
-            «Instalar»: se instala encima de esta y tus datos quedan. La primera vez,
-            Android puede pedirte permitir instalar apps desde el navegador.
-          </p>
-        </div>
+        <Instalar release={u.release} />
       ) : (
         !u.checking &&
         u.release &&
@@ -181,6 +167,115 @@ export default function ActualizarAjustes() {
         </button>
       )}
     </AjustesShell>
+  );
+}
+
+type Fase =
+  | { paso: "listo" }
+  | { paso: "permiso" }
+  | { paso: "bajando"; done: number; total: number }
+  | { paso: "instalando" }
+  | { paso: "error"; mensaje: string };
+
+const mb = (bytes: number) => (bytes / 1024 / 1024).toLocaleString("es-AR", { maximumFractionDigits: 1 });
+
+/** Bajar e instalar la version nueva desde la app, con el navegador de respaldo. */
+function Instalar({ release }: { release: ReleaseInfo }) {
+  const [fase, setFase] = useState<Fase>({ paso: "listo" });
+  // Se fue a la pantalla del permiso: al volver, se sigue sin otro toque.
+  const esperandoPermiso = useRef(false);
+
+  const empezar = useCallback(async () => {
+    const estado = await installStatus();
+    if (!estado) {
+      setFase({ paso: "error", mensaje: "Esta instalación no puede actualizarse sola." });
+      return;
+    }
+    if (!estado.allowed) {
+      setFase({ paso: "permiso" });
+      return;
+    }
+    setFase({ paso: "bajando", done: 0, total: release.size ?? 0 });
+    try {
+      await installUpdate(
+        release,
+        (done, total) => setFase({ paso: "bajando", done, total }),
+        (mensaje) => setFase({ paso: "error", mensaje }),
+      );
+      setFase((f) => (f.paso === "error" ? f : { paso: "instalando" }));
+    } catch (err) {
+      setFase({ paso: "error", mensaje: err instanceof Error ? err.message : "No se pudo bajar la actualización." });
+    }
+  }, [release]);
+
+  useEffect(() => {
+    const volver = () => {
+      if (document.visibilityState !== "visible" || !esperandoPermiso.current) return;
+      esperandoPermiso.current = false;
+      void empezar();
+    };
+    document.addEventListener("visibilitychange", volver);
+    window.addEventListener("focus", volver);
+    return () => {
+      document.removeEventListener("visibilitychange", volver);
+      window.removeEventListener("focus", volver);
+    };
+  }, [empezar]);
+
+  const ocupado = fase.paso === "bajando" || fase.paso === "instalando";
+  return (
+    <div className="mt-4">
+      {fase.paso === "permiso" ? (
+        <>
+          <Notice tone="info">Para instalarse sola, Waltra necesita permiso para instalar apps. Se da una sola vez.</Notice>
+          <button
+            type="button"
+            className="btn btn-primary mt-3 w-full"
+            onClick={() => {
+              esperandoPermiso.current = true;
+              void openInstallSettings();
+            }}
+          >
+            Dar permiso
+          </button>
+        </>
+      ) : fase.paso === "bajando" ? (
+        <div className="card p-3">
+          <p className="text-[13px]">
+            Bajando la <span className="num">{release.version}</span>…
+            {fase.total > 0 && <span className="label num"> {mb(fase.done)} de {mb(fase.total)} MB</span>}
+          </p>
+          <div
+            className="mt-2 h-1.5 w-full"
+            style={{ background: "var(--color-surface-3)" }}
+            role="progressbar"
+            aria-label="Descarga de la actualización"
+            aria-valuemin={0}
+            aria-valuemax={fase.total || undefined}
+            aria-valuenow={fase.done}
+          >
+            <div
+              className="h-full"
+              style={{ width: `${fase.total > 0 ? Math.min(100, (fase.done / fase.total) * 100) : 0}%`, background: "var(--color-ink)" }}
+            />
+          </div>
+        </div>
+      ) : fase.paso === "instalando" ? (
+        <Notice tone="info">Instalando. Waltra se va a cerrar y te avisa cuando esté lista.</Notice>
+      ) : (
+        <>
+          {fase.paso === "error" && <div className="mb-3"><Notice>{fase.mensaje}</Notice></div>}
+          <button type="button" className="btn btn-primary w-full" onClick={() => void empezar()}>
+            {fase.paso === "error" ? "Reintentar" : `Actualizar a la ${release.version}`}
+          </button>
+        </>
+      )}
+      {!ocupado && (
+        <a href={release.url} target="_blank" rel="noopener noreferrer" className="label mt-2 block text-center underline">
+          o bajala con el navegador
+        </a>
+      )}
+    </div>
   );
 }
 

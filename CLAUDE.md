@@ -638,10 +638,27 @@ puntualidad.
 
 La app no está en Play: nadie le avisa al teléfono que salió un APK nuevo.
 `src/lib/update.ts` compara el `versionCode` instalado (`App.getInfo()`)
-con el del release `apk-latest`, que la API de GitHub da sin credenciales, y
-Ajustes → Actualizaciones ofrece bajar el APK con un enlace: lo baja el
-navegador y Android pide confirmar. Instalar desde adentro pediría el permiso
-de instalar paquetes y código nativo propio para ahorrarse un toque.
+con el del release `apk-latest`, que la API de GitHub da sin credenciales.
+
+**La app se actualiza sola** (`src/lib/self-update.ts` y
+`SelfUpdatePlugin.java`). Antes se bajaba el APK con el navegador y se
+confirmaba la instalación: eran varios pasos cada vez, y cansaba. Ahora
+Ajustes → Actualizaciones baja el APK directo al instalador de Android. La
+primera vez pide el permiso de instalar apps (lo da el usuario en una
+pantalla del sistema; al volver, sigue sola), y desde Android 12 no vuelve a
+preguntar: una app que se actualiza a sí misma con ese permiso y
+`UPDATE_PACKAGES_WITHOUT_USER_ACTION` no necesita confirmación. Si Android
+igual la pide, `SelfUpdateReceiver` muestra su diálogo. Android cierra la app
+para reemplazarla y no deja que se vuelva a abrir sola desde segundo plano:
+`UpdatedReceiver` avisa con una notificación que ya está, para que no parezca
+que se cerró. El enlace al navegador queda de respaldo.
+
+Lo que la protege: Android solo instala encima un APK firmado con la misma
+clave, así que uno alterado no puede reemplazar a Waltra. Además se baja solo
+del release de Waltra (el prefijo está en el TS y en el Java, y un test los
+compara) y se verifican el tamaño y la huella SHA-256 que publica GitHub.
+**`SelfUpdateReceiver` no se exporta**: exportado, otra app podría mandarle
+"falta confirmar" con cualquier actividad adentro y la abriría.
 
 Sin **permiso de notificaciones** (Android 13 o más), el vigía manda el
 aviso y Android lo descarta sin decir nada. Antes solo se pedía al prender

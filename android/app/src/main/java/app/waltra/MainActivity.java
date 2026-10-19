@@ -3,11 +3,19 @@ package app.waltra;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.PluginHandle;
 import android.content.Intent;
+import android.os.Bundle;
 import ee.forgr.capacitor.social.login.GoogleProvider;
 import ee.forgr.capacitor.social.login.SocialLoginPlugin;
 import ee.forgr.capacitor.social.login.ModifiedMainActivityForSocialLoginPlugin;
 
 public class MainActivity extends BridgeActivity implements ModifiedMainActivityForSocialLoginPlugin {
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        // Los plugins propios se registran antes de que arranque el puente.
+        registerPlugin(SelfUpdatePlugin.class);
+        super.onCreate(savedInstanceState);
+    }
+
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);

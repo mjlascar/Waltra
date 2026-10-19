@@ -12,9 +12,9 @@ import { getJson } from "@/lib/net/json";
  * una notificacion; lee el numero de version con su propia copia de
  * `releaseBuild`, y hay un test que compara las dos.
  *
- * La instalacion la hace Android: el APK se baja con el navegador y el
- * sistema pide confirmar. Instalar desde adentro de la app pediria un permiso
- * mas y codigo nativo propio, para ahorrarse un toque.
+ * La instalacion la hace la app misma (`self-update.ts` y su plugin nativo):
+ * baja el APK y se lo pasa al instalador de Android, que desde Android 12 no
+ * pide confirmar cada vez. El enlace al navegador queda de respaldo.
  */
 
 /** El repositorio es publico: la version se consulta sin credenciales. */
@@ -22,6 +22,12 @@ export const REPO = "mjlascar/Waltra";
 export const RELEASE_API = `https://api.github.com/repos/${REPO}/releases/tags/apk-latest`;
 /** El enlace de siempre. El release se rehace en cada push, el enlace no cambia. */
 export const APK_URL = `https://github.com/${REPO}/releases/download/apk-latest/waltra.apk`;
+/**
+ * Lo unico que la app acepta instalarse: archivos del release de Waltra. El
+ * plugin nativo (`SelfUpdatePlugin.java`) tiene el mismo prefijo, y un test
+ * compara los dos.
+ */
+export const RELEASE_DOWNLOADS = `https://github.com/${REPO}/releases/download/`;
 
 export interface ReleaseInfo {
   /** El `versionCode` del APK publicado: el numero de corrida de CI. */
@@ -30,13 +36,16 @@ export interface ReleaseInfo {
   version: string;
   url: string;
   publishedAt?: string;
+  /** Tamaño y huella del APK, como los publica GitHub: se verifican al bajarlo. */
+  size?: number;
+  sha256?: string;
 }
 
 interface GithubRelease {
   name?: string | null;
   body?: string | null;
   published_at?: string | null;
-  assets?: { name?: string; browser_download_url?: string }[];
+  assets?: { name?: string; browser_download_url?: string; size?: number; digest?: string | null }[];
 }
 
 /**
@@ -75,13 +84,21 @@ function releaseName(release: { name?: string | null }, build: number): string {
 export function parseRelease(json: GithubRelease): ReleaseInfo | null {
   const build = releaseBuild(json);
   if (build === null) return null;
-  const apk = json.assets?.find((a) => a.name === "waltra.apk")?.browser_download_url;
+  const apk = json.assets?.find((a) => a.name === "waltra.apk");
+  const sha256 = apk?.digest?.match(/^sha256:([0-9a-f]{64})$/i)?.[1]?.toLowerCase();
   return {
     build,
     version: releaseName(json, build),
-    url: apk ?? APK_URL,
+    url: apk?.browser_download_url ?? APK_URL,
     publishedAt: json.published_at ?? undefined,
+    ...(typeof apk?.size === "number" && apk.size > 0 ? { size: apk.size } : {}),
+    ...(sha256 ? { sha256 } : {}),
   };
+}
+
+/** Si la app puede instalarse esa direccion: solo archivos del release de Waltra. */
+export function installable(url: string): boolean {
+  return url.startsWith(RELEASE_DOWNLOADS) && !url.includes("..");
 }
 
 /**
