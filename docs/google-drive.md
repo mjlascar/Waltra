@@ -131,7 +131,9 @@ La sincronización se pausa y pregunta solo en estos casos:
   lleva todos los movimientos de una cartera con tres o más, o más de la mitad
   de una con diez o más. Es lo que hace _Borrar todo_, o una base que se perdió
   a medias. Los datos de ejemplo no cuentan: se limpian de a muchos a propósito.
-- **La primera conexión, con datos en los dos lados.** Sin una base común, juntar
+- **La primera conexión, con datos en los dos lados.** (Si uno de los dos está
+  vacío, no hay nada que preguntar: baja la copia, o se reemplaza la vacía.)
+  Sin una base común, juntar
   puede repetir lo que se cargó por separado en cada uno: se ofrece, pero no se
   hace solo, y solo si nada choca.
 - **La copia de Drive desapareció** después de haber sincronizado: no se vuelve

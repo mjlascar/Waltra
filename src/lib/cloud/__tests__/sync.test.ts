@@ -596,4 +596,14 @@ describe("sincronizacion de la cartera persistida", () => {
     expect(chain.slice(0, 2)).toEqual(["de-uno", "de-dos"]);
     expect(chain).toHaveLength(3);
   });
+
+  it("una copia de Drive vacia, de un equipo que se conecto antes de cargar nada, se reemplaza sin preguntar", async () => {
+    const vacia = await readData(db);
+    await db.transactions.bulkPut(txs(["a", 100]));
+    const cloud = transport([{ ...version(vacia), chain: ["del-vacio"] }]);
+    expect((await synchronize(db, cloud, owner, () => true)).status).toBe("ok");
+    expect(decodeData(cloud.write.mock.calls[0][0]).transactions).toHaveLength(1);
+    // Lo subido no sale de esa copia: arranca su propia cadena.
+    expect(cloud.write.mock.calls[0][2]).not.toContain("del-vacio");
+  });
 });

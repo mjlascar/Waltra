@@ -119,6 +119,9 @@ function plan(base: string | null, local: string, versions: CloudVersion[]): Pla
   }
   if (base === null) {
     if (isPristine(local)) return { selected: remote, parent: head };
+    // Una copia de Drive sin nada (otro equipo se conecto antes de cargar
+    // algo) no tiene nada que perder: se reemplaza sin preguntar.
+    if (isPristine(remote)) return { selected: local };
     // Juntar sin una base comun puede repetir lo que se cargo en los dos
     // lados por separado: se ofrece, pero no se hace solo. Y solo si no hay
     // nada que choque: "suma los de los dos lados" no puede tirar ninguno.
