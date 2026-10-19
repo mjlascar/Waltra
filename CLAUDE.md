@@ -286,6 +286,16 @@ esos bugs aparezcan acá.
 La plata que se deposita hoy no rindió hoy. La convención opuesta diluye el
 retorno del día en que entró el aporte.
 
+**Un día con la cartera casi en cero no se mide.** Con compras cargadas
+antes que el ingreso que las pagó, el efectivo queda en negativo y el valor
+del día puede ser centavos con cientos invertidos. Dividir por eso daba
+rendimientos de miles por ciento negativo, el índice cruzaba a negativo y el
+TWR desaparecía de la pantalla («—») para siempre: pasó después de recuperar
+un backup. Si el valor del día anterior es menos del 5% de lo invertido
+(`VALOR_MINIMO`, con `invested` en la serie diaria), ese día cuenta como sin
+capital en riesgo; y una caída de más del 99% en un día se recorta, para que
+el índice nunca llegue a cero.
+
 **Nada sensible sale del teléfono.** Los movimientos viven en IndexedDB. Al
 modelo solo viajan tickers, pesos y números (ver `src/lib/insights/digest.ts`,
 que tiene un test que lo fija). Eso incluye, a propósito, la historia de cada

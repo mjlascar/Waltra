@@ -7,6 +7,12 @@ export interface DailyPoint {
   nav: number;
   /** Capital externo que entro (o salio) ese dia, en USD. */
   flow: number;
+  /**
+   * Lo invertido en activos al cierre. Con efectivo negativo (compras
+   * cargadas antes que el ingreso que las pago) el valor puede ser casi cero
+   * con mucho invertido: el TWR lo usa para no medir esos dias.
+   */
+  invested?: number;
 }
 
 export interface TwrPoint {
@@ -34,10 +40,18 @@ export interface TwrPoint {
  * Esta es la metrica que responde "que tan bien elegi", sin que la inyeccion
  * de capital la ensucie.
  */
+/**
+ * Por debajo de esta fraccion de lo invertido, el valor del dia no es capital
+ * de verdad: es efectivo negativo cancelando posiciones, y dividir por el da
+ * rendimientos de miles por ciento.
+ */
+const VALOR_MINIMO = 0.05;
+
 export function timeWeightedReturn(points: DailyPoint[]): TwrPoint[] {
   const out: TwrPoint[] = [];
   let index = 100;
   let prevNav: number | null = null;
+  let prevInvested = 0;
 
   for (const p of points) {
     if (prevNav === null) {
@@ -45,16 +59,25 @@ export function timeWeightedReturn(points: DailyPoint[]): TwrPoint[] {
       // no tiene retorno medible: no habia capital previo contra el cual medir.
       if (p.nav > 0 || p.flow !== 0) {
         prevNav = p.nav;
+        prevInvested = p.invested ?? 0;
         out.push({ day: p.day, index, cumulative: 0 });
       }
       continue;
     }
-    // Sin capital al cierre anterior no hay retorno que medir (por ejemplo,
-    // el usuario retiro todo y volvio a entrar mas tarde).
-    const r = prevNav > 1e-9 ? (p.nav - p.flow) / prevNav - 1 : 0;
+    // Sin capital al cierre anterior no hay retorno que medir: el usuario
+    // retiro todo y volvio a entrar, o el valor era efectivo negativo
+    // cancelando posiciones (ver `VALOR_MINIMO`).
+    const medible = prevNav > 1e-9 && prevNav >= VALOR_MINIMO * prevInvested;
+    let r = medible ? (p.nav - p.flow) / prevNav - 1 : 0;
+    if (!Number.isFinite(r)) r = 0;
+    // Perder todo en un dia deja el indice en cero, y desde ahi ninguna
+    // ganancia lo mueve: el TWR quedaba en blanco para siempre. Un 99% ya dice
+    // lo que paso y deja seguir midiendo.
+    if (r < -0.99) r = -0.99;
     index *= 1 + r;
     out.push({ day: p.day, index, cumulative: index / 100 - 1 });
     prevNav = p.nav;
+    prevInvested = p.invested ?? 0;
   }
   return out;
 }
