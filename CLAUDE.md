@@ -638,7 +638,13 @@ puntualidad.
 
 La app no está en Play: nadie le avisa al teléfono que salió un APK nuevo.
 `src/lib/update.ts` compara el `versionCode` instalado (`App.getInfo()`)
-con el del release `apk-latest`, que la API de GitHub da sin credenciales.
+con el de `version.json`, que CI sube al release `apk-latest` junto al APK
+(compilación, versión, tamaño y huella). Se baja como cualquier archivo del
+release y **no gasta las 60 consultas por hora de la API de GitHub**, que
+comparte toda una red: un script que miraba el release cada 30 segundos las
+agotó y el teléfono, en el mismo Wi-Fi, dejó de poder consultar. Si el
+archivo no está, la app pregunta a la API como antes; el vigía la sigue
+usando, porque corre cada unas horas.
 
 **La app se actualiza sola** (`src/lib/self-update.ts` y
 `SelfUpdatePlugin.java`). Antes se bajaba el APK con el navegador y se

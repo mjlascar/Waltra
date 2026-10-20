@@ -23,6 +23,12 @@ export const RELEASE_API = `https://api.github.com/repos/${REPO}/releases/tags/a
 /** El enlace de siempre. El release se rehace en cada push, el enlace no cambia. */
 export const APK_URL = `https://github.com/${REPO}/releases/download/apk-latest/waltra.apk`;
 /**
+ * Lo que publica CI junto al APK (ver ci.yml): compilacion, version, tamaño y
+ * huella. Se baja como cualquier archivo del release, asi que no gasta las 60
+ * consultas por hora de la API de GitHub, que comparte toda una red.
+ */
+export const VERSION_URL = `https://github.com/${REPO}/releases/download/apk-latest/version.json`;
+/**
  * Lo unico que la app acepta instalarse: archivos del release de Waltra. El
  * plugin nativo (`SelfUpdatePlugin.java`) tiene el mismo prefijo, y un test
  * compara los dos.
@@ -120,8 +126,35 @@ export function updateErrorText(err: unknown): string {
   return "GitHub no respondió, revisá la conexión y probá de nuevo";
 }
 
-/** Lo publicado. Lanza si GitHub no contesta: quien llama decide que decir. */
+/** El `version.json` del release, o null si no tiene la forma esperada. */
+export function parseVersionFile(json: unknown): ReleaseInfo | null {
+  if (!json || typeof json !== "object") return null;
+  const v = json as Record<string, unknown>;
+  if (typeof v.build !== "number" || !Number.isInteger(v.build) || v.build <= 0) return null;
+  if (typeof v.version !== "string" || !/^\d+\.\d+\.\d+$/.test(v.version)) return null;
+  const sha256 = typeof v.sha256 === "string" && /^[0-9a-f]{64}$/i.test(v.sha256) ? v.sha256.toLowerCase() : undefined;
+  return {
+    build: v.build,
+    version: v.version,
+    url: APK_URL,
+    ...(typeof v.publishedAt === "string" ? { publishedAt: v.publishedAt } : {}),
+    ...(typeof v.size === "number" && v.size > 0 ? { size: v.size } : {}),
+    ...(sha256 ? { sha256 } : {}),
+  };
+}
+
+/**
+ * Lo publicado. Primero el `version.json` del release; si no esta (CI
+ * rehaciendo el release, o uno de antes de que existiera), la API, como
+ * siempre. Lanza si GitHub no contesta: quien llama decide que decir.
+ */
 export async function latestRelease(): Promise<ReleaseInfo | null> {
+  try {
+    const file = parseVersionFile(await getJson<unknown>(VERSION_URL));
+    if (file) return file;
+  } catch {
+    // Se sigue con la API.
+  }
   const json = await getJson<GithubRelease>(RELEASE_API, {
     headers: { Accept: "application/vnd.github+json" },
   });

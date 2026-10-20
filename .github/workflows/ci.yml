@@ -8,7 +8,7 @@ on:
 # El nombre de la version, el que muestra Android. Se cambia a mano al sacar
 # una version nueva; el numero que compara la app es la corrida (versionCode).
 env:
-  WALTRA_VERSION: "1.1.5"
+  WALTRA_VERSION: "1.2.0"
   NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
 
 jobs:
@@ -188,6 +188,19 @@ jobs:
         run: |
           set -euo pipefail
           cp android/app/build/outputs/apk/release/app-release.apk waltra.apk
+          # Lo que lee la app para saber si hay version nueva (src/lib/update.ts):
+          # un archivo del release, que no gasta las 60 consultas por hora de la
+          # API de GitHub que comparte toda una red. Las apps de antes siguen
+          # leyendo el titulo y las notas, que no cambian.
+          jq -n \
+            --argjson build "$GITHUB_RUN_NUMBER" \
+            --arg version "$WALTRA_VERSION" \
+            --argjson size "$(stat -c %s waltra.apk)" \
+            --arg sha256 "$(sha256sum waltra.apk | cut -d' ' -f1)" \
+            --arg commit "$GITHUB_SHA" \
+            --arg publishedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{build: $build, version: $version, size: $size, sha256: $sha256, commit: $commit, publishedAt: $publishedAt}' \
+            > version.json
           if [ "$ESTABLE" = "si" ]; then
             firma="Firmado con la clave del repositorio: las actualizaciones se instalan encima y conservan los datos."
           else
@@ -196,13 +209,13 @@ jobs:
           notas=$(printf '%s\n\n%s\n\n%s' \
             "Compilacion 1.0.${GITHUB_RUN_NUMBER} de v${WALTRA_VERSION}, de ${GITHUB_SHA:0:8} en ${GITHUB_REF_NAME}." \
             "$firma" \
-            "Descarga waltra.apk de aca abajo y abrilo en el telefono. Android va a pedirte permitir instalar desde el navegador: es el paso normal para algo que no viene de Play.")
+            "Descarga waltra.apk de aca abajo y abrilo en el telefono. Android va a pedirte permitir instalar desde el navegador: es el paso normal para algo que no viene de Play. Desde la 1.2.0, la app se actualiza sola desde Ajustes, Actualizaciones.")
           # Puede haber mas de uno con la etiqueta (borradores que quedaron de
           # corridas anteriores): se borran todos.
           for _ in 1 2 3 4 5; do
             gh release delete apk-latest --yes --cleanup-tag 2>/dev/null || break
           done
-          gh release create apk-latest waltra.apk \
+          gh release create apk-latest waltra.apk version.json \
             --prerelease \
             --target "$GITHUB_SHA" \
             --title "Waltra v${WALTRA_VERSION}" \
@@ -224,5 +237,10 @@ jobs:
           if [ "$publicado" != "si" ]; then
             echo "::error::El release apk-latest quedo en borrador: ni la app ni el enlace de descarga lo ven."
             exit 1
+          fi
+          # Sin version.json la app igual pregunta a la API: es un aviso y no un
+          # error, pero sin el vuelve el limite de consultas.
+          if ! curl -fsSL -o /dev/null "https://github.com/${GITHUB_REPOSITORY}/releases/download/apk-latest/version.json"; then
+            echo "::warning::version.json no se puede bajar del release: la app va a preguntar a la API de GitHub."
           fi
           echo "Descarga directa: https://github.com/${GITHUB_REPOSITORY}/releases/download/apk-latest/waltra.apk"
