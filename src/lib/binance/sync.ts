@@ -38,9 +38,13 @@ const SLOW_EVERY = 6 * 3_600_000;
 const DAILY = 24 * 3_600_000;
 /** Contra que se cotiza lo que haya en la cuenta. */
 const QUOTES = ["USDT", "FDUSD", "USDC", "TUSD", "BUSD", "DAI", "ARS", "BTC", "ETH", "BNB"];
-/** De cada par se piden las ultimas ordenes; si todas son nuevas, se pide de nuevo, mas. */
-const FIRST_PAGE = 10;
-const SECOND_PAGE = 1000;
+/**
+ * De cada par se piden las ultimas ordenes, de a poco: si todas son nuevas,
+ * se pide de nuevo, mas. Binance cobra lo mismo por 10 que por 1000, pero lo
+ * normal es que entre una pasada y la siguiente haya pocas, y una respuesta
+ * chica es una respuesta rapida.
+ */
+const PAGES = [10, 20, 50, 100, 1000];
 /** Lo que una pasada se permite gastar del limite por minuto, con margen. */
 const BUDGET: Usage = { ip: 4000, sapiIp: 9000, uid: 120_000 };
 /** Un mes de Earn se carga una vez, unos dias despues de que termino. */
@@ -385,7 +389,8 @@ async function pass(
 
   /**
    * Las ultimas ordenes de un par, de la mas nueva para atras, hasta una que
-   * ya estaba. Si las diez ultimas son todas nuevas, se piden mil.
+   * ya estaba. Si las diez ultimas son todas nuevas, se piden 20, despues 50,
+   * 100 y hasta 1000.
    *
    * Un par entra entero o no entra: si se guardaran las ordenes nuevas de
    * arriba y no las de abajo, la proxima pasada pararia en las de arriba. Por
@@ -396,7 +401,7 @@ async function pass(
     const [base, quote] = key.split("/");
     const symbol = `${base}${quote}`;
     let orders: api.OrderInfo[] = [];
-    for (const limit of [FIRST_PAGE, SECOND_PAGE]) {
+    for (const limit of PAGES) {
       if (!roomFor({ ip: 20 })) return "cut";
       try {
         orders = await api.recentOrders(client, symbol, limit);
@@ -408,10 +413,10 @@ async function pass(
       // Las que podrian ser nuevas: hasta la primera que ya esta o el punto de partida.
       const hasta = orders.findIndex((o) => o.updateTime < floor || book.knownId(map.orderId(o)));
       if (hasta !== -1 || orders.length < limit) break;
-      if (limit === SECOND_PAGE) {
-        skipped.push(`${key}: hay más de ${SECOND_PAGE} órdenes nuevas; las más viejas van con el archivo de órdenes.`);
+      if (limit === PAGES[PAGES.length - 1]) {
+        skipped.push(`${key}: hay más de ${limit} órdenes nuevas; las más viejas van con el archivo de órdenes.`);
       }
-      // Las diez son nuevas: puede haber mas. Se piden de nuevo, mas.
+      // Todas nuevas: puede haber mas. Se piden de nuevo, mas.
     }
     const hasta = orders.findIndex((o) => o.updateTime < floor || book.knownId(map.orderId(o)));
     // Cancelada sin ejecutarse: no hay nada que cargar. Abierta: se carga

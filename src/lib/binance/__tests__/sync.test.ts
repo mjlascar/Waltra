@@ -158,6 +158,31 @@ describe("solo lo ultimo, y lo que ya esta no se toca", () => {
     expect(calls("/api/v3/allOrders")).toBe(2);
   });
 
+  it("pide de a poco: 10, 20, 50, 100, mientras todo sea nuevo", async () => {
+    fake.prices = { BTCUSDT: 60_000 };
+    fake.balances = { BTC: 0.06 };
+    fake.trades.BTCUSDT = Array.from({ length: 60 }, (_, i) => buyFill(i + 1, 100 + i, 0.001, 60, clock - (60 - i) * 3_600_000));
+    await connect("2026-10-01");
+    const r = await run();
+    expect(r?.added).toBe(60);
+    // 10, 20 y 50 llegaron llenas y todas nuevas; la de 100 trajo 60: no hay mas.
+    expect(calls("/api/v3/allOrders")).toBe(4);
+  });
+
+  it("y para en el pedido donde aparece lo que ya estaba", async () => {
+    fake.prices = { BTCUSDT: 60_000 };
+    fake.balances = { BTC: 0.035 };
+    fake.trades.BTCUSDT = Array.from({ length: 35 }, (_, i) => buyFill(i + 1, 100 + i, 0.001, 60, clock - (35 - i) * 3_600_000));
+    // Las cinco mas viejas ya estaban, del archivo.
+    await db.transactions.bulkPut(
+      Array.from({ length: 5 }, (_, i) => manual({ id: `binance-${100 + i}`, date: "2026-10-19", type: "buy", amount: 60, quantity: 0.001 })),
+    );
+    await connect("2026-10-01");
+    const r = await run();
+    expect(r?.added).toBe(30);
+    expect(calls("/api/v3/allOrders")).toBe(3);
+  });
+
   it("si con las diez alcanza, no pide mas", async () => {
     fake.prices = { BTCUSDT: 60_000 };
     fake.balances = { BTC: 0.015 };

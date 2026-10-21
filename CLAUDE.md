@@ -565,9 +565,9 @@ viaja.
 movimientos nuevos: de cada historial se mira lo más reciente, de lo más
 nuevo a lo más viejo, y apenas aparece algo que ya estaba cargado se para;
 lo de antes queda como el usuario lo dejó. Si todo lo que vino es nuevo, se
-pide más atrás (en las órdenes spot: las últimas 10 de cada par, y si las
-10 son nuevas, 1000), pero nunca antes del día que el usuario eligió al
-conectar. "Ya estaba cargado" es: el mismo id (el de una orden spot es el
+pide más atrás, de a poco (en las órdenes spot: las últimas 10 de cada par;
+si son todas nuevas, 20, después 50, 100 y hasta 1000), pero nunca antes del
+día que el usuario eligió al conectar («Traer desde»). "Ya estaba cargado" es: el mismo id (el de una orden spot es el
 del archivo, `binance-<orden>`), algo que el usuario borró, o lo mismo
 cargado a mano (misma clase, mismos días, mismo monto o las mismas
 unidades; la pareja se guarda, así una carga a mano no tapa dos registros).
