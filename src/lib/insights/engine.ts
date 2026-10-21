@@ -27,6 +27,14 @@ export interface Engine {
     system: string;
     user: string;
   }): Promise<Report | null>;
+
+  /** Leer imagenes y contestar en texto. Ver `capturas.ts`. */
+  leer(pedido: {
+    model: string;
+    system: string;
+    user: string;
+    images: { mime: "image/jpeg" | "image/png" | "image/webp"; data: string }[];
+  }): Promise<string>;
 }
 
 export class ModelError extends Error {

@@ -21,6 +21,13 @@ import { lookupCatalog } from "@/lib/catalog";
  * del archivo la dice: "(UTC--3)"), no en UTC, asi que se toman como estan.
  */
 
+/**
+ * Id del ingreso que estima la importacion del archivo para que el efectivo
+ * cierre. Es fijo: reimportar lo reemplaza. La conexion con Binance lo mira,
+ * porque los ingresos reales del mismo periodo lo contarian dos veces.
+ */
+export const CAPITAL_IMPORTADO = "binance-capital-importado";
+
 /** Columnas por las que se reconoce el archivo. */
 const ESPERADAS = ["OrderNo", "Pair", "Side", "Executed", "Status"];
 
@@ -32,7 +39,7 @@ const ESPERADAS = ["OrderNo", "Pair", "Side", "Executed", "Status"];
  * motivo en vez de registrarse mal. El orden va del sufijo mas largo al mas
  * corto: "BTCFDUSD" es BTC contra FDUSD, no BTCF contra USD.
  */
-const DOLARES = ["FDUSD", "BUSD", "USDC", "USDT", "TUSD", "DAI", "USD"];
+export const DOLARES = ["FDUSD", "BUSD", "USDC", "USDT", "TUSD", "DAI", "USD"];
 
 /** Una orden ejecutada, ya leida. El activo se resuelve al guardar. */
 export interface BinanceOrder {
@@ -326,7 +333,10 @@ export function parseBinanceOrders(text: string): BinanceImport {
  */
 export function binanceAsset(base: string, id: string): Asset {
   const clean = base.trim().toUpperCase();
-  const entry = lookupCatalog(clean);
+  // Solo una cripto del catalogo: hay monedas de Binance que se llaman como un
+  // ETF (DIA, ARK) y, tomadas del catalogo, se cotizarian como el ETF.
+  const hit = lookupCatalog(clean);
+  const entry = hit?.kind === "crypto" && hit.symbol.toUpperCase() === clean ? hit : null;
   if (entry) {
     return {
       id,

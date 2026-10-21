@@ -25,6 +25,7 @@ export class WaltraDB extends Dexie {
   insights!: Table<InsightReport, string>;
   cloudState!: Table<CloudState, string>;
   cloudBackups!: Table<CloudBackup, number>;
+  connections!: Table<BinanceConnection, string>;
 
   /** El nombre solo cambia en los tests, para tener dos telefonos a la vez. */
   constructor(name = "waltra") {
@@ -43,7 +44,90 @@ export class WaltraDB extends Dexie {
       cloudState: "id",
       cloudBackups: "++id, at",
     });
+    // Una tabla aparte y no un campo de los ajustes: asi la clave no entra
+    // por descuido ni en el backup ni en la copia de Drive, que copian tablas
+    // con nombre y no "todo lo que haya".
+    this.version(3).stores({
+      connections: "id",
+    });
   }
+}
+
+/**
+ * La conexion de solo lectura con Binance. Ver `src/lib/binance/sync.ts`.
+ *
+ * Vive solo en este telefono: la clave no viaja en el backup ni a Drive, y lo
+ * demas (por donde va cada historial) es de este telefono y de esta clave.
+ */
+export interface BinanceConnection {
+  id: "binance";
+  /**
+   * Vacias despues de Desconectar: la fila queda para recordar lo que el
+   * usuario borro y hasta donde se leyo, por si vuelve a conectar.
+   */
+  apiKey: string;
+  secret: string;
+  /** El numero de cuenta de Binance. Una clave de otra cuenta empieza de cero. */
+  uid?: number;
+  /** La cuenta de Waltra donde caen los movimientos. */
+  accountId: string;
+  /** YYYY-MM-DD: lo anterior ya estaba cargado y no se trae. */
+  since: string;
+  createdAt: string;
+  /**
+   * Hasta donde se leyo cada historial, en milisegundos. En las operaciones
+   * spot es otra cosa: el ultimo id leido de cada par ("BTC/USDT"). En Earn,
+   * el primer mes que todavia puede cambiar.
+   */
+  cursors: {
+    trades: Record<string, number>;
+    deposits?: number;
+    withdrawals?: number;
+    converts?: number;
+    p2p?: number;
+    fiat?: number;
+    payments?: number;
+    earn?: number;
+  };
+  /** Saldos de la billetera spot en la pasada anterior: si no cambiaron, no hubo operaciones. */
+  balances?: Record<string, number>;
+  /**
+   * Pares que falta leer ("BTC/USDT"): los de un saldo que cambio y los de la
+   * revision completa en curso. Se guarda: una pasada cortada sigue donde quedo.
+   */
+  queue?: string[];
+  /** Activos que alguna vez hubo en la cuenta, aunque hoy esten en cero: sus pares se revisan. */
+  known?: string[];
+  /** Cuando se encolo la ultima revision de todos los pares. */
+  fullScanAt?: number;
+  /** Cuando se leyeron por ultima vez Earn y las compras con tarjeta. */
+  slowAt?: number;
+  /** El historial en pesos pesa mucho: una vez por dia. */
+  fiatAt?: number;
+  /** Lo que hubo en la billetera dia por dia: una vez por dia. */
+  snapshotAt?: number;
+  /** Cada registro de Binance que ya estaba cargado a mano, con el id de lo cargado. */
+  matched?: Record<string, string>;
+  /** Movimientos traidos que el usuario borro: no se vuelven a crear. */
+  ignored?: string[];
+  /** Binance pidio esperar (limite de pedidos): no se le pregunta antes de esto. */
+  blockedUntil?: number;
+  /** La clave dejo de servir: no se reintenta solo hasta que la cambien. */
+  authError?: string;
+  lastRun?: BinanceRunSummary;
+}
+
+export interface BinanceRunSummary {
+  at: string;
+  added: number;
+  updated: number;
+  /** Ya estaban cargados a mano: no se suman dos veces. */
+  dupes: number;
+  /** Lo que se leyo y no se pudo cargar, con el motivo. */
+  skipped: string[];
+  /** Quedo historial por traer: sigue en la proxima pasada. */
+  partial: boolean;
+  error?: string;
 }
 
 export interface CloudState {
@@ -218,7 +302,7 @@ export async function importBackup(
 export async function wipeAll(db: WaltraDB): Promise<void> {
   await db.transaction(
     "rw",
-    [db.accounts, db.assets, db.transactions, db.priceSeries, db.quotes, db.fx, db.settings, db.insights, db.cloudBackups],
+    [db.accounts, db.assets, db.transactions, db.priceSeries, db.quotes, db.fx, db.settings, db.insights, db.cloudBackups, db.connections],
     async () => {
       await Promise.all([
         db.accounts.clear(),
@@ -230,6 +314,9 @@ export async function wipeAll(db: WaltraDB): Promise<void> {
         db.insights.clear(),
         db.cloudBackups.clear(),
         db.settings.clear(),
+        // Borrar todo incluye la clave de Binance: si no, la proxima pasada
+        // volveria a llenar la base que se acaba de vaciar.
+        db.connections.clear(),
       ]);
     },
   );

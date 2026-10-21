@@ -98,10 +98,13 @@ export function AddTransaction({
   open,
   onClose,
   editing,
+  onCapturas,
 }: {
   open: boolean;
   onClose: () => void;
   editing?: Transaction | null;
+  /** Abrir la carga desde capturas, para varios movimientos de una vez. */
+  onCapturas?: () => void;
 }) {
   const {
     accounts, assets, transactions, portfolio, portfolioUsd,
@@ -773,6 +776,11 @@ export function AddTransaction({
           >
             Escribirlo en una línea
           </button>
+          {onCapturas && (
+            <button className="btn btn-sm mt-2 w-full" onClick={onCapturas}>
+              Varios a la vez, desde capturas
+            </button>
+          )}
         </>
       )}
 

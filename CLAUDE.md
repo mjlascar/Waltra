@@ -50,6 +50,7 @@ no hay ventana en la que el primer refresco salga por el transporte equivocado.
 | Clave de Anthropic | del entorno del servidor  | la carga el usuario en Ajustes     |
 | Notificaciones     | no hay                    | el vigía de `public/runners/`      |
 | Google Drive       | token en memoria, a mano  | el plugin lo renueva solo          |
+| Binance            | firmado acá, por `/api/binance` | directo, por `CapacitorHttp` |
 
 Las pantallas hablan con `src/lib/backend/` y no saben cuál de los dos es. Si
 agregás una llamada nueva, va ahí: `fetch("/api/...")` directo desde un
@@ -315,8 +316,12 @@ cartera entera —notas incluidas— va además al Drive del propio usuario (ver
 abajo); las claves, nunca. En la web la clave de Anthropic se lee solo en
 el servidor; en el APK la carga el usuario, no se vuelve a mostrar y queda
 fuera del backup, que es un archivo que termina en Drive o en un mail. El
-backup automático de Android está apagado por lo mismo. El repositorio es
-público: `scripts/check-secrets.sh` corre en cada verificación y en CI.
+backup automático de Android está apagado por lo mismo. La clave de Binance
+vive en su propia tabla (`connections`), que no entra ni en el backup ni en
+Drive. La excepción a todo esto son las capturas de pantalla, que viajan tal
+cual al modelo, a pedido y avisando (ver «Al tocar las capturas»). El
+repositorio es público: `scripts/check-secrets.sh` corre en cada
+verificación y en CI.
 
 **Una base que no abre no es una app vacía.** Un día la app abrió en
 «Cargá tu primer movimiento» a alguien con semanas de datos. El error de abrir
@@ -488,11 +493,12 @@ números distintos a diez píxeles se lee como un error.
 | `src/lib/engine/`          | Ledger, valuación diaria, TWR, XIRR, riesgo y el recorte por ventana (`period.ts`). Funciones puras, bien cubiertas por tests. Si tocás esto, corré los tests. |
 | `src/lib/parse/`           | Frases sueltas en castellano rioplatense (`quick-add.ts`), pegado de varias líneas (`bulk.ts`) y la exportación de Binance (`binance.ts`).                     |
 | `src/lib/market/`          | Proveedores de precios. Cada uno aislado: si uno se cae, devuelve el error en el resultado, nunca lanza. `mock.ts` solo se activa con `WALTRA_MOCK=1`.         |
-| `src/lib/store.tsx`        | Estado de la app, consultas en vivo a IndexedDB y sincronización de mercado.                                                                                   |
+| `src/lib/store.tsx`        | Estado de la app, consultas en vivo a IndexedDB y sincronización de mercado y de Binance.                                                                      |
 | `src/app/api/`             | Envoltorio fino sobre lo de arriba, para el modo web. La lógica no vive acá.                                                                                   |
 | `src/lib/backend/`         | Elige entre las rutas `/api` y correr todo en el teléfono. Es con quien hablan las pantallas.                                                                  |
 | `src/lib/alerts/`          | El plan que lee el vigía de precios, y el puente a las preferencias de Android.                                                                                |
 | `src/lib/cloud/`           | Google y la copia en Drive: el esquema (`data.ts`), la combinación (`merge.ts`), la decisión de qué hacer (`sync.ts`) y el transporte (`drive.ts`).            |
+| `src/lib/binance/`         | La conexión de solo lectura con Binance: firma (`client.ts`), historiales (`api.ts`), traducción a movimientos (`map.ts`), las pasadas (`sync.ts`) y un Binance de prueba (`fake.ts`). |
 | `public/runners/alerts.js` | El vigía. JavaScript plano, sin módulos: corre fuera del WebView.                                                                                              |
 
 ## Al tocar el parser
@@ -539,6 +545,106 @@ aportado en cero, que es justo lo que la app existe para arreglar. De ahí el
 
 Los tests usan filas inventadas con el formato exacto. **El historial del
 usuario no entra al repositorio**, que es público.
+
+## Al tocar la conexión con Binance
+
+La importación del archivo sigue, pero lo normal es conectar una clave de
+**solo lectura** (Ajustes → Binance) y que los movimientos se carguen solos
+al abrir la app, al volver a ella y al deslizar hacia abajo (`refreshAll` en
+`store.tsx`). Una clave que puede operar, retirar o transferir se rechaza al
+conectar (`/sapi/v1/account/apiRestrictions`): Waltra no la necesita y
+guardarla en el teléfono sería un riesgo sin ninguna ganancia.
+
+En el teléfono los pedidos salen por `CapacitorHttp`. En la web, Binance
+rechaza la previa de CORS que hace falta para mandar la cabecera de la
+clave, así que los pedidos pasan ya firmados por `/api/binance`, que solo
+reenvía GET a `api.binance.com`: la clave secreta firma en el navegador y no
+viaja.
+
+**El límite por minuto manda.** Binance banea la IP que insiste después de
+un 429, así que una pasada respeta el `Retry-After` aunque se toque "Traer
+ahora", no corre a menos de 45 s de la anterior y lleva la cuenta con las
+cabeceras de peso. Si se acerca al límite, guarda lo que tiene y sigue sola
+al minuto. El historial de retiros pesa 18.000 de los 180.000 por cuenta y
+por minuto, y el de pesos, 45.000 por pedido: por eso ese va una vez por día
+y al principio de la pasada, cuando el cupo está entero. Una clave que dejó
+de servir no se reintenta sola, y el inicio lo avisa.
+
+**Las operaciones spot van por una cola que se guarda.** `myTrades` se pide
+par por par (no hay "todos los pares"). A la cola entran los pares del
+activo cuyo saldo spot cambió, apenas se leen los saldos (si la pasada se
+corta después, la cola se acuerda aunque el saldo nuevo ya no muestre el
+cambio); todos los pares de lo conocido, una vez por día; y la primera vez,
+todos los pares contra dólares y pesos. Una cripto que se compró y se vendió
+entera no deja otro rastro que sus operaciones: la primera revisión la
+encuentra, y después los saldos de cada día (`accountSnapshot`, el último
+mes) la suman a lo conocido. Si una pasada se corta, la siguiente sigue la
+cola donde quedó.
+
+**Cada historial recuerda hasta dónde leyó** y relee los últimos 7 días: un
+ingreso pendiente o un retiro en curso se cargan cuando terminan. El id de
+cada movimiento sale del registro de Binance, así que releer no duplica; el
+de una orden spot es el mismo del archivo (`binance-<orden>`). Lo que el
+usuario borra se anota y no vuelve, ni al reconectar. Lo que ya estaba
+cargado a mano gana: cada registro se compara con lo más parecido de su
+clase (una compra con una compra del mismo activo y las mismas unidades, un
+ingreso con un ingreso del mismo monto, a pocos días) y la pareja se guarda,
+así una misma carga a mano no tapa dos registros. Cambiar de cuenta de
+Waltra muda todo lo de Binance junto; una clave de otra cuenta de Binance
+empieza de cero. Al conectar se elige desde cuándo traer y se propone el
+último día cargado en esa cuenta. Si ahí hay una importación del archivo,
+la pantalla avisa: su ingreso estimado y los ingresos reales del mismo
+período se contarían dos veces.
+
+Cómo se traduce cada cosa (`map.ts`, con tests contra el ledger):
+
+- Los dólares estables (USDT, FDUSD, USDC…) son el efectivo en dólares de
+  la cuenta, igual que en la importación del archivo; ARS, el de pesos.
+- La comisión es lo que fue: unidades de menos si se cobró en lo comprado,
+  efectivo si se cobró en la moneda de cotización, y un ajuste de BNB si se
+  pagó en BNB.
+- Cripto contra cripto (ETH/BTC, un Convert de BTC a ETH) es una venta y una
+  compra por lo mismo, al precio en dólares de esa hora: un costo en BTC no
+  se puede comparar con nada.
+- Una cripto que llega de otra billetera es capital por lo que valía y una
+  compra a ese precio; una que se va, una venta y un retiro. La ganancia que
+  hizo acá queda contada; la de afuera, no.
+- P2P: comprar USDT con pesos es un ingreso de pesos y un cambio de moneda
+  al dólar que se pagó; vender es el cambio y un retiro.
+- Earn: un movimiento por activo y por mes, que se rearma mientras el mes no
+  terminó. En estables es un interés; en cripto, un ajuste positivo
+  (unidades que entran al precio de cada día, como ingreso).
+
+Un supuesto sin confirmar con una cuenta real: en el historial de retiros,
+`amount` es lo que llega a destino y la comisión se cobra aparte. Si fuera
+al revés, cada retiro descontaría la comisión dos veces; se cambia en
+`withdrawalGroup`.
+
+`fake.ts` es un Binance de mentira con las reglas que importan (firma,
+ventana máxima de cada historial, paginado, peso de cada pedido). Lo usan
+los tests y `WALTRA_MOCK=1`, donde se entra con la clave de prueba de
+`emptyFake()`.
+
+## Al tocar las capturas
+
+Cocos no tiene API ni exportación de movimientos: lo que queda es la pestaña
+Actividad. "Varios a la vez, desde capturas" (en el +) le manda las capturas
+a Claude o a Gemini, que no carga nada: transcribe cada movimiento a una
+línea del formato de "Pegar movimientos", y esas líneas pasan por el mismo
+parser y la misma revisión que lo escrito a mano. Así las reglas de los
+CEDEAR y de cada tipo de movimiento siguen en un solo lugar, y lo que se
+leyó mal se ve antes de guardar. Un test pasa por `parseBulk` los ejemplos
+del pedido (`EJEMPLOS`): si se cambia uno, tiene que seguir entrando entero.
+
+Es la excepción a "nada sensible sale del teléfono": la captura viaja tal
+cual, con lo que muestre la pantalla. Por eso es siempre a pedido, con la
+clave del usuario, y la pantalla lo dice antes de mandar. Sin clave queda
+copiar el pedido y pegar la respuesta.
+
+Una captura de teléfono se parte en pedazos casi cuadrados que se pisan un
+poco (`cortes` en `capturas-imagen.ts`): achicada entera, los números quedan
+de pocos píxeles y se confunden. El pedido avisa que puede haber filas
+repetidas entre capturas, que es también lo que pasa al hacer scroll.
 
 ## Al tocar los insights
 

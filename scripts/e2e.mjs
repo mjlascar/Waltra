@@ -1075,6 +1075,69 @@ console.log("\n15. El estado de la base");
   await ctx.close();
 }
 
+console.log("\n16. Binance conectada (la de prueba de WALTRA_MOCK=1)");
+{
+  // La clave y el secreto son los de `emptyFake()` en src/lib/binance/fake.ts:
+  // abren el Binance simulado del servidor de prueba y nada mas.
+  const ctx = await browser.newContext(MOBILE);
+  const pagina = await ctx.newPage();
+  pagina.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e.message}`));
+  const textoDe = async () => normalize(await pagina.evaluate(() => document.body.innerText));
+  await pagina.goto(BASE + "/ajustes/binance", { waitUntil: "networkidle" });
+  await pagina.waitForTimeout(1200);
+  check("explica cómo sacar la clave", (await textoDe()).includes("habilitar lectura"));
+  const claves = pagina.locator('input[type="password"]');
+  await claves.nth(0).fill("clave-de-prueba-0000000000000000000000000000");
+  await claves.nth(1).fill("secreto-de-prueba-000000000000000000000000000");
+  await pagina.getByRole("button", { name: /^Conectar$/ }).click();
+  await pagina.waitForTimeout(7000);
+  const conectada = await textoDe();
+  check("conecta y trae los movimientos", /\d+ movimientos nuevos/.test(conectada), conectada.slice(0, 300));
+  await pagina.goto(BASE + "/movimientos", { waitUntil: "networkidle" });
+  await pagina.waitForTimeout(1200);
+  const lista = await textoDe();
+  check("trae una compra spot", lista.includes("binance btc/usdt"), lista.slice(0, 400));
+  check("trae el P2P en pesos y su cambio", lista.includes("p2p: compra de usdt") && lista.includes("p2p: pago por 700 usdt"));
+  check("trae Convert", lista.includes("convert usdt → eth"));
+  check("trae el Earn del mes", lista.includes("earn de usdt"));
+  await pagina.goto(BASE + "/ajustes/binance", { waitUntil: "networkidle" });
+  await pagina.waitForTimeout(800);
+  await pagina.getByRole("button", { name: /^Desconectar$/ }).click();
+  await pagina.waitForTimeout(800);
+  check("desconectar deja lo que ya se trajo", (await textoDe()).includes("los movimientos que ya se trajeron quedan"));
+  await ctx.close();
+}
+
+console.log("\n17. Movimientos desde capturas");
+{
+  const ctx = await browser.newContext(MOBILE);
+  const pagina = await ctx.newPage();
+  pagina.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e.message}`));
+  const textoDe = async () => normalize(await pagina.evaluate(() => document.body.innerText));
+  await pagina.goto(BASE, { waitUntil: "networkidle" });
+  await pagina.waitForTimeout(1200);
+  await pagina.getByRole("button", { name: /agregar movimiento/i }).click();
+  await pagina.waitForTimeout(400);
+  await pagina.getByRole("button", { name: /desde capturas/i }).click();
+  await pagina.waitForTimeout(500);
+  check("propone la cuenta de Cocos", (await pagina.locator('[role="dialog"] select').first().inputValue()) === "cocos");
+  // Un PNG de un pixel: el servidor de prueba no lo mira, contesta una lectura fija.
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+  await pagina.setInputFiles('[role="dialog"] input[type="file"]', { name: "actividad.png", mimeType: "image/png", buffer: png });
+  await pagina.waitForTimeout(300);
+  await pagina.getByRole("button", { name: /^Leer 1 captura con/ }).click();
+  await pagina.waitForTimeout(6000);
+  const leido = await textoDe();
+  check("avisa que la lectura es de prueba", leido.includes("lectura de prueba"), leido.slice(0, 300));
+  check("lo que no se leyó no se carga", leido.includes("2 de 2 listas"), leido.slice(0, 600));
+  await pagina.getByRole("button", { name: /^Agregar 2$/ }).click();
+  await pagina.waitForTimeout(1500);
+  await pagina.goto(BASE + "/movimientos", { waitUntil: "networkidle" });
+  await pagina.waitForTimeout(1200);
+  check("el SPY de Cocos entra como CEDEAR", (await textoDe()).includes("spy.ba"));
+  await ctx.close();
+}
+
 await browser.close();
 
 console.log(`\n${passed} ok, ${failures.length} fallas`);

@@ -70,5 +70,25 @@ export function geminiEngine(apiKey: string): Engine {
         return null;
       }
     },
+
+    async leer({ model, system, user, images }) {
+      try {
+        const res = await ai.models.generateContent({
+          model,
+          contents: [
+            {
+              role: "user",
+              parts: [...images.map((img) => ({ inlineData: { mimeType: img.mime, data: img.data } })), { text: user }],
+            },
+          ],
+          config: { systemInstruction: system },
+        });
+        return res.text ?? "";
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const status = /API key|API_KEY|permission|401|403/i.test(message) ? 401 : 502;
+        throw new ModelError(message, status === 401 ? "bad_key" : "api_error", status);
+      }
+    },
   };
 }

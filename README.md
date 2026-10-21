@@ -13,6 +13,8 @@ distancia entre ellas es —literalmente— lo que ganaste.
   <img src="docs/img/rendimiento.png" width="200" alt="Rendimiento de la cartera contra el S&P 500">
   <img src="docs/img/carga.png" width="200" alt="Carga de un movimiento escribiendo la frase">
   <img src="docs/img/importar.png" width="200" alt="Importar un bloc de notas entero">
+  <img src="docs/img/capturas.png" width="200" alt="Movimientos de Cocos leídos de una captura, para revisar antes de guardar">
+  <img src="docs/img/binance.png" width="200" alt="Movimientos de Binance traídos solos: compras, Convert, P2P y Earn">
   <img src="docs/img/cartera.png" width="200" alt="Cartera: posiciones con su resultado">
   <img src="docs/img/insights.png" width="200" alt="Insights: análisis con fuentes">
 </p>
@@ -35,15 +37,20 @@ cartel amarillo. Con precios reales ese aviso no aparece.</sub>
   pegás el archivo entero: la app lee línea por línea, te muestra lo que
   entendió, marca lo que no cierra y carga todo junto. La cuenta se arrastra
   entre líneas, como cuando escribís.
-- **El historial de Binance, de una.** Ajustes → Tus datos → *Importar el
-  historial de Binance* toma la exportación de órdenes spot tal como sale del
-  exchange: lee las ejecutadas, omite las canceladas, rechaza los pares que no
-  cotizan contra dólares en vez de anotarlos mal y muestra todo antes de
-  guardar. Cada orden se guarda con su número, así que volver a exportar dentro
-  de unos meses reemplaza las que ya están y no duplica nada. Como esa
-  exportación no trae ingresos ni retiros de dinero, la app dice cuánto capital
-  consumieron las órdenes y ofrece anotarlo, con el monto y la fecha editables.
-  Cocos no tiene exportación: eso va a mano o pegado desde tus notas.
+- **Binance se carga solo.** En Ajustes → Binance conectás una clave de
+  *solo lectura* (si puede operar o retirar, la app no la acepta) y desde ahí
+  los movimientos llegan al abrir la app y al deslizar hacia abajo: compras y
+  ventas con su comisión, Convert, P2P en pesos, ingresos, retiros y lo que
+  paga Earn. Lo que ya habías cargado a mano no se duplica, lo que borrás no
+  vuelve, y la clave queda solo en el teléfono, fuera del backup y de Drive.
+  Sigue estando la importación del archivo de órdenes spot, para quien no
+  quiera crear una clave.
+- **Cocos desde capturas.** Cocos no tiene API ni exportación de movimientos.
+  Desde el + → *Varios a la vez, desde capturas* elegís capturas de la
+  pestaña Actividad: Claude o Gemini las pasan a líneas, y las revisás como
+  si las hubieras pegado de tus notas antes de guardar. Las capturas viajan al
+  modelo tal cual (la pantalla lo avisa), con tu propia clave. Sin clave,
+  copiás el pedido, lo mandás desde la app de Claude y pegás la respuesta.
 - **Una sola cartera.** Cocos y Binance en la misma vista, con el detalle por
   cuenta cuando lo querés.
 - **Precios al día.** Acciones y ETFs (Yahoo Finance), cripto (Binance), mercado
@@ -278,7 +285,7 @@ pantalla. Preferimos subestimar antes que inventar.
 ```
 src/
   app/                 Páginas (Resumen, Cartera, Movimientos, Insights, Ajustes)
-    api/               market · health · insights · parse (solo modo web)
+    api/               market · health · insights · parse · binance · capturas (solo modo web)
   components/
     charts/            Gráficos SVG propios, sin librería
     ui/                Primitivas: hoja inferior, campos, métricas
@@ -287,6 +294,7 @@ src/
     engine/            Ledger, valuación diaria, TWR, XIRR, riesgo
     market/            Proveedores de precios + simulador
     parse/             Frases en castellano rioplatense y el historial de Binance
+    binance/           La conexión de solo lectura con Binance (y uno de prueba)
     alerts/            Plan de alertas y puente a las preferencias de Android
     db.ts              IndexedDB (Dexie), backup e importación
     store.tsx          Estado de la app y sincronización
@@ -359,7 +367,7 @@ npm run build            # build de producción (web)
 npm run build:native     # exportación estática + copia al proyecto Android
 npm run apk              # lo anterior + compila el APK (necesita el SDK)
 npm run shoot            # capturas de todas las vistas
-npm run docs:shots       # regenera las imágenes del README
+npm run docs:shots       # regenera las imágenes del README (con WALTRA_MOCK=1)
 node scripts/icons.mjs   # regenera los íconos de la PWA
 ```
 
@@ -374,6 +382,11 @@ node scripts/icons.mjs   # regenera los íconos de la PWA
 - El MEP histórico viene de una fuente pública; para operaciones viejas en pesos
   conviene cargar el dólar de esa operación a mano.
 - El costo es promedio ponderado, no FIFO. Para impuestos puede no coincidir.
+- Binance no tiene un historial de "todas las operaciones": se piden par por
+  par. Una cripto que se compra y se vende entera el mismo día, entre dos
+  aperturas de la app, puede no aparecer. La API da solo seis meses de P2P, y
+  la primera vez traer un historial largo tarda unos minutos, porque Binance
+  limita lo que se le puede pedir por minuto.
 - Los insights son una lectura generada por un modelo a partir de búsquedas
   públicas. No es asesoramiento financiero.
 - **Las alertas dependen de Android, no de Waltra.** El intervalo que se pide

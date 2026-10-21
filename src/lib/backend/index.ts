@@ -5,6 +5,7 @@ import type { SyncRequest, SyncResult } from "@/lib/market/sync";
 import type { InsightRequestInput } from "@/lib/insights/digest";
 import type { GeneratedReport } from "@/lib/insights/generate";
 import type { ParsedEntry, ParseRequest } from "@/lib/insights/parse-entry";
+import type { CapturasRequest, CapturasResult } from "@/lib/insights/capturas";
 
 /**
  * De donde salen los datos, segun donde este corriendo la app.
@@ -143,6 +144,20 @@ export async function insights(
     // `apiKey` es la del proveedor elegido: la pantalla manda la que
     // corresponde, porque cada proveedor tiene la suya en los ajustes.
     return generate(pedido.provider, requireKey(ctx), true, pedido);
+  });
+}
+
+/**
+ * Leer movimientos de capturas de pantalla, con el proveedor elegido. En la web
+ * con la clave del servidor; en el telefono, con la del usuario.
+ */
+export async function readCaptures(req: CapturasRequest, ctx: BackendContext): Promise<CapturasResult> {
+  if (!ON_DEVICE) return post<CapturasResult>("/api/capturas", req, ctx);
+  return wrap(async () => {
+    const { CapturasRequestSchema, leerCapturas } = await import("@/lib/insights/capturas");
+    const { resolveProvider } = await import("@/lib/insights/providers");
+    const pedido = CapturasRequestSchema.parse(req);
+    return leerCapturas(resolveProvider(pedido.provider), requireKey(ctx), true, pedido);
   });
 }
 

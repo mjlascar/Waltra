@@ -7,6 +7,7 @@ import { IconWarning } from "@/components/icons";
 import { newId, useStore } from "@/lib/store";
 import {
   binanceAsset,
+  CAPITAL_IMPORTADO,
   parseBinanceOrders,
   sortOrders,
   type BinanceImport as Parsed,
@@ -25,7 +26,7 @@ const VISTA = 12;
  * Es fijo a proposito: reimportar el archivo con tres meses mas lo reemplaza
  * por el nuevo en vez de dejar dos ingresos sumados.
  */
-const CAPITAL_ID = "binance-capital-importado";
+const CAPITAL_ID = CAPITAL_IMPORTADO;
 
 /**
  * Importar el historial de órdenes de Binance.

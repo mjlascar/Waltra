@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { AddTransaction } from "@/components/AddTransaction";
+import { BulkImport } from "@/components/BulkImport";
 import {
   IconActivity,
   IconHoldings,
@@ -34,6 +35,7 @@ function samePath(pathname: string, href: string): boolean {
 export function Nav() {
   const pathname = usePathname();
   const [adding, setAdding] = useState(false);
+  const [capturas, setCapturas] = useState(false);
 
   return (
     <>
@@ -72,7 +74,15 @@ export function Nav() {
         </div>
       </nav>
 
-      <AddTransaction open={adding} onClose={() => setAdding(false)} />
+      <AddTransaction
+        open={adding}
+        onClose={() => setAdding(false)}
+        onCapturas={() => {
+          setAdding(false);
+          setCapturas(true);
+        }}
+      />
+      <BulkImport open={capturas} mode="capturas" onClose={() => setCapturas(false)} />
     </>
   );
 }

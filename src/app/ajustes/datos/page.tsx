@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { AjustesShell } from "@/components/ajustes/Shell";
@@ -20,6 +21,7 @@ export default function DatosAjustes() {
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
   const [bulk, setBulk] = useState(false);
+  const [capturas, setCapturas] = useState(false);
   const [binance, setBinance] = useState(false);
   const [wipeText, setWipeText] = useState("");
   const [wiping, setWiping] = useState(false);
@@ -87,9 +89,15 @@ export default function DatosAjustes() {
           <button className="btn btn-sm mt-2 w-full" onClick={() => setBulk(true)}>
             Pegar movimientos desde tus notas
           </button>
+          <button className="btn btn-sm mt-2 w-full" onClick={() => setCapturas(true)}>
+            Cargar desde capturas (Cocos y otros)
+          </button>
           <button className="btn btn-sm mt-2 w-full" onClick={() => setBinance(true)}>
             Importar el historial de Binance
           </button>
+          <Link href="/ajustes/binance" className="label mt-1.5 block text-center underline">
+            O conectala para que se cargue sola
+          </Link>
           <input
             ref={fileRef}
             type="file"
@@ -167,6 +175,7 @@ export default function DatosAjustes() {
         </div>
 
       <BulkImport open={bulk} onClose={() => setBulk(false)} />
+      <BulkImport open={capturas} mode="capturas" onClose={() => setCapturas(false)} />
       <BinanceImport open={binance} onClose={() => setBinance(false)} />
     </AjustesShell>
   );

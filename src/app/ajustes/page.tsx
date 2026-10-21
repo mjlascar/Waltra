@@ -11,6 +11,7 @@ import { alertRules } from "@/lib/alerts/plan";
 import { keyFor, providerInfo, resolveModel, resolveProvider } from "@/lib/insights/providers";
 import { relativeTime } from "@/lib/format";
 import { useUpdate } from "@/lib/use-update";
+import { useBinanceConnection } from "@/lib/binance/use-connection";
 
 /**
  * Indice de ajustes.
@@ -35,6 +36,7 @@ export default function Ajustes() {
   const modelo = info.models.find((m) => m.id === modeloId)?.label ?? info.label;
   const clave = ON_DEVICE ? Boolean(keyFor(provider, settings)) : true;
   const update = useUpdate();
+  const binance = useBinanceConnection();
 
   const secciones = [
     // Sin el cliente de Google compilado no hay nada que conectar: la seccion
@@ -78,6 +80,13 @@ export default function Ajustes() {
           },
         ]
       : []),
+    {
+      href: "/ajustes/binance",
+      titulo: "Binance",
+      detalle: "Movimientos que se cargan solos",
+      estado: !binance ? "sin conectar" : binance.lastRun ? relativeTime(binance.lastRun.at) : "conectada",
+      alerta: binance?.authError ? "revisar la clave" : null,
+    },
     {
       href: "/ajustes/datos",
       titulo: "Tus datos",

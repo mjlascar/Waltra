@@ -13,6 +13,7 @@ import { Allocation } from "@/components/charts/Allocation";
 import { IconChevron } from "@/components/icons";
 import { useStore } from "@/lib/store";
 import { useUpdate } from "@/lib/use-update";
+import { useBinanceConnection } from "@/lib/binance/use-connection";
 import { money, percent, quantity as fmtQty, shortDate, TX_SHORT } from "@/lib/format";
 import { rangeStart, type RangeKey } from "@/lib/date";
 import type { AccountView } from "@/lib/engine/portfolio";
@@ -77,6 +78,7 @@ export default function Overview() {
     updateSettings,
   } = useStore();
   const update = useUpdate();
+  const binance = useBinanceConnection();
   /**
    * La billetera que mira el grafico. Filtra lo de arriba (el total, el
    * grafico, las metricas y la composicion); los avisos y la distribucion por
@@ -349,6 +351,20 @@ export default function Overview() {
           </span>
           <span className="flex shrink-0 items-center gap-1" style={{ color: "var(--color-ink-2)" }}>
             Actualizar
+            <IconChevron size={11} />
+          </span>
+        </Link>
+      )}
+
+      {binance?.authError && (
+        <Link
+          href="/ajustes/binance"
+          className="mb-3 flex items-center justify-between gap-2 p-2.5 text-[12px]"
+          style={{ border: "1px solid var(--color-line-strong)", background: "var(--color-surface)", color: "var(--color-warn)" }}
+        >
+          <span>Binance dejó de aceptar la clave: los movimientos no se están cargando solos.</span>
+          <span className="flex shrink-0 items-center gap-1" style={{ color: "var(--color-ink-2)" }}>
+            Revisar
             <IconChevron size={11} />
           </span>
         </Link>

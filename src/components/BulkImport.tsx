@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Sheet } from "@/components/ui/Sheet";
 import { Field } from "@/components/ui/Field";
+import { CapturasPanel } from "@/components/CapturasPanel";
 import { IconWarning } from "@/components/icons";
 import { newId, useStore } from "@/lib/store";
 import { parseBulk, summarize, type BulkRow } from "@/lib/parse/bulk";
@@ -13,11 +14,13 @@ import { txColor } from "@/lib/tx-style";
 import { today } from "@/lib/date";
 import type { Asset, Transaction } from "@/lib/types";
 
+// Desde Cocos, QQQ es el CEDEAR: los montos son los de 10 CEDEARs, no los de
+// la accion de Nueva York.
 const EJEMPLO = `12/03/2025 pasé 500 dólares a cocos
-13/03/2025 compré 300 de QQQ a 430
+13/03/2025 compré 10 QQQ por 240 usd
 20/04/2025 pasé 200 a binance
 21/04/2025 compré 0,002 BTC a 84000
-15/06/2025 vendí 0,3 QQQ a 470`;
+15/06/2025 vendí 3 QQQ por 78 usd`;
 
 /**
  * Importar un bloc de notas entero.
@@ -27,7 +30,16 @@ const EJEMPLO = `12/03/2025 pasé 500 dólares a cocos
  * completo, revisa fila por fila lo que la app entendio, saca lo que no va y
  * guarda todo junto.
  */
-export function BulkImport({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function BulkImport({
+  open,
+  onClose,
+  mode = "notas",
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** "capturas": el texto lo llena la lectura de capturas de pantalla. */
+  mode?: "notas" | "capturas";
+}) {
   const { accounts, assets, transactions, db, refresh } = useStore();
   const [text, setText] = useState("");
   const [excluded, setExcluded] = useState<Set<number>>(new Set());
@@ -36,10 +48,15 @@ export function BulkImport({ open, onClose }: { open: boolean; onClose: () => vo
   const [done, setDone] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const defaultAccount = useMemo(
+  const ultimaCuenta = useMemo(
     () => lastUsedAccountId(transactions, accounts),
     [transactions, accounts],
   );
+  // Las capturas casi siempre son de Cocos, que no tiene otra forma de sacar
+  // los movimientos; igual se puede elegir otra cuenta.
+  const [cuentaCapturas, setCuentaCapturas] = useState<string | null>(null);
+  const cocos = accounts.find((a) => a.broker === "cocos" && !a.archived)?.id;
+  const defaultAccount = mode === "capturas" ? (cuentaCapturas ?? cocos ?? ultimaCuenta) : ultimaCuenta;
 
   const rows = useMemo(
     () =>
@@ -157,7 +174,7 @@ export function BulkImport({ open, onClose }: { open: boolean; onClose: () => vo
         setDone(null);
         onClose();
       }}
-      title="Importar desde tus notas"
+      title={mode === "capturas" ? "Cargar desde capturas" : "Importar desde tus notas"}
       footer={
         done !== null ? (
           <button
@@ -201,12 +218,29 @@ export function BulkImport({ open, onClose }: { open: boolean; onClose: () => vo
         </div>
       ) : (
         <>
-          <p className="label mb-3 leading-relaxed">
-            Pegá tus anotaciones, una por línea. Las líneas vacías y las que empiezan
-            con <code>#</code> se omiten.
-          </p>
+          {mode === "capturas" ? (
+            <>
+              <p className="label mb-3 leading-relaxed">
+                Capturas de la actividad de tu broker. Abajo revisás qué se leyó antes de
+                guardar; las líneas con <code>#</code> no se cargan.
+              </p>
+              <CapturasPanel
+                accountId={defaultAccount}
+                onAccountChange={setCuentaCapturas}
+                onText={(leido) => {
+                  setText((prev) => (prev.trim() ? `${prev.trim()}\n${leido}` : leido));
+                  setExcluded(new Set());
+                }}
+              />
+            </>
+          ) : (
+            <p className="label mb-3 leading-relaxed">
+              Pegá tus anotaciones, una por línea. Las líneas vacías y las que empiezan
+              con <code>#</code> se omiten.
+            </p>
+          )}
 
-          <Field label="Tus notas">
+          <Field label={mode === "capturas" ? "Lo que se leyó" : "Tus notas"}>
             <textarea
               className="input num"
               rows={7}
@@ -215,12 +249,12 @@ export function BulkImport({ open, onClose }: { open: boolean; onClose: () => vo
                 setText(e.target.value);
                 setExcluded(new Set());
               }}
-              placeholder={EJEMPLO}
+              placeholder={mode === "capturas" ? "Acá aparecen los movimientos de las capturas." : EJEMPLO}
               style={{ fontSize: 12, lineHeight: 1.5 }}
             />
           </Field>
 
-          {text.trim() === "" && (
+          {text.trim() === "" && mode === "notas" && (
             <button
               className="btn btn-sm mt-2 w-full"
               onClick={() => setText(EJEMPLO)}

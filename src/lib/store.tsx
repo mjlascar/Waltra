@@ -33,6 +33,7 @@ import { proveedoresCaidos } from "@/lib/market/down";
 import { keyFor, resolveProvider } from "@/lib/insights/providers";
 import { BENCHMARK_ASSET_ID, benchmarkRef } from "@/lib/benchmark";
 import { underlyingId, underlyingSymbol } from "@/lib/engine/cedear-ratio";
+import type { RunResult as BinanceResult } from "@/lib/binance/sync";
 
 export type SyncState =
   | { status: "idle" }
@@ -62,6 +63,12 @@ interface StoreValue {
   db: WaltraDB | null;
 
   refresh: (options?: { force?: boolean }) => Promise<void>;
+  /**
+   * Traer lo nuevo de Binance, si esta conectado. Corre solo con `refresh`;
+   * esto es para el boton de Ajustes, que con `force` no espera el minimo
+   * entre pasadas.
+   */
+  syncBinance: (options?: { force?: boolean }) => Promise<BinanceResult | null>;
   saveTransaction: (tx: Transaction) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
   saveAsset: (asset: Asset) => Promise<void>;
@@ -355,6 +362,52 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [db, backend, settings],
   );
 
+  /**
+   * Una pasada de Binance, si hay una clave cargada. El codigo se carga recien
+   * aca: quien no conecto Binance no lo baja nunca.
+   */
+  const binanceSync = useCallback(
+    async (options?: { force?: boolean }): Promise<BinanceResult | null> => {
+      if (!db) return null;
+      const conn = await db.connections.get("binance");
+      if (!conn?.apiKey) return null;
+      const [{ BinanceClient }, { binanceTransport }, { runBinance }] = await Promise.all([
+        import("@/lib/binance/client"),
+        import("@/lib/binance/transport"),
+        import("@/lib/binance/sync"),
+      ]);
+      const client = new BinanceClient(conn, binanceTransport(backend()));
+      return runBinance(db, client, { force: options?.force });
+    },
+    [db, backend],
+  );
+
+  // Una pasada que se corto por el limite de Binance sigue sola en un minuto.
+  const followUp = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshRef = useRef<(options?: { force?: boolean }) => Promise<void>>(refresh);
+  const continuar = useCallback((result: { partial: boolean } | null | undefined) => {
+    if (!result?.partial || followUp.current) return;
+    followUp.current = setTimeout(() => {
+      followUp.current = null;
+      if (document.visibilityState === "visible") void refreshRef.current();
+    }, 65_000);
+  }, []);
+
+  /**
+   * Precios y Binance a la vez. Si Binance trajo un activo que no estaba, una
+   * vuelta mas de precios para que no quede valuado al costo.
+   */
+  const refreshAll = useCallback(
+    async (options?: { force?: boolean }) => {
+      const binance = binanceSync().catch(() => null);
+      await refresh(options);
+      const result = await binance;
+      if (result?.newAssets) await refresh();
+      continuar(result);
+    },
+    [binanceSync, refresh, continuar],
+  );
+
   // Primer refresco automatico al abrir, y despues cada 10 minutos mientras la
   // pantalla este visible. No tiene sentido consumir bateria en segundo plano.
   const bootRef = useRef(false);
@@ -367,17 +420,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Arrancar la busqueda al montar es justamente para lo que sirve un
     // efecto; que `refresh` marque "sincronizando" al empezar es parte de eso.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void refresh();
-  }, [ready, db, assets.length, transactions.length, refresh]);
+    void refreshAll();
+  }, [ready, db, assets.length, transactions.length, refreshAll]);
+
+  // Binance tambien con la base vacia: es justamente como se llena.
+  const binanceBootRef = useRef(false);
+  useEffect(() => {
+    if (!ready || !db || binanceBootRef.current) return;
+    binanceBootRef.current = true;
+    void binanceSync()
+      // Si la pasada no corrio (la anterior fue hace segundos) pero quedo
+      // historial por traer, la continuacion igual se agenda.
+      .then(async (result) => continuar(result ?? (await db.connections.get("binance"))?.lastRun))
+      .catch(() => {});
+  }, [ready, db, binanceSync, continuar]);
 
   // El temporizador guarda la funcion en una referencia en vez de depender de
   // ella: `refresh` cambia de identidad cada vez que se tocan los ajustes, y
   // si el intervalo se recreara con cada cambio, alguien que edita su perfil
   // cada nueve minutos nunca veria un refresco automatico.
-  const refreshRef = useRef(refresh);
   useEffect(() => {
-    refreshRef.current = refresh;
-  }, [refresh]);
+    refreshRef.current = refreshAll;
+  }, [refreshAll]);
+
+  useEffect(
+    () => () => {
+      if (followUp.current) clearTimeout(followUp.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!ready) return;
@@ -405,7 +476,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       portfolioUsd,
       sync,
       db,
-      refresh,
+      refresh: refreshAll,
+      syncBinance: async (options) => {
+        const result = await binanceSync(options);
+        if (result?.newAssets || result?.added) void refresh();
+        continuar(result);
+        return result;
+      },
       backend,
       fxAt: (day) => fxTable.at(day),
       portfolioFor: (accountIds) => {
@@ -424,7 +501,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         await db?.transactions.put({ ...tx, updatedAt: new Date().toISOString() });
       },
       deleteTransaction: async (id) => {
-        await db?.transactions.delete(id);
+        if (!db) return;
+        await db.transactions.delete(id);
+        // Lo que vino de Binance y se borra a mano no tiene que volver en la
+        // proxima pasada.
+        if (id.startsWith("binance-")) {
+          const { forgetBinanceTx } = await import("@/lib/binance/sync");
+          await forgetBinanceTx(db, id);
+        }
       },
       saveAsset: async (asset) => {
         await db?.assets.put(asset);
@@ -460,7 +544,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (stale.length) await db.insights.bulkDelete(stale);
       },
     }),
-    [ready, dbError, accounts, assets, transactions, settings, insights, portfolio, portfolioUsd, base, fxTable, sync, db, refresh, backend, priceSeries, quotes, fxRates],
+    [ready, dbError, accounts, assets, transactions, settings, insights, portfolio, portfolioUsd, base, fxTable, sync, db, refresh, refreshAll, binanceSync, continuar, backend, priceSeries, quotes, fxRates],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

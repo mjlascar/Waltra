@@ -63,5 +63,35 @@ export function anthropicEngine(apiKey: string, onDevice: boolean): Engine {
       });
       return structured.parsed_output ?? null;
     },
+
+    async leer({ model, system, user, images }) {
+      try {
+        const res = await client.messages.create({
+          model,
+          max_tokens: 8000,
+          system,
+          messages: [
+            {
+              role: "user",
+              content: [
+                ...images.map((img) => ({
+                  type: "image" as const,
+                  source: { type: "base64" as const, media_type: img.mime, data: img.data },
+                })),
+                { type: "text" as const, text: user },
+              ],
+            },
+          ],
+        });
+        return res.content
+          .filter((block): block is Anthropic.TextBlock => block.type === "text")
+          .map((block) => block.text)
+          .join("\n");
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const status = err instanceof Anthropic.APIError ? (err.status ?? 502) : 502;
+        throw new ModelError(message, status === 401 ? "bad_key" : "api_error", status);
+      }
+    },
   };
 }
