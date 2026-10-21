@@ -74,38 +74,24 @@ export interface BinanceConnection {
   /** YYYY-MM-DD: lo anterior ya estaba cargado y no se trae. */
   since: string;
   createdAt: string;
-  /**
-   * Hasta donde se leyo cada historial, en milisegundos. En las operaciones
-   * spot es otra cosa: el ultimo id leido de cada par ("BTC/USDT"). En Earn,
-   * el primer mes que todavia puede cambiar.
-   */
-  cursors: {
-    trades: Record<string, number>;
-    deposits?: number;
-    withdrawals?: number;
-    converts?: number;
-    p2p?: number;
-    fiat?: number;
-    payments?: number;
-    earn?: number;
-  };
+  /** El primer mes de Earn que todavia no se cargo (los meses se cargan cerrados, una vez). */
+  cursors: { earn?: number };
   /** Saldos de la billetera spot en la pasada anterior: si no cambiaron, no hubo operaciones. */
   balances?: Record<string, number>;
-  /**
-   * Pares que falta leer ("BTC/USDT"): los de un saldo que cambio y los de la
-   * revision completa en curso. Se guarda: una pasada cortada sigue donde quedo.
-   */
+  /** Lo bloqueado en ordenes abiertas en la pasada anterior: si cambia, una orden termino. */
+  locked?: Record<string, number>;
+  /** Pares que falta mirar ("BTC/USDT"). Se guarda: una pasada cortada sigue donde quedo. */
   queue?: string[];
-  /** Activos que alguna vez hubo en la cuenta, aunque hoy esten en cero: sus pares se revisan. */
-  known?: string[];
-  /** Cuando se encolo la ultima revision de todos los pares. */
-  fullScanAt?: number;
-  /** Cuando se leyeron por ultima vez Earn y las compras con tarjeta. */
+  /**
+   * Historiales que una pasada corto antes de llegar a lo que ya estaba: desde
+   * donde seguir para atras, en ms. Sin esto, la proxima pararia en lo recien
+   * guardado y lo mas viejo no entraria nunca.
+   */
+  resume?: Record<string, number>;
+  /** Cuando se miraron por ultima vez las compras con tarjeta y Earn. */
   slowAt?: number;
   /** El historial en pesos pesa mucho: una vez por dia. */
   fiatAt?: number;
-  /** Lo que hubo en la billetera dia por dia: una vez por dia. */
-  snapshotAt?: number;
   /** Cada registro de Binance que ya estaba cargado a mano, con el id de lo cargado. */
   matched?: Record<string, string>;
   /** Movimientos traidos que el usuario borro: no se vuelven a crear. */

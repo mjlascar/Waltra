@@ -100,39 +100,24 @@ export interface SpotAccount {
   uid?: number;
   /** Lo que hay en la billetera spot, libre mas bloqueado en ordenes abiertas. */
   balances: Record<string, number>;
+  /**
+   * Lo bloqueado en ordenes abiertas. Cancelar una orden a medio ejecutar no
+   * cambia el total, pero si esto: es la forma de enterarse.
+   */
+  locked: Record<string, number>;
 }
 
 export async function spotAccount(c: BinanceClient): Promise<SpotAccount> {
   const r = await c.signed<{ balances?: unknown; uid?: unknown }>("/api/v3/account", { omitZeroBalances: true });
   const balances: Record<string, number> = {};
+  const locked: Record<string, number> = {};
   for (const b of list(r.balances)) {
     const total = num(b.free) + num(b.locked);
     if (total > 0) balances[str(b.asset)] = total;
+    if (num(b.locked) > 0) locked[str(b.asset)] = num(b.locked);
   }
   const uid = num(r.uid);
-  return { uid: uid > 0 ? uid : undefined, balances };
-}
-
-/**
- * Los activos que hubo en la billetera spot en el ultimo mes, dia por dia.
- * Es lo unico que muestra una cripto que se compro y se vendio entera: su
- * saldo de hoy es cero y no aparece en ningun otro historial. Pesa 2400.
- */
-export async function snapshotAssets(c: BinanceClient, start: number, end: number): Promise<Set<string>> {
-  const r = await c.signed<{ snapshotVos?: unknown }>("/sapi/v1/accountSnapshot", {
-    type: "SPOT",
-    startTime: start,
-    endTime: end,
-    limit: 30,
-  });
-  const out = new Set<string>();
-  for (const vo of list(r.snapshotVos)) {
-    const data = vo.data && typeof vo.data === "object" ? (vo.data as Record<string, unknown>) : {};
-    for (const b of list(data.balances)) {
-      if (num(b.free) + num(b.locked) > 0) out.add(str(b.asset));
-    }
-  }
-  return out;
+  return { uid: uid > 0 ? uid : undefined, balances, locked };
 }
 
 /** Los pares que existen hoy. Pesa 4 y trae todos de una vez. */
@@ -194,12 +179,29 @@ function fills(r: unknown): Fill[] {
 
 export const TRADES_PAGE = 1000;
 
-/** Una pagina de ejecuciones de un par desde un id, de la mas vieja a la mas nueva. */
-export async function tradesPage(c: BinanceClient, symbol: string, fromId: number): Promise<Fill[]> {
-  return fills(await c.signed("/api/v3/myTrades", { symbol, fromId, limit: TRADES_PAGE }));
+export interface OrderInfo {
+  orderId: number;
+  /** NEW y PARTIALLY_FILLED siguen abiertas; FILLED, CANCELED, EXPIRED... ya terminaron. */
+  status: string;
+  executedQty: number;
+  /** La ultima vez que cambio: cuando termino de ejecutarse o se cancelo. */
+  updateTime: number;
 }
 
-/** Las ejecuciones de una orden, para rearmarla entera si se ejecuto en partes. */
+/** Las ultimas `limit` ordenes de un par, de la mas nueva a la mas vieja. Pesa 20. */
+export async function recentOrders(c: BinanceClient, symbol: string, limit: number): Promise<OrderInfo[]> {
+  const r = await c.signed("/api/v3/allOrders", { symbol, limit });
+  return list(r)
+    .map((o) => ({
+      orderId: num(o.orderId),
+      status: str(o.status),
+      executedQty: num(o.executedQty),
+      updateTime: num(o.updateTime) || num(o.time),
+    }))
+    .sort((a, b) => b.updateTime - a.updateTime);
+}
+
+/** Las ejecuciones de una orden, con lo que se cobro de comision en cada una. Pesa 5. */
 export async function orderFills(c: BinanceClient, symbol: string, orderId: number): Promise<Fill[]> {
   return fills(await c.signed("/api/v3/myTrades", { symbol, orderId, limit: TRADES_PAGE }));
 }

@@ -14,7 +14,7 @@ distancia entre ellas es —literalmente— lo que ganaste.
   <img src="docs/img/carga.png" width="200" alt="Carga de un movimiento escribiendo la frase">
   <img src="docs/img/importar.png" width="200" alt="Importar un bloc de notas entero">
   <img src="docs/img/capturas.png" width="200" alt="Movimientos de Cocos leídos de una captura, para revisar antes de guardar">
-  <img src="docs/img/binance.png" width="200" alt="Movimientos de Binance traídos solos: compras, Convert, P2P y Earn">
+  <img src="docs/img/binance.png" width="200" alt="Movimientos de Binance traídos solos: compras, Convert y P2P">
   <img src="docs/img/cartera.png" width="200" alt="Cartera: posiciones con su resultado">
   <img src="docs/img/insights.png" width="200" alt="Insights: análisis con fuentes">
 </p>
@@ -39,9 +39,10 @@ cartel amarillo. Con precios reales ese aviso no aparece.</sub>
   entre líneas, como cuando escribís.
 - **Binance se carga solo.** En Ajustes → Binance conectás una clave de
   *solo lectura* (si puede operar o retirar, la app no la acepta) y desde ahí
-  los movimientos llegan al abrir la app y al deslizar hacia abajo: compras y
-  ventas con su comisión, Convert, P2P en pesos, ingresos, retiros y lo que
-  paga Earn. Lo que ya habías cargado a mano no se duplica, lo que borrás no
+  los movimientos nuevos llegan al abrir la app y al deslizar hacia abajo:
+  compras y ventas con su comisión, Convert, P2P en pesos, ingresos, retiros
+  y, una vez por mes, lo que pagó Earn. Trae solo lo último, hasta lo que ya
+  tenías cargado, y nunca cambia un movimiento que ya está. Lo que borrás no
   vuelve, y la clave queda solo en el teléfono, fuera del backup y de Drive.
   Sigue estando la importación del archivo de órdenes spot, para quien no
   quiera crear una clave.
@@ -383,10 +384,9 @@ node scripts/icons.mjs   # regenera los íconos de la PWA
   conviene cargar el dólar de esa operación a mano.
 - El costo es promedio ponderado, no FIFO. Para impuestos puede no coincidir.
 - Binance no tiene un historial de "todas las operaciones": se piden par por
-  par. Una cripto que se compra y se vende entera el mismo día, entre dos
-  aperturas de la app, puede no aparecer. La API da solo seis meses de P2P, y
-  la primera vez traer un historial largo tarda unos minutos, porque Binance
-  limita lo que se le puede pedir por minuto.
+  par, y solo los del activo cuyo saldo cambió. Una cripto que se compra y se
+  vende entera entre dos aperturas de la app no aparece; para eso está la
+  importación del archivo. La API da solo seis meses de P2P.
 - Los insights son una lectura generada por un modelo a partir de búsquedas
   públicas. No es asesoramiento financiero.
 - **Las alertas dependen de Android, no de Waltra.** El intervalo que se pide

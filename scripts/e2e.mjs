@@ -1099,7 +1099,6 @@ console.log("\n16. Binance conectada (la de prueba de WALTRA_MOCK=1)");
   check("trae una compra spot", lista.includes("binance btc/usdt"), lista.slice(0, 400));
   check("trae el P2P en pesos y su cambio", lista.includes("p2p: compra de usdt") && lista.includes("p2p: pago por 700 usdt"));
   check("trae Convert", lista.includes("convert usdt → eth"));
-  check("trae el Earn del mes", lista.includes("earn de usdt"));
   await pagina.goto(BASE + "/ajustes/binance", { waitUntil: "networkidle" });
   await pagina.waitForTimeout(800);
   await pagina.getByRole("button", { name: /^Desconectar$/ }).click();

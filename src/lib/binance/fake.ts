@@ -41,10 +41,12 @@ export interface FakeBinance {
     totalPrice: number; orderStatus: string; createTime: number; commission: number; advertisementRole?: string;
   }[];
   rewards: { asset: string; rewards: number; time: number; type: "REALTIME" | "BONUS" }[];
-  /** Saldos de dias pasados, para `accountSnapshot`. */
-  snapshots?: { time: number; balances: Record<string, number> }[];
   /** El numero de cuenta. */
   uid?: number;
+  /** Lo bloqueado en ordenes abiertas, por activo (parte de `balances`). */
+  locked?: Record<string, number>;
+  /** El estado de una orden, si no es FILLED: para las que siguen abiertas o se cancelaron a medias. */
+  orderStatus?: Record<number, string>;
   lockedRewards: { positionId: number; asset: string; amount: number; time: number }[];
   /** Si esta, todo pedido contesta este error (para probar 429, claves borradas...). */
   failWith?: { status: number; code?: number; msg?: string; retryAfter?: number };
@@ -64,6 +66,7 @@ const WEIGHTS: Record<string, { ip?: number; sapiIp?: number; uid?: number }> = 
   "/api/v3/ticker/price": { ip: 4 },
   "/api/v3/klines": { ip: 2 },
   "/api/v3/myTrades": { ip: 20 },
+  "/api/v3/allOrders": { ip: 20 },
   "/sapi/v1/account/apiRestrictions": { sapiIp: 1 },
   "/sapi/v1/capital/deposit/hisrec": { sapiIp: 1 },
   "/sapi/v1/capital/withdraw/history": { uid: 18_000 },
@@ -73,7 +76,6 @@ const WEIGHTS: Record<string, { ip?: number; sapiIp?: number; uid?: number }> = 
   "/sapi/v1/fiat/payments": { sapiIp: 1 },
   "/sapi/v1/simple-earn/flexible/history/rewardsRecord": { sapiIp: 150 },
   "/sapi/v1/simple-earn/locked/history/rewardsRecord": { sapiIp: 150 },
-  "/sapi/v1/accountSnapshot": { sapiIp: 2400 },
 };
 
 const SIGNED = new Set(Object.keys(WEIGHTS).filter((p) => !["/api/v3/time", "/api/v3/ticker/price", "/api/v3/klines"].includes(p)));
@@ -150,31 +152,15 @@ export function fakeTransport(
         return ok({ serverTime: now() });
       case "/sapi/v1/account/apiRestrictions":
         return ok({ enableReading: true, ipRestrict: false, createTime: 0, ...data.permissions });
-      case "/sapi/v1/accountSnapshot": {
-        if (q.get("type") !== "SPOT") return error(400, -1102, "type es obligatorio.");
-        if (ventana(30 * DAY)) return error(400, -1127, "The query time period must be less then 30 days.");
-        if (s !== undefined && s < now() - 31 * DAY) return error(400, -1127, "Support query within the last one month only.");
-        return ok({
-          code: 200,
-          msg: "",
-          snapshotVos: (data.snapshots ?? [])
-            .filter((v) => within(v.time, s, e))
-            .map((v) => ({
-              type: "spot",
-              updateTime: v.time,
-              data: {
-                totalAssetOfBtc: "0",
-                balances: Object.entries(v.balances).map(([asset, b]) => ({ asset, free: String(b), locked: "0" })),
-              },
-            })),
-        });
-      }
       case "/api/v3/account":
         return ok({
           uid: data.uid ?? 4242,
           balances: Object.entries(data.balances)
             .filter(([, v]) => v > 0 || q.get("omitZeroBalances") !== "true")
-            .map(([asset, v]) => ({ asset, free: String(v), locked: "0" })),
+            .map(([asset, v]) => {
+              const locked = data.locked?.[asset] ?? 0;
+              return { asset, free: String(v - locked), locked: String(locked) };
+            }),
         });
       case "/api/v3/ticker/price":
         return ok(Object.entries(data.prices).map(([symbol, price]) => ({ symbol, price: String(price) })));
@@ -182,6 +168,27 @@ export function fakeTransport(
         const p = data.prices[q.get("symbol") ?? ""];
         if (!p) return error(400, -1121, "Invalid symbol.");
         return ok([[s ?? 0, String(p), String(p), String(p), String(p), "1", 0, "0", 1, "0", "0", "0"]]);
+      }
+      case "/api/v3/allOrders": {
+        const symbol = q.get("symbol") ?? "";
+        if (!data.prices[symbol]) return error(400, -1121, "Invalid symbol.");
+        const porOrden = new Map<number, FakeFill[]>();
+        for (const t of data.trades[symbol] ?? []) porOrden.set(t.orderId, [...(porOrden.get(t.orderId) ?? []), t]);
+        // Como Binance: las mas recientes, ordenadas por id de la mas vieja a la mas nueva.
+        const limit = Math.min(int("limit") ?? 500, 1000);
+        const ordenes = [...porOrden.entries()]
+          .map(([orderId, fs]) => ({
+            symbol,
+            orderId,
+            status: data.orderStatus?.[orderId] ?? "FILLED",
+            side: fs[0].isBuyer ? "BUY" : "SELL",
+            executedQty: String(fs.reduce((a, f) => a + f.qty, 0)),
+            cummulativeQuoteQty: String(fs.reduce((a, f) => a + f.quoteQty, 0)),
+            time: Math.min(...fs.map((f) => f.time)),
+            updateTime: Math.max(...fs.map((f) => f.time)),
+          }))
+          .sort((a, b) => a.orderId - b.orderId);
+        return ok(ordenes.slice(-limit));
       }
       case "/api/v3/myTrades": {
         const symbol = q.get("symbol") ?? "";
@@ -312,7 +319,7 @@ export function demoFake(now = Date.now()): FakeBinance {
   const d = (dias: number) => now - dias * DAY;
   const f = emptyFake();
   // Los saldos son los que dejan los movimientos de abajo: la cuenta cierra.
-  f.balances = { BTC: 0.00999, ETH: 0.4997, USDT: 101 };
+  f.balances = { BTC: 0.00999, ETH: 0.4997, USDT: 100 };
   f.deposits = [{ id: "dep-demo-1", coin: "USDT", amount: 1500, status: 1, insertTime: d(20) }];
   f.trades = {
     BTCUSDT: [
@@ -326,9 +333,5 @@ export function demoFake(now = Date.now()): FakeBinance {
     orderStatus: "COMPLETED", createTime: d(15), commission: 0 }];
   f.converts = [{ orderId: "cv-demo-1", fromAsset: "USDT", fromAmount: 600, toAsset: "ETH", toAmount: 0.2,
     orderStatus: "SUCCESS", createTime: d(5) }];
-  f.rewards = [
-    { asset: "USDT", rewards: 0.5, time: d(3), type: "REALTIME" },
-    { asset: "USDT", rewards: 0.5, time: d(2), type: "REALTIME" },
-  ];
   return f;
 }

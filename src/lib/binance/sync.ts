@@ -8,18 +8,20 @@ import * as api from "./api";
 import * as map from "./map";
 
 /**
- * Traer de Binance lo nuevo, solo.
+ * Traer de Binance lo ultimo que paso, solo.
  *
  * Corre al abrir la app, al volver a ella y al tirar la pantalla para abajo
- * (ver `store.tsx`). Cada historial recuerda hasta donde se leyo, asi que una
- * pasada normal pregunta por los ultimos dias y nada mas.
+ * (ver `store.tsx`). La regla es la de quien copia a mano sus movimientos
+ * nuevos: de cada historial se mira lo mas reciente, de lo mas nuevo a lo mas
+ * viejo, y apenas aparece algo que ya estaba cargado se para. Lo de antes ya
+ * esta, como haya quedado. Si todo lo que vino es nuevo, se pide mas atras, y
+ * nunca antes del dia desde el que el usuario eligio traer.
  *
- * Las operaciones spot se piden par por par (Binance no tiene "todos los
- * pares"), y ahi esta el costo grande. Los pares a leer van a una cola que se
- * guarda: los del activo cuyo saldo spot cambio desde la pasada anterior,
- * todos los conocidos una vez por dia, y la primera vez todos los que cotizan
- * contra dolares o pesos, porque una cripto que se compro y se vendio entera
- * no deja otro rastro. Si la pasada se corta, la proxima sigue donde quedo.
+ * **Solo agrega.** Un movimiento que ya existe no se reemplaza ni se corrige,
+ * venga del archivo de Binance, de una carga a mano o de una pasada anterior:
+ * si el usuario lo dejo asi, por algo sera. Y nada de revisar la historia
+ * entera: las ordenes spot se miran solo en los pares del activo cuyo saldo
+ * cambio desde la pasada anterior.
  *
  * Binance limita lo que se le puede pedir por minuto y banea la IP que
  * insiste. La pasada lleva la cuenta con lo que dicen sus cabeceras y, si se
@@ -30,19 +32,19 @@ import * as map from "./map";
 export const MIN_INTERVAL = 45_000;
 /** "Traer ahora" no espera el minimo, pero tampoco pregunta dos veces seguidas. */
 const MIN_FORCED = 10_000;
-/** Lo ya leido se vuelve a mirar esta cantidad de dias: un ingreso o un retiro pueden tardar en acreditarse. */
-const OVERLAP = 7 * api.DAY;
-/** Earn y las compras con tarjeta cambian a lo sumo una vez por dia. */
+/** Las compras con tarjeta cambian poco: unas veces por dia alcanza. */
 const SLOW_EVERY = 6 * 3_600_000;
+/** El historial en pesos pesa 45.000 por pedido: una vez por dia. */
 const DAILY = 24 * 3_600_000;
 /** Contra que se cotiza lo que haya en la cuenta. */
 const QUOTES = ["USDT", "FDUSD", "USDC", "TUSD", "BUSD", "DAI", "ARS", "BTC", "ETH", "BNB"];
-/** Las cotizaciones en efectivo: la primera revision lee todos sus pares. Del sufijo mas largo al mas corto. */
-const CASH_QUOTES = ["FDUSD", "USDT", "USDC", "TUSD", "DAI", "ARS"];
+/** De cada par se piden las ultimas ordenes; si todas son nuevas, se pide de nuevo, mas. */
+const FIRST_PAGE = 10;
+const SECOND_PAGE = 1000;
 /** Lo que una pasada se permite gastar del limite por minuto, con margen. */
 const BUDGET: Usage = { ip: 4000, sapiIp: 9000, uid: 120_000 };
-/** Los activos que se recuerdan, para no crecer sin techo. */
-const MAX_KNOWN = 600;
+/** Un mes de Earn se carga una vez, unos dias despues de que termino. */
+const EARN_GRACE = 3 * api.DAY;
 
 /** La pasada se queda sin cupo: se guarda lo que hay y sigue en la proxima. */
 class OutOfBudget extends Error {}
@@ -81,13 +83,8 @@ function newId(): string {
 /** Un error que tiene que cortar la pasada: insistir no sirve o empeora. */
 const corta = (err: unknown) => err instanceof BinanceError && (err.kind === "rate" || err.kind === "network");
 
-/** "BTCUSDT" -> BTC contra USDT, si cotiza contra efectivo. */
-function cashPair(symbol: string): { base: string; quote: string } | null {
-  for (const quote of CASH_QUOTES) {
-    if (symbol.length > quote.length && symbol.endsWith(quote)) return { base: symbol.slice(0, -quote.length), quote };
-  }
-  return null;
-}
+/** Una orden que sigue abierta todavia puede ejecutarse mas: se carga cuando termine. */
+const abierta = (status: string) => status === "NEW" || status === "PARTIALLY_FILLED" || status === "PENDING_NEW";
 
 /** La lista de pares cambia muy de vez en cuando: se guarda unas horas por transporte. */
 const symbolCache = new WeakMap<BinanceTransport, { at: number; set: Set<string> }>();
@@ -98,6 +95,111 @@ async function symbolsOf(client: BinanceClient, at: number): Promise<Set<string>
   const set = await api.symbols(client);
   symbolCache.set(client.transport, { at, set });
   return set;
+}
+
+/**
+ * El movimiento de un grupo que se compara con lo cargado a mano: la compra
+ * o la venta si hay (una cripto que llega es "compré ETH"), si no el ingreso
+ * o el retiro. Un interes, un ajuste o un cambio de moneda sueltos no se
+ * comparan: lo cargado a mano de esas clases no tiene con que parecerse.
+ */
+function anchorOf(g: map.Group): map.Draft | undefined {
+  return (
+    g.drafts.find((d) => d.type === "buy" || d.type === "sell") ??
+    g.drafts.find((d) => d.type === "deposit" || d.type === "withdraw")
+  );
+}
+
+/**
+ * Lo que ya hay en la base, para saber que de lo que manda Binance ya
+ * estaba: por id (el archivo de ordenes usa el mismo), porque el usuario lo
+ * borro, o porque lo habia cargado a mano.
+ */
+class Book {
+  private readonly ids: Set<string>;
+  private readonly ignored: Set<string>;
+  private readonly manual: Transaction[];
+  private readonly usados: Set<string>;
+  readonly matched: Record<string, string>;
+  dupes = 0;
+
+  constructor(
+    txs: Transaction[],
+    private readonly assets: Asset[],
+    private readonly fx: FxTable,
+    conn: BinanceConnection,
+  ) {
+    this.ids = new Set(txs.map((t) => t.id));
+    this.ignored = new Set(conn.ignored ?? []);
+    this.manual = txs.filter((t) => !t.id.startsWith("binance-") && t.accountId === conn.accountId);
+    this.matched = { ...(conn.matched ?? {}) };
+    this.usados = new Set(Object.values(this.matched));
+  }
+
+  knownId(id: string): boolean {
+    return this.ids.has(id) || this.ignored.has(id);
+  }
+
+  /** Si ya estaba. Si estaba cargado a mano, la pareja queda anotada. */
+  known(g: map.Group): boolean {
+    if (g.drafts.some((d) => this.knownId(d.id))) return true;
+    const a = anchorOf(g);
+    if (!a) return false;
+    const previo = this.matched[a.id];
+    if (previo && this.ids.has(previo)) return true;
+    const gemelo = this.twin(g, a);
+    if (!gemelo) return false;
+    this.matched[a.id] = gemelo.id;
+    this.usados.add(gemelo.id);
+    this.dupes += 1;
+    return true;
+  }
+
+  private usdOf(amount: number, currency: string, day: string, fxRate?: number): number {
+    return currency === "USD" ? amount : amount / (fxRate || this.fx.at(day) || NaN);
+  }
+
+  /**
+   * Lo mismo cargado a mano, lo mas parecido que haya: mismo tipo, dias
+   * cercanos, y las mismas unidades del mismo activo (una compra, una cripto
+   * que llego) o el mismo monto (un ingreso, un retiro). Cada cosa cargada a
+   * mano cubre a un solo registro de Binance.
+   */
+  private twin(g: map.Group, a: map.Draft): Transaction | undefined {
+    const day = localDay(a.at);
+    const trade = a.type === "buy" || a.type === "sell";
+    const assetId = a.symbol ? findCrypto(this.assets, a.symbol)?.id : undefined;
+    if (trade && !assetId) return undefined;
+    // Una orden del libro tiene fecha cierta; lo que viene de otra billetera puede tardar.
+    const tol = /^binance-\d+$/.test(a.id) ? 1 : 3;
+    const rate = g.drafts.find((d) => d.fxRate)?.fxRate;
+    const valor = this.usdOf(a.amount, a.currency, day, a.fxRate ?? rate);
+    let best: { t: Transaction; score: number } | undefined;
+    for (const t of this.manual) {
+      if (this.usados.has(t.id) || t.type !== a.type) continue;
+      const dias = Math.abs(daysBetween(toDay(t.date), day));
+      if (dias > tol) continue;
+      let diff: number;
+      if (trade) {
+        if (t.assetId !== assetId || !close(t.quantity ?? 0, a.quantity ?? 0, 0.02)) continue;
+        diff = Math.abs((t.quantity ?? 0) - (a.quantity ?? 0)) / Math.max(a.quantity ?? 1, 1e-12);
+      } else {
+        const suyo = this.usdOf(t.amount, t.currency, toDay(t.date), t.fxRate);
+        if (!close(suyo, valor, 0.03)) continue;
+        diff = Math.abs(suyo - valor) / Math.max(valor, 1e-12);
+      }
+      const score = diff * 100 + dias;
+      if (!best || score < best.score) best = { t, score };
+    }
+    return best?.t;
+  }
+}
+
+/** La cripto ya cargada con ese simbolo, si hay. */
+function findCrypto(assets: Asset[], symbol: string): Asset | undefined {
+  const s = symbol.toUpperCase();
+  const cripto = (a: Asset) => a.symbol.toUpperCase() === s && (a.kind === "crypto" || a.source === "binance");
+  return assets.find((a) => cripto(a) && !a.archived) ?? assets.find(cripto);
 }
 
 let running: Promise<RunResult | null> | null = null;
@@ -137,20 +239,24 @@ async function pass(
   if (options.force ? reciente(MIN_FORCED) : conn.authError || reciente(MIN_INTERVAL)) return null;
   const due = (at: number | undefined, every: number) => !at || t0 - at >= every || t0 < at;
 
-  const since = localMidnight(conn.since);
-  const cursors: BinanceConnection["cursors"] = { ...conn.cursors, trades: { ...conn.cursors.trades } };
+  // Nada de antes de esto, aunque lo que vino despues sea todo nuevo.
+  const floor = localMidnight(conn.since);
+  const [txs, assets, fxRows] = await Promise.all([db.transactions.toArray(), db.assets.toArray(), db.fx.toArray()]);
+  const book = new Book(txs, assets, new FxTable(fxRows, 0), conn);
+
   let queue = [...(conn.queue ?? [])];
-  const known = new Set(conn.known ?? []);
   let balances = conn.balances;
+  let locked = conn.locked;
   let uid = conn.uid;
-  let { fullScanAt, slowAt, fiatAt, snapshotAt } = conn;
-  const groups: map.Group[] = [];
+  let { slowAt, fiatAt } = conn;
+  let earnFrom = conn.cursors?.earn;
+  const resume: Record<string, number> = { ...(conn.resume ?? {}) };
+  const found = new Map<string, map.Group>();
   const skipped: string[] = [];
   let partial = false;
   let progress = false;
   let fatal: BinanceError | null = null;
 
-  const existingIds = new Set((await db.transactions.toCollection().primaryKeys()) as string[]);
   const roomFor = (cost: Partial<Usage>) =>
     client.usage.ip + (cost.ip ?? 0) <= BUDGET.ip &&
     client.usage.sapiIp + (cost.sapiIp ?? 0) <= BUDGET.sapiIp &&
@@ -176,58 +282,176 @@ async function pass(
     return hit;
   };
 
-  const take = (m: map.Mapped) => {
-    if (!m) return;
-    if ("skip" in m) skipped.push(m.skip);
-    else groups.push(m);
+  /** Lo nuevo de algo que se leyo entero (una ventana de tiempo, un par, un mes de Earn). */
+  const keep = (groups: map.Group[]) => {
+    for (const g of groups) if (!found.has(g.drafts[0].id)) found.set(g.drafts[0].id, g);
   };
 
   /**
-   * Un historial por ventanas de tiempo. El cursor avanza ventana por
-   * ventana, despues de leer y traducir todo lo de esa ventana: si la pasada
-   * se corta, la proxima arranca donde quedo. Devuelve si llego hasta hoy.
+   * Recorre de lo mas nuevo a lo mas viejo, juntando lo nuevo hasta llegar a
+   * algo que ya estaba o al punto de partida. Devuelve si paro.
    */
-  async function stream<T>(
+  async function walk<T>(
+    items: T[],
+    time: (x: T) => number,
+    handle: (x: T) => Promise<map.Mapped> | map.Mapped,
+    into: map.Group[],
+  ): Promise<boolean> {
+    for (const x of [...items].sort((a, b) => time(b) - time(a))) {
+      if (time(x) < floor) return true;
+      const m = await handle(x);
+      // Pendiente o sin nada que registrar: todavia no es ni nuevo ni viejo.
+      if (!m) continue;
+      if ("skip" in m) {
+        skipped.push(m.skip);
+        continue;
+      }
+      if (book.known(m)) return true;
+      into.push(m);
+    }
+    return false;
+  }
+
+  /**
+   * Un historial por ventanas de tiempo, de la mas nueva para atras, hasta
+   * llegar a lo que ya estaba. Casi siempre alcanza con la primera.
+   *
+   * Lo nuevo de cada ventana se guarda apenas se lee la ventana entera. Si la
+   * pasada se corta antes de llegar a lo que ya estaba, queda anotado desde
+   * donde seguir para atras: la proxima pasada pararia en lo recien guardado y
+   * lo mas viejo no entraria nunca.
+   */
+  async function recent<T>(
     name: string,
-    key: Exclude<keyof BinanceConnection["cursors"], "trades" | "earn">,
     win: number,
     cost: Partial<Usage>,
     fetch: (s: number, e: number) => Promise<T[]>,
+    time: (x: T) => number,
     handle: (x: T) => Promise<map.Mapped> | map.Mapped,
-    floor = 0,
+    floorHere = floor,
   ): Promise<boolean> {
-    const from = Math.max(since, (cursors[key] ?? since) - OVERLAP, floor);
-    for (const [s, e] of api.windows(from, t0, win)) {
-      if (!roomFor(cost)) {
+    let end = 0;
+    /** Recorre hacia atras desde `desde`. Devuelve si llego al final (lo que ya estaba o el punto de partida). */
+    const range = async (desde: number): Promise<boolean> => {
+      for (end = desde; end >= floorHere; ) {
+        const start = Math.max(floorHere, end - win + 1);
+        if (!roomFor(cost)) {
+          partial = true;
+          return false;
+        }
+        let items: T[];
+        try {
+          items = await fetch(start, end);
+        } catch (err) {
+          if (corta(err)) throw err;
+          // Un historial que esta clave o esta cuenta no puede leer (por pais,
+          // por permisos) no frena a los demas.
+          skipped.push(`No pude leer ${name}: ${messageOf(err)}`);
+          return false;
+        }
+        const nuevos: map.Group[] = [];
+        const paro = await walk(items, time, handle, nuevos);
+        keep(nuevos);
+        progress = true;
+        if (paro) return true;
+        end = start - 1;
+      }
+      return true;
+    };
+    try {
+      // Primero lo que quedo pendiente de una pasada cortada, despues lo nuevo.
+      if (resume[name] !== undefined) {
+        if (!(await range(resume[name]))) {
+          resume[name] = end;
+          return false;
+        }
+        delete resume[name];
+      }
+      if (!(await range(t0))) {
+        resume[name] = end;
+        return false;
+      }
+      return true;
+    } catch (err) {
+      // La ventana que se estaba leyendo no se guardo: se sigue desde ella.
+      resume[name] = end;
+      if (err instanceof OutOfBudget) {
         partial = true;
         return false;
       }
-      let items: T[];
-      try {
-        items = await fetch(s, e);
-      } catch (err) {
-        if (corta(err)) throw err;
-        // Un historial que esta clave o esta cuenta no puede leer (por pais,
-        // por permisos) no frena a los demas.
-        skipped.push(`No pude leer ${name}: ${messageOf(err)}`);
-        return false;
-      }
-      const ventana: map.Mapped[] = [];
-      for (const x of items) ventana.push(await handle(x));
-      ventana.forEach(take);
-      cursors[key] = e + 1;
-      progress = true;
+      throw err;
     }
-    return true;
   }
 
-  /** Earn, mes por mes: el mes en curso se rearma entero en cada pasada. */
+  /**
+   * Las ultimas ordenes de un par, de la mas nueva para atras, hasta una que
+   * ya estaba. Si las diez ultimas son todas nuevas, se piden mil.
+   *
+   * Un par entra entero o no entra: si se guardaran las ordenes nuevas de
+   * arriba y no las de abajo, la proxima pasada pararia en las de arriba. Por
+   * eso, antes de bajar el detalle de cada orden, se cuenta cuantas son y si
+   * no alcanza el cupo de esta pasada, el par espera a la proxima.
+   */
+  async function scanPair(key: string): Promise<"done" | "cut"> {
+    const [base, quote] = key.split("/");
+    const symbol = `${base}${quote}`;
+    let orders: api.OrderInfo[] = [];
+    for (const limit of [FIRST_PAGE, SECOND_PAGE]) {
+      if (!roomFor({ ip: 20 })) return "cut";
+      try {
+        orders = await api.recentOrders(client, symbol, limit);
+      } catch (err) {
+        if (corta(err)) throw err;
+        skipped.push(`No pude leer las órdenes de ${key}: ${messageOf(err)}`);
+        return "done";
+      }
+      // Las que podrian ser nuevas: hasta la primera que ya esta o el punto de partida.
+      const hasta = orders.findIndex((o) => o.updateTime < floor || book.knownId(map.orderId(o)));
+      if (hasta !== -1 || orders.length < limit) break;
+      if (limit === SECOND_PAGE) {
+        skipped.push(`${key}: hay más de ${SECOND_PAGE} órdenes nuevas; las más viejas van con el archivo de órdenes.`);
+      }
+      // Las diez son nuevas: puede haber mas. Se piden de nuevo, mas.
+    }
+    const hasta = orders.findIndex((o) => o.updateTime < floor || book.knownId(map.orderId(o)));
+    // Cancelada sin ejecutarse: no hay nada que cargar. Abierta: se carga
+    // cuando termine (o cuando se cancele lo que falta).
+    const candidatas = (hasta === -1 ? orders : orders.slice(0, hasta)).filter(
+      (o) => o.executedQty > 0 && !abierta(o.status),
+    );
+    const costo = candidatas.length * 5 + 60;
+    if (!roomFor({ ip: costo })) {
+      // Si entra en una pasada con el cupo entero, espera a la proxima. Si ni
+      // asi entra, se traen las mas nuevas que entren y se avisa del resto.
+      if (costo <= BUDGET.ip / 2) return "cut";
+      skipped.push(`${key}: demasiadas órdenes nuevas para traer solas; las más viejas van con el archivo de órdenes.`);
+    }
+    const nuevos: map.Group[] = [];
+    for (const o of candidatas) {
+      if (!roomFor({ ip: 11 })) break;
+      const [orden] = map.ordersFromFills(base, quote, await api.orderFills(client, symbol, o.orderId));
+      const m = orden ? await map.orderGroup(orden, usd) : null;
+      if (!m) continue;
+      if ("skip" in m) {
+        skipped.push(m.skip);
+        continue;
+      }
+      // Cargada a mano: de ahi para atras ya esta.
+      if (book.known(m)) break;
+      nuevos.push(m);
+    }
+    keep(nuevos);
+    return "done";
+  }
+
+  /** Earn: cada mes, una vez, cuando ya termino. Nunca se rearma un movimiento que ya esta. */
   async function earn(): Promise<boolean> {
-    let from = Math.max(since, cursors.earn ?? since);
-    while (from <= t0) {
+    let from = Math.max(floor, earnFrom ?? floor);
+    for (;;) {
       const [ms, me] = monthBounds(from);
+      if (me + EARN_GRACE >= t0) return true;
       const records: api.Reward[] = [];
-      for (const [s, e] of api.windows(Math.max(ms, since), Math.min(me, t0), api.WINDOW.rewards)) {
+      for (const [s, e] of api.windows(Math.max(ms, floor), me, api.WINDOW.rewards)) {
         if (!roomFor({ sapiIp: 450 })) {
           partial = true;
           return false;
@@ -257,97 +481,17 @@ async function pass(
         if (map.sideOf(d.asset).kind !== "crypto") continue;
         totals.get(d.asset)!.value += d.units * ((await usd(d.asset, d.at)) ?? 0);
       }
-      for (const [asset, total] of totals) take(map.earnGroup(asset, monthKey(ms), total));
-      // Un mes cerrado hace unos dias ya no cambia: no se vuelve a pedir.
-      if (me + 3 * api.DAY < t0) cursors.earn = me + 1;
+      const mes: map.Group[] = [];
+      for (const [asset, total] of totals) {
+        const m = map.earnGroup(asset, monthKey(ms), total);
+        if (!m) continue;
+        if ("skip" in m) skipped.push(m.skip);
+        else if (!m.drafts.some((d) => book.knownId(d.id))) mes.push(m);
+      }
+      keep(mes);
       progress = true;
+      earnFrom = me + 1;
       from = me + 1;
-    }
-    return true;
-  }
-
-  /** Las ejecuciones de un par desde donde se habia llegado, ya traducidas. */
-  async function scanPair(key: string): Promise<"done" | "cut"> {
-    const [base, quote] = key.split("/");
-    const symbol = `${base}${quote}`;
-    let fromId = (cursors.trades[key] ?? -1) + 1;
-    const fs: api.Fill[] = [];
-    let cut = false;
-    for (;;) {
-      if (!roomFor({ ip: 20 })) {
-        cut = true;
-        break;
-      }
-      let page: api.Fill[];
-      try {
-        page = await api.tradesPage(client, symbol, fromId);
-      } catch (err) {
-        if (corta(err)) throw err;
-        skipped.push(`No pude leer las operaciones de ${key}: ${messageOf(err)}`);
-        return "done";
-      }
-      fs.push(...page);
-      if (page.length) fromId = Math.max(...page.map((f) => f.id)) + 1;
-      if (page.length < api.TRADES_PAGE) break;
-    }
-    const ordenes: map.Mapped[] = [];
-    for (const o of map.ordersFromFills(base, quote, fs.filter((f) => f.time >= since))) {
-      let orden = o;
-      // Una orden que ya estaba guardada se siguio ejecutando: se rearma con
-      // todas sus ejecuciones, no solo con las nuevas.
-      if (existingIds.has(map.orderId(o))) {
-        if (!roomFor({ ip: 5 })) throw new OutOfBudget();
-        orden = map.ordersFromFills(base, quote, await api.orderFills(client, symbol, o.orderId))[0] ?? o;
-      }
-      ordenes.push(await map.orderGroup(orden, usd));
-    }
-    ordenes.forEach(take);
-    if (fs.length) cursors.trades[key] = Math.max(...fs.map((f) => f.id));
-    else if (!(key in cursors.trades)) cursors.trades[key] = -1;
-    if (fs.length) progress = true;
-    return cut ? "cut" : "done";
-  }
-
-  /** Los pares que existen de un activo, contra lo que se cotiza en la cuenta. */
-  const paresDe = (existentes: Set<string>, base: string) =>
-    QUOTES.filter((q) => q !== base && existentes.has(`${base}${q}`)).map((q) => `${base}/${q}`);
-
-  /** Arma la revision completa, si toca, y lee la cola mientras haya cupo. */
-  async function trades(primera: boolean) {
-    const completa = Boolean(options.force) || primera || due(fullScanAt, DAILY);
-    if (completa) {
-      const existentes = await symbolsOf(client, t0);
-      const pares = (base: string) => paresDe(existentes, base);
-      const resto: string[] = [];
-      const [accountTxs, assets] = await Promise.all([
-        db.transactions.where("accountId").equals(conn!.accountId).toArray(),
-        db.assets.toArray(),
-      ]);
-      const porId = new Map(assets.map((a) => [a.id, a]));
-      for (const t of accountTxs) {
-        const a = t.assetId ? porId.get(t.assetId) : undefined;
-        if (a?.kind === "crypto") known.add(a.symbol.toUpperCase());
-      }
-      for (const b of known) resto.push(...pares(b));
-      if (primera) {
-        // La primera vez, todos los pares contra dolares y pesos: una cripto
-        // que se compro y se vendio entera antes de conectar no deja ningun
-        // otro rastro.
-        for (const symbol of existentes) {
-          const par = cashPair(symbol);
-          if (par) resto.push(`${par.base}/${par.quote}`);
-        }
-      }
-      fullScanAt = t0;
-      queue = [...new Set([...queue, ...resto])];
-    }
-    while (queue.length > 0) {
-      if ((await scanPair(queue[0])) === "cut") {
-        partial = true;
-        return;
-      }
-      queue.shift();
-      progress = true;
     }
   }
 
@@ -358,92 +502,106 @@ async function pass(
     }
     uid = cuenta.uid ?? uid;
     const antes = balances;
+    const antesBloqueado = locked ?? {};
     balances = cuenta.balances;
-    const cambiaron = new Set<string>();
-    if (antes) {
+    locked = cuenta.locked;
+
+    // Los pares a mirar: los del activo cuyo saldo cambio (o lo bloqueado en
+    // ordenes: una orden a medias que se cancela no cambia el total). La
+    // primera vez, o con "Traer ahora", los de lo que hay en la cuenta. Entran
+    // a la cola ya: si la pasada se corta despues, la cola guardada se acuerda.
+    const mirar = new Set<string>();
+    /** Activos con plata bloqueada que se libero: una orden de compra que termino los usaba para pagar. */
+    const desbloqueados = new Set<string>();
+    const enLaCuenta = new Set<string>(Object.keys(balances));
+    const porId = new Map(assets.map((a) => [a.id, a]));
+    for (const t of txs) {
+      const a = t.accountId === conn.accountId && t.assetId ? porId.get(t.assetId) : undefined;
+      if (a?.kind === "crypto") enLaCuenta.add(a.symbol.toUpperCase());
+    }
+    if (!antes || options.force) {
+      for (const a of enLaCuenta) mirar.add(a);
+    } else {
       for (const a of new Set([...Object.keys(antes), ...Object.keys(balances)])) {
-        if (!close(antes[a] ?? 0, balances[a] ?? 0, 1e-9)) cambiaron.add(a);
+        if (!close(antes[a] ?? 0, balances[a] ?? 0, 1e-9)) mirar.add(a);
+      }
+      for (const a of new Set([...Object.keys(antesBloqueado), ...Object.keys(locked)])) {
+        if (!close(antesBloqueado[a] ?? 0, locked[a] ?? 0, 1e-9)) {
+          mirar.add(a);
+          desbloqueados.add(a);
+        }
       }
     }
-    for (const a of Object.keys(balances)) known.add(a);
-    // Los pares de lo que cambio entran a la cola ya, adelante de todo: si la
-    // pasada se corta antes de llegar a las operaciones, la cola guardada se
-    // acuerda aunque los saldos nuevos ya no muestren el cambio.
-    if (cambiaron.size > 0) {
+    if (mirar.size > 0) {
       const existentes = await symbolsOf(client, t0);
-      queue = [...new Set([...[...cambiaron].flatMap((a) => paresDe(existentes, a)), ...queue])];
+      const par = (b: string, q: string) => (b !== q && existentes.has(`${b}${q}`) ? [`${b}/${q}`] : []);
+      const pares = [
+        ...[...mirar].flatMap((b) => QUOTES.flatMap((q) => par(b, q))),
+        // Una compra que termino o se cancelo libera la moneda con que se
+        // pagaba: se miran los pares donde esa moneda es la cotizacion.
+        ...[...desbloqueados].flatMap((q) => [...enLaCuenta].flatMap((b) => par(b, q))),
+      ];
+      queue = [...new Set([...pares, ...queue])];
     }
 
-    // Lo que pesa mucho va primero, mientras el cupo del minuto esta entero:
-    // el historial en pesos gasta 90.000 de los 180.000 por cuenta.
+    // Lo que pesa mucho va primero, mientras el cupo del minuto esta entero.
     if (due(fiatAt, DAILY)) {
       const antesDeFiat = skipped.length;
-      const listo = await stream("los ingresos en pesos", "fiat", api.WINDOW.fiat, { uid: 90_000 },
-        (s, e) => api.fiatOrders(client, s, e), (o) => (o.time >= since ? map.fiatGroup(o) : null));
+      const listo = await recent("los ingresos en pesos", api.WINDOW.fiat, { uid: 90_000 },
+        (s, e) => api.fiatOrders(client, s, e), (o) => o.time, (o) => map.fiatGroup(o));
       // Si la cuenta no tiene ese historial, tampoco se insiste hasta mañana.
       if (listo || skipped.length > antesDeFiat) fiatAt = t0;
     }
-    if (due(snapshotAt, DAILY) && roomFor({ sapiIp: 2400 })) {
-      try {
-        // La API da solo el ultimo mes, en ventanas de menos de 30 dias.
-        for (const a of await api.snapshotAssets(client, Math.max(since, t0 - 29 * api.DAY), t0)) known.add(a);
-      } catch (err) {
-        if (corta(err)) throw err;
-        skipped.push(`No pude leer los saldos de cada día: ${messageOf(err)}`);
-      }
-      snapshotAt = t0;
-    }
 
-    await stream("los ingresos", "deposits", api.WINDOW.deposits, { sapiIp: 1 }, (s, e) => api.deposits(client, s, e),
-      (d) => (d.time >= since ? map.depositGroup(d, usd) : null));
-    await stream("los retiros", "withdrawals", api.WINDOW.withdrawals, { uid: 18_000 }, (s, e) => api.withdrawals(client, s, e),
-      (w) => (w.time >= since ? map.withdrawalGroup(w, usd) : null));
-    await stream("Convert", "converts", api.WINDOW.converts, { uid: 3_000 }, (s, e) => api.converts(client, s, e),
-      (c) => (c.time >= since ? map.convertGroup(c, usd) : null));
-    await stream("P2P", "p2p", api.WINDOW.p2p, { sapiIp: 2 }, (s, e) => api.p2pOrders(client, s, e),
-      (o) => (o.time >= since ? map.p2pGroup(o, usd) : null), t0 - api.P2P_HISTORY + api.DAY);
-    if (since < t0 - api.P2P_HISTORY) {
-      skipped.push(`Binance da solo seis meses de P2P: lo de antes del ${localDay(t0 - api.P2P_HISTORY)} hay que cargarlo a mano.`);
-    }
+    await recent("los ingresos", api.WINDOW.deposits, { sapiIp: 1 }, (s, e) => api.deposits(client, s, e),
+      (d) => d.time, (d) => map.depositGroup(d, usd));
+    await recent("los retiros", api.WINDOW.withdrawals, { uid: 18_000 }, (s, e) => api.withdrawals(client, s, e),
+      (w) => w.time, (w) => map.withdrawalGroup(w, usd));
+    await recent("Convert", api.WINDOW.converts, { uid: 3_000 }, (s, e) => api.converts(client, s, e),
+      (c) => c.time, (c) => map.convertGroup(c, usd));
+    // Binance da solo seis meses de P2P: lo de antes, si hace falta, va a mano.
+    await recent("P2P", api.WINDOW.p2p, { sapiIp: 2 }, (s, e) => api.p2pOrders(client, s, e),
+      (o) => o.time, (o) => map.p2pGroup(o, usd), Math.max(floor, t0 - api.P2P_HISTORY + api.DAY));
 
     if (options.force || due(slowAt, SLOW_EVERY)) {
-      const pagos = await stream("las compras con tarjeta", "payments", api.WINDOW.fiat, { sapiIp: 1 },
-        (s, e) => api.fiatPayments(client, s, e), (p) => (p.time >= since ? map.paymentGroup(p, usd) : null));
+      const pagos = await recent("las compras con tarjeta", api.WINDOW.fiat, { sapiIp: 1 },
+        (s, e) => api.fiatPayments(client, s, e), (p) => p.time, (p) => map.paymentGroup(p, usd));
       const ganancias = await earn();
       if (pagos && ganancias) slowAt = t0;
     }
 
-    // Lo que aparecio en otros historiales tambien tiene pares que revisar.
-    for (const g of groups) for (const d of g.drafts) if (d.symbol) known.add(d.symbol);
-    await trades(antes === undefined);
+    while (queue.length > 0) {
+      if ((await scanPair(queue[0])) === "cut") {
+        partial = true;
+        break;
+      }
+      queue.shift();
+      progress = true;
+    }
   } catch (err) {
     if (err instanceof OutOfBudget) partial = true;
     else if (err instanceof BinanceError) fatal = err;
     else fatal = new BinanceError(messageOf(err), "api");
   }
 
-  // Si la clave dejo de servir o Binance pidio esperar, igual se guarda lo
-  // que se llego a leer: los cursores solo avanzaron por lo que esta en
-  // `groups`, y la cola tiene lo que falta.
   const lastRunAt = new Date(t0).toISOString();
   const patch: Partial<BinanceConnection> = {
-    cursors,
+    cursors: { ...conn.cursors, earn: earnFrom },
+    resume,
     balances,
+    locked,
     queue,
-    known: [...known].slice(-MAX_KNOWN),
     uid,
-    fullScanAt,
     slowAt,
     fiatAt,
-    snapshotAt,
     authError: fatal?.kind === "auth" ? describeError(fatal) : undefined,
     blockedUntil: fatal?.kind === "rate" ? t0 + (fatal.retryAfter ?? 60) * 1000 : undefined,
   };
-  return write(db, groups, patch, (w) => ({
+  return write(db, [...found.values()], book, patch, (w) => ({
     at: lastRunAt,
     added: w.added,
-    updated: w.updated,
-    dupes: w.dupes,
+    updated: 0,
+    dupes: book.dupes,
     skipped: [...new Set(skipped)].slice(0, 20),
     // Cortada sin haber avanzado no es "falta historial": es que no hubo
     // cupo, y no tiene sentido agendar otra igual en un minuto.
@@ -463,27 +621,6 @@ export function describeError(err: BinanceError): string {
 
 // ---------------------------------------------------------------------------
 // Guardar
-
-interface Written {
-  added: number;
-  updated: number;
-  dupes: number;
-  newAssets: number;
-}
-
-const CAMPOS = [
-  "date", "type", "accountId", "assetId", "quantity", "price", "amount",
-  "currency", "fee", "fxRate", "toAmount", "toCurrency", "note",
-] as const;
-
-function same(a: Transaction, b: Transaction): boolean {
-  return CAMPOS.every((k) => {
-    const x = a[k];
-    const y = b[k];
-    if (typeof x === "number" && typeof y === "number") return close(x, y, 1e-9);
-    return x === y;
-  });
-}
 
 function toTx(d: map.Draft, accountId: string, assetId: string | undefined, nowIso: string): Transaction {
   const tx: Transaction = {
@@ -510,32 +647,19 @@ function toTx(d: map.Draft, accountId: string, assetId: string | undefined, nowI
 }
 
 /**
- * El movimiento de un grupo que se compara con lo cargado a mano: la compra
- * o la venta si hay (una cripto que llega es "compré ETH"), si no el ingreso
- * o el retiro. Un interes, un ajuste o un cambio de moneda sueltos no se
- * comparan: lo cargado a mano de esas clases no tiene con que parecerse.
- */
-function anchorOf(g: map.Group): map.Draft | undefined {
-  return (
-    g.drafts.find((d) => d.type === "buy" || d.type === "sell") ??
-    g.drafts.find((d) => d.type === "deposit" || d.type === "withdraw")
-  );
-}
-
-/**
- * Guarda lo traido y el estado de la conexion en una sola transaccion: los
- * cursores no avanzan sin que lo leido quede guardado. La conexion se relee
- * adentro: un borrado hecho mientras corria la pasada no se pisa.
+ * Agrega lo nuevo y guarda el estado de la conexion en una sola transaccion.
+ * Lo que ya existe no se toca: si un id ya esta (o el usuario lo borro), ese
+ * grupo entero se saltea. La conexion se relee adentro: un borrado hecho
+ * mientras corria la pasada no se pisa.
  */
 async function write(
   db: WaltraDB,
   groups: map.Group[],
+  book: Book,
   patch: Partial<BinanceConnection>,
-  summary: (w: Written) => BinanceRunSummary,
+  summary: (w: { added: number }) => BinanceRunSummary,
 ): Promise<RunResult | null> {
-  const fx = new FxTable(await db.fx.toArray(), 0);
   const nowIso = new Date().toISOString();
-  const out: Written = { added: 0, updated: 0, dupes: 0, newAssets: 0 };
   let result: RunResult | null = null;
 
   await db.transaction("rw", [db.transactions, db.assets, db.connections], async () => {
@@ -543,108 +667,41 @@ async function write(
     // Desconectada o borrada mientras corria: no se escribe nada.
     if (!conn?.apiKey) return;
     const ignored = new Set(conn.ignored ?? []);
-    const matched: Record<string, string> = { ...(conn.matched ?? {}) };
-    const usados = new Set(Object.values(matched));
-    const txs = await db.transactions.toArray();
-    const byId = new Map(txs.map((t) => [t.id, t]));
+    const existing = new Set((await db.transactions.toCollection().primaryKeys()) as string[]);
     const assets = await db.assets.toArray();
     const nuevos: Asset[] = [];
     const puts: Transaction[] = [];
 
     /** El activo de un simbolo de Binance: la cripto ya cargada, o una nueva. */
-    const assetFor = (symbol: string, crear: boolean): string | undefined => {
-      const s = symbol.toUpperCase();
-      const cripto = (a: Asset) => a.symbol.toUpperCase() === s && (a.kind === "crypto" || a.source === "binance");
-      const found = assets.find((a) => cripto(a) && !a.archived) ?? assets.find(cripto);
-      if (found || !crear) return found?.id;
-      const asset = binanceAsset(s, newId());
+    const assetFor = (symbol: string): string => {
+      const found = findCrypto(assets, symbol);
+      if (found) return found.id;
+      const asset = binanceAsset(symbol.toUpperCase(), newId());
       assets.push(asset);
       nuevos.push(asset);
       return asset.id;
     };
 
-    const usdOf = (amount: number, currency: string, day: string, fxRate?: number) =>
-      currency === "USD" ? amount : amount / (fxRate || fx.at(day) || NaN);
-
-    /**
-     * Lo mismo cargado a mano, lo mas parecido que haya: misma cuenta, mismo
-     * tipo, dias cercanos, y las mismas unidades del mismo activo (una compra,
-     * una cripto que llego) o el mismo monto (un ingreso, un retiro). Cada
-     * cosa cargada a mano cubre a un solo registro de Binance.
-     */
-    const twin = (g: map.Group, a: map.Draft): Transaction | undefined => {
-      const day = localDay(a.at);
-      const trade = a.type === "buy" || a.type === "sell";
-      const assetId = a.symbol ? assetFor(a.symbol, false) : undefined;
-      if (trade && !assetId) return undefined;
-      // Una orden del libro tiene fecha cierta; lo que viene de otra billetera puede tardar.
-      const tol = /^binance-\d+$/.test(a.id) ? 1 : 3;
-      const rate = g.drafts.find((d) => d.fxRate)?.fxRate;
-      const valor = usdOf(a.amount, a.currency, day, a.fxRate ?? rate);
-      let best: { t: Transaction; score: number } | undefined;
-      for (const t of txs) {
-        if (t.id.startsWith("binance-") || usados.has(t.id) || t.accountId !== conn.accountId || t.type !== a.type) continue;
-        const dias = Math.abs(daysBetween(toDay(t.date), day));
-        if (dias > tol) continue;
-        let diff: number;
-        if (trade) {
-          if (t.assetId !== assetId || !close(t.quantity ?? 0, a.quantity ?? 0, 0.02)) continue;
-          diff = Math.abs((t.quantity ?? 0) - (a.quantity ?? 0)) / Math.max(a.quantity ?? 1, 1e-12);
-        } else {
-          const suyo = usdOf(t.amount, t.currency, toDay(t.date), t.fxRate);
-          if (!close(suyo, valor, 0.03)) continue;
-          diff = Math.abs(suyo - valor) / Math.max(valor, 1e-12);
-        }
-        const score = diff * 100 + dias;
-        if (!best || score < best.score) best = { t, score };
-      }
-      return best?.t;
-    };
-
-    // En orden de fecha: lo cargado a mano se empareja con lo que paso primero,
-    // sea cual sea el historial de donde vino.
     const ordenados = [...groups].sort(
       (a, b) => Math.min(...a.drafts.map((d) => d.at)) - Math.min(...b.drafts.map((d) => d.at)),
     );
     for (const g of ordenados) {
-      if (g.drafts.some((d) => ignored.has(d.id))) continue;
-      const guardados = g.drafts.filter((d) => byId.has(d.id));
-      if (guardados.length > 0 && !g.upsert) continue;
-      if (guardados.length === 0) {
-        const a = anchorOf(g);
-        if (a) {
-          const previo = matched[a.id];
-          if (previo && byId.has(previo)) continue;
-          const gemelo = twin(g, a);
-          if (gemelo) {
-            matched[a.id] = gemelo.id;
-            usados.add(gemelo.id);
-            out.dupes += 1;
-            continue;
-          }
-        }
-      }
+      if (g.drafts.some((d) => ignored.has(d.id) || existing.has(d.id))) continue;
       for (const d of g.drafts) {
-        const tx = toTx(d, conn.accountId, d.symbol ? assetFor(d.symbol, true) : undefined, nowIso);
-        const prev = byId.get(d.id);
-        if (prev) {
-          if (same(prev, tx)) continue;
-          puts.push({ ...tx, createdAt: prev.createdAt });
-          out.updated += 1;
-        } else {
-          puts.push(tx);
-          out.added += 1;
-        }
-        byId.set(tx.id, tx);
+        puts.push(toTx(d, conn.accountId, d.symbol ? assetFor(d.symbol) : undefined, nowIso));
+        existing.add(d.id);
       }
     }
 
     if (nuevos.length) await db.assets.bulkPut(nuevos);
     if (puts.length) await db.transactions.bulkPut(puts);
-    out.newAssets = nuevos.length;
-    const lastRun = summary(out);
-    await db.connections.update("binance", { ...patch, matched, lastRun });
-    result = { ...lastRun, newAssets: out.newAssets };
+    const lastRun = summary({ added: puts.length });
+    await db.connections.update("binance", {
+      ...patch,
+      matched: { ...(conn.matched ?? {}), ...book.matched },
+      lastRun,
+    });
+    result = { ...lastRun, newAssets: nuevos.length };
   });
   return result;
 }
@@ -687,8 +744,6 @@ export async function connectBinance(db: WaltraDB, client: BinanceClient, input:
   const misma = Boolean(
     previa && (previa.uid !== undefined && cuenta.uid !== undefined ? previa.uid === cuenta.uid : previa.apiKey === input.apiKey),
   );
-  // Traer desde mas tarde no necesita releer nada; desde antes, si.
-  const sigue = misma && previa !== undefined && input.since >= previa.since;
   const nowIso = new Date().toISOString();
 
   await db.transaction("rw", [db.connections, db.transactions], async () => {
@@ -709,18 +764,8 @@ export async function connectBinance(db: WaltraDB, client: BinanceClient, input:
       accountId: input.accountId,
       since: input.since,
       createdAt: nowIso,
-      cursors: sigue && previa ? previa.cursors : { trades: {} },
-      ...(sigue && previa
-        ? {
-            balances: previa.balances,
-            queue: previa.queue,
-            known: previa.known,
-            fullScanAt: previa.fullScanAt,
-            slowAt: previa.slowAt,
-            fiatAt: previa.fiatAt,
-            snapshotAt: previa.snapshotAt,
-          }
-        : {}),
+      // De la misma cuenta se sigue sabiendo que meses de Earn ya se cargaron.
+      cursors: misma && previa ? { earn: previa.cursors?.earn } : {},
       // Lo que el usuario borro no vuelve nunca, conecte como conecte.
       ignored: previa?.ignored,
       matched: misma ? previa?.matched : undefined,
@@ -730,8 +775,8 @@ export async function connectBinance(db: WaltraDB, client: BinanceClient, input:
 }
 
 /**
- * Borra la clave. Lo demas queda (hasta donde se leyo, lo que el usuario
- * borro), por si vuelve a conectar: asi nada de lo que saco reaparece.
+ * Borra la clave. Lo demas queda (lo que el usuario borro, lo que estaba
+ * cargado a mano), por si vuelve a conectar: asi nada de lo que saco reaparece.
  */
 export async function disconnectBinance(db: WaltraDB): Promise<void> {
   await db.connections.update("binance", { apiKey: "", secret: "", authError: undefined, blockedUntil: undefined });
@@ -739,7 +784,7 @@ export async function disconnectBinance(db: WaltraDB): Promise<void> {
 
 /**
  * El usuario borro un movimiento traido de Binance: que no vuelva. Se anota
- * su id y la proxima pasada lo saltea aunque Binance lo siga mostrando.
+ * su id y la proxima pasada lo cuenta como algo que ya estaba.
  */
 export async function forgetBinanceTx(db: WaltraDB, id: string): Promise<void> {
   if (!id.startsWith("binance-")) return;
@@ -751,12 +796,16 @@ export async function forgetBinanceTx(db: WaltraDB, id: string): Promise<void> {
   });
 }
 
-/** Desde cuando conviene traer: el ultimo dia con algo cargado en esa cuenta. */
+/**
+ * Desde cuando conviene traer: el ultimo dia con algo cargado en esa cuenta.
+ * Sin nada cargado, el ultimo mes: lo de antes, si hace falta, es una decision
+ * del usuario, no algo que la app traiga sola.
+ */
 export function defaultSince(txs: Pick<Transaction, "accountId" | "date">[], accountId: string, hoy = today()): string {
   const dias = txs.filter((t) => t.accountId === accountId).map((t) => toDay(t.date)).sort();
   if (dias.length) return dias[dias.length - 1];
   const d = new Date(`${hoy}T00:00:00`);
-  d.setDate(d.getDate() - 90);
+  d.setDate(d.getDate() - 30);
   return today(d);
 }
 

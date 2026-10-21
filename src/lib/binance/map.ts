@@ -49,11 +49,6 @@ export interface Draft {
 
 export interface Group {
   drafts: Draft[];
-  /**
-   * Se puede rearmar con mas datos y reemplazar lo guardado: una orden que se
-   * siguio ejecutando, el Earn del mes que todavia no termino.
-   */
-  upsert?: boolean;
 }
 
 /** `null`: no hay nada que registrar (dolar estable contra dolar estable, algo pendiente). */
@@ -282,7 +277,7 @@ export async function orderGroup(o: Order, usd: UsdPrice): Promise<Mapped> {
     usd,
   );
   if (typeof drafts === "string") return { skip: drafts };
-  return drafts.length ? { drafts, upsert: true } : null;
+  return drafts.length ? { drafts } : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -428,9 +423,10 @@ const MESES = [
  * Lo que pago Earn en un mes, en un solo movimiento por activo.
  *
  * Binance paga todos los dias; un movimiento por dia taparia todo lo demas en
- * la lista. El del mes en curso se rearma en cada pasada con lo que lleva
- * pagado. En dolares estables es un interes cobrado; en una cripto, unidades
- * que entran al precio de cada dia como ingreso (un ajuste, como Corregir).
+ * la lista. Se carga una vez, cuando el mes termino: un movimiento que ya
+ * esta no se rearma. En dolares estables es un interes cobrado; en una
+ * cripto, unidades que entran al precio de cada dia como ingreso (un ajuste,
+ * como Corregir).
  */
 export function earnGroup(asset: string, month: string, total: { units: number; value: number; last: number }): Mapped {
   const s = sideOf(asset);
@@ -439,11 +435,10 @@ export function earnGroup(asset: string, month: string, total: { units: number; 
   const note = `Earn de ${asset}, ${MESES[m - 1]} de ${y}`;
   const id = `binance-earn-${asset}-${month}`;
   if (s.kind === "cash") {
-    return { drafts: [tidy({ id, at: total.last, type: "interest", amount: total.units, currency: s.currency, note })], upsert: true };
+    return { drafts: [tidy({ id, at: total.last, type: "interest", amount: total.units, currency: s.currency, note })] };
   }
   if (!(total.value > 0)) return { skip: `Earn en ${asset}: no encontré su precio en dólares.` };
   return {
     drafts: [tidy({ id, at: total.last, type: "adjust", symbol: asset, quantity: total.units, amount: total.value, currency: "USD", note })],
-    upsert: true,
   };
 }

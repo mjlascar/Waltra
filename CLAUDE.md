@@ -561,40 +561,48 @@ clave, así que los pedidos pasan ya firmados por `/api/binance`, que solo
 reenvía GET a `api.binance.com`: la clave secreta firma en el navegador y no
 viaja.
 
+**Solo lo último, y solo agrega.** Es la regla de quien copia a mano sus
+movimientos nuevos: de cada historial se mira lo más reciente, de lo más
+nuevo a lo más viejo, y apenas aparece algo que ya estaba cargado se para;
+lo de antes queda como el usuario lo dejó. Si todo lo que vino es nuevo, se
+pide más atrás (en las órdenes spot: las últimas 10 de cada par, y si las
+10 son nuevas, 1000), pero nunca antes del día que el usuario eligió al
+conectar. "Ya estaba cargado" es: el mismo id (el de una orden spot es el
+del archivo, `binance-<orden>`), algo que el usuario borró, o lo mismo
+cargado a mano (misma clase, mismos días, mismo monto o las mismas
+unidades; la pareja se guarda, así una carga a mano no tapa dos registros).
+Un movimiento que ya existe **nunca se reemplaza ni se corrige**, venga de
+donde venga: el usuario pidió explícitamente que la API no toque su
+historia, porque lo que no cargó a mano puede ser a propósito. Por lo mismo,
+Earn entra una vez por mes, cuando el mes terminó, y no se rearma; y una
+orden que sigue abierta se carga cuando termina.
+
+Las órdenes spot se piden par por par (`allOrders` no tiene "todos los
+pares"), así que solo se miran los pares del activo cuyo saldo spot cambió
+desde la pasada anterior, o cuya plata bloqueada en órdenes cambió (una
+compra a medias que se cancela no cambia el total, pero sí lo bloqueado de
+la moneda con que se pagaba). La primera vez, o con "Traer ahora", los de lo
+que hay en la cuenta. No se revisan todos los pares: una cripto que se
+compró y se vendió entera entre dos aperturas no aparece, y para eso está la
+importación del archivo. Los pares a mirar van a una cola que se guarda
+apenas se leen los saldos: si la pasada se corta, la próxima sigue.
+
+**Cortar a la mitad no puede perder nada.** Como se para en lo primero que
+ya está, guardar lo nuevo de arriba y no lo de abajo haría que la próxima
+pasada pare en lo recién guardado. Por eso un par entra entero o espera a la
+próxima pasada (se cuenta antes cuántas órdenes son), y en los historiales
+por tiempo, que se guardan ventana por ventana, queda anotado desde dónde
+seguir para atrás (`resume`).
+
 **El límite por minuto manda.** Binance banea la IP que insiste después de
 un 429, así que una pasada respeta el `Retry-After` aunque se toque "Traer
 ahora", no corre a menos de 45 s de la anterior y lleva la cuenta con las
-cabeceras de peso. Si se acerca al límite, guarda lo que tiene y sigue sola
-al minuto. El historial de retiros pesa 18.000 de los 180.000 por cuenta y
-por minuto, y el de pesos, 45.000 por pedido: por eso ese va una vez por día
-y al principio de la pasada, cuando el cupo está entero. Una clave que dejó
-de servir no se reintenta sola, y el inicio lo avisa.
-
-**Las operaciones spot van por una cola que se guarda.** `myTrades` se pide
-par por par (no hay "todos los pares"). A la cola entran los pares del
-activo cuyo saldo spot cambió, apenas se leen los saldos (si la pasada se
-corta después, la cola se acuerda aunque el saldo nuevo ya no muestre el
-cambio); todos los pares de lo conocido, una vez por día; y la primera vez,
-todos los pares contra dólares y pesos. Una cripto que se compró y se vendió
-entera no deja otro rastro que sus operaciones: la primera revisión la
-encuentra, y después los saldos de cada día (`accountSnapshot`, el último
-mes) la suman a lo conocido. Si una pasada se corta, la siguiente sigue la
-cola donde quedó.
-
-**Cada historial recuerda hasta dónde leyó** y relee los últimos 7 días: un
-ingreso pendiente o un retiro en curso se cargan cuando terminan. El id de
-cada movimiento sale del registro de Binance, así que releer no duplica; el
-de una orden spot es el mismo del archivo (`binance-<orden>`). Lo que el
-usuario borra se anota y no vuelve, ni al reconectar. Lo que ya estaba
-cargado a mano gana: cada registro se compara con lo más parecido de su
-clase (una compra con una compra del mismo activo y las mismas unidades, un
-ingreso con un ingreso del mismo monto, a pocos días) y la pareja se guarda,
-así una misma carga a mano no tapa dos registros. Cambiar de cuenta de
-Waltra muda todo lo de Binance junto; una clave de otra cuenta de Binance
-empieza de cero. Al conectar se elige desde cuándo traer y se propone el
-último día cargado en esa cuenta. Si ahí hay una importación del archivo,
-la pantalla avisa: su ingreso estimado y los ingresos reales del mismo
-período se contarían dos veces.
+cabeceras de peso. El historial de retiros pesa 18.000 de los 180.000 por
+cuenta y por minuto, y el de pesos, 45.000 por pedido: por eso ese va una vez
+por día y al principio de la pasada. Cambiar de cuenta de Waltra muda todo
+lo de Binance junto; una clave de otra cuenta de Binance empieza de cero. Si
+al conectar hay una importación del archivo en el período, la pantalla avisa:
+su ingreso estimado y los ingresos reales se contarían dos veces.
 
 Cómo se traduce cada cosa (`map.ts`, con tests contra el ledger):
 
@@ -611,9 +619,9 @@ Cómo se traduce cada cosa (`map.ts`, con tests contra el ledger):
   hizo acá queda contada; la de afuera, no.
 - P2P: comprar USDT con pesos es un ingreso de pesos y un cambio de moneda
   al dólar que se pagó; vender es el cambio y un retiro.
-- Earn: un movimiento por activo y por mes, que se rearma mientras el mes no
-  terminó. En estables es un interés; en cripto, un ajuste positivo
-  (unidades que entran al precio de cada día, como ingreso).
+- Earn: un movimiento por activo y por mes, que entra cuando el mes terminó.
+  En estables es un interés; en cripto, un ajuste positivo (unidades que
+  entran al precio de cada día, como ingreso).
 
 Un supuesto sin confirmar con una cuenta real: en el historial de retiros,
 `amount` es lo que llega a destino y la comisión se cobra aparte. Si fuera

@@ -153,8 +153,9 @@ export default function BinanceAjustes() {
       )}
 
       <p className="label leading-relaxed">
-        Trae compras y ventas, Convert, P2P, ingresos, retiros y lo que paga Earn. Lo que
-        habías cargado a mano no se duplica, y lo que borres no vuelve.
+        Trae solo lo último: compras y ventas, Convert, P2P, ingresos y retiros, hasta lo que
+        ya tenías cargado. Nunca cambia lo que ya está, y lo que borres no vuelve. Earn entra
+        una vez por mes, cuando el mes termina.
       </p>
     </AjustesShell>
   );
@@ -281,7 +282,7 @@ function Conectar({
               ))}
             </select>
           </Field>
-          <Field label="Traer desde" hint="Lo anterior ya lo tenés cargado. Más atrás tarda más la primera vez.">
+          <Field label="Traer desde" hint="Nunca trae nada de antes de esta fecha.">
             <input
               type="date"
               className="input"

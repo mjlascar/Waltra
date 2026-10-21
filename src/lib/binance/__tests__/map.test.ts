@@ -222,7 +222,6 @@ describe("Earn", () => {
 
   it("en cripto son unidades que entran como ingreso", () => {
     const g = earnGroup("ETH", "2026-09", { units: 0.001, value: 3, last: AT });
-    expect(g && "drafts" in g && g.upsert).toBe(true);
     const { units, state } = libro(drafts(g));
     expect(units("ETH")).toBe(0.001);
     expect(state.incomeUsd).toBeCloseTo(3, 8);
