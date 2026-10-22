@@ -117,8 +117,11 @@ await page.getByRole("button", { name: /Análisis de tu cartera/ }).last().click
 await page.waitForTimeout(700);
 await page.screenshot({ path: "screenshots/insights-completo.png" });
 console.log("· screenshots/insights-completo.png");
-await page.screenshot({ path: "docs/img/insights.png" });
-console.log("· docs/img/insights.png");
+// La del README va a la carpeta que se elija (por defecto, docs/img).
+const docs = process.env.SHOTS_DIR ?? "docs/img";
+mkdirSync(docs, { recursive: true });
+await page.screenshot({ path: `${docs}/insights.png` });
+console.log(`· ${docs}/insights.png`);
 
 // Y ahora el caso degradado, que es el que nadie mira hasta que pasa.
 await inject({

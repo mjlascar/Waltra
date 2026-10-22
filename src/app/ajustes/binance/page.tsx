@@ -7,7 +7,7 @@ import { SectionTitle } from "@/components/ui/Stat";
 import { useStore } from "@/lib/store";
 import { useBinanceConnection } from "@/lib/binance/use-connection";
 import { money, relativeTime, shortDate } from "@/lib/format";
-import { connectWarnings } from "@/lib/binance/sync";
+import { connectWarnings, defaultSince } from "@/lib/binance/sync";
 import type { Transaction } from "@/lib/types";
 import { today } from "@/lib/date";
 
@@ -189,13 +189,9 @@ function Conectar({
   const [error, setError] = useState<string | null>(null);
 
   // Lo anterior al ultimo dia cargado ya esta: se propone seguir desde ahi.
-  const desdeSugerido = useMemo(() => {
-    const dias = transactions.filter((t) => t.accountId === accountId).map((t) => t.date.slice(0, 10)).sort();
-    if (dias.length) return dias[dias.length - 1];
-    const d = new Date();
-    d.setDate(d.getDate() - 90);
-    return today(d);
-  }, [transactions, accountId]);
+  // La misma regla que usa la sincronizacion: el ultimo dia cargado en esa
+  // cuenta, o el ultimo mes si no hay nada.
+  const desdeSugerido = useMemo(() => defaultSince(transactions, accountId), [transactions, accountId]);
   const desde = since ?? desdeSugerido;
   const avisos = useMemo(() => connectWarnings(transactions, accountId, desde), [transactions, accountId, desde]);
   const [reemplazar, setReemplazar] = useState(true);

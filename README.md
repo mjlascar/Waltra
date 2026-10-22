@@ -11,16 +11,16 @@ distancia entre ellas es —literalmente— lo que ganaste.
 <p>
   <img src="docs/img/resumen.png" width="200" alt="Resumen: valor de la cartera contra capital aportado">
   <img src="docs/img/rendimiento.png" width="200" alt="Rendimiento de la cartera contra el S&P 500">
-  <img src="docs/img/carga.png" width="200" alt="Carga de un movimiento escribiendo la frase">
-  <img src="docs/img/importar.png" width="200" alt="Importar un bloc de notas entero">
-  <img src="docs/img/capturas.png" width="200" alt="Movimientos de Cocos leídos de una captura, para revisar antes de guardar">
-  <img src="docs/img/binance.png" width="200" alt="Movimientos de Binance traídos solos: compras, Convert y P2P">
+  <img src="docs/img/metricas.png" width="200" alt="Métricas, cuentas y composición de la cartera">
   <img src="docs/img/cartera.png" width="200" alt="Cartera: posiciones con su resultado">
+  <img src="docs/img/posicion.png" width="200" alt="Detalle de una posición: costo, peso e histórico">
+  <img src="docs/img/movimientos.png" width="200" alt="Movimientos, filtrables por tipo y por cuenta">
+  <img src="docs/img/agregar.png" width="200" alt="Cargar un movimiento: primero qué hiciste">
   <img src="docs/img/insights.png" width="200" alt="Insights: análisis con fuentes">
+  <img src="docs/img/ajustes.png" width="200" alt="Ajustes, con la conexión a Binance">
 </p>
 
-<sub>Las capturas usan la cartera de ejemplo con precios simulados — de ahí el
-cartel amarillo. Con precios reales ese aviso no aparece.</sub>
+<sub>Las capturas usan la cartera de ejemplo, con precios simulados.</sub>
 
 ## Qué hace
 
