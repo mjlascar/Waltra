@@ -230,9 +230,13 @@ function Conectar({
         <SectionTitle>Sacar la clave</SectionTitle>
         <ol className="card divide-hairline">
           {[
-            "En Binance: Perfil → Gestión de API → Crear API → «Generada por el sistema».",
-            "Dejá marcado solo «Habilitar lectura», sin restricción de IP.",
-            "Copiá la API Key y la Secret Key acá abajo.",
+            // La gestion de API no esta en el menu de la app en modo Lite, y
+            // cambia de lugar entre versiones: el buscador de la app y la web
+            // la encuentran siempre.
+            "En la app de Binance: tocá la lupa de arriba, escribí «API» y entrá a «Gestión de API». Si no aparece, pasá la app a modo Pro (el interruptor Lite/Pro del perfil) o abrí la página de la web con el botón de abajo.",
+            "Tocá «Crear API» → «Generada por el sistema», ponele un nombre (por ejemplo, Waltra) y confirmá con tu verificación en dos pasos.",
+            "En los permisos, dejá marcado solo «Habilitar lectura» y elegí «Sin restricción de IP».",
+            "Copiá la API Key y la Secret Key acá abajo. La Secret Key se muestra una sola vez.",
           ].map((paso, i) => (
             <li key={paso} className="flex gap-2.5 p-2.5 text-[12px] leading-snug">
               <span className="num shrink-0" style={{ color: "var(--color-ink-3)" }}>
@@ -242,6 +246,18 @@ function Conectar({
             </li>
           ))}
         </ol>
+        <a
+          href="https://www.binance.com/es/my/settings/api-management"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn btn-sm mt-2 w-full"
+        >
+          Abrir «Gestión de API» en la web de Binance
+        </a>
+        <p className="label mt-2 leading-snug">
+          Binance pide tener la identidad verificada y la verificación en dos pasos activa para
+          crear una clave.
+        </p>
       </section>
 
       <section className="mb-5">
