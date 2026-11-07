@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { binanceHistory, binanceQuotes } from "@/lib/market/binance";
 import { yahooHistory, yahooQuote } from "@/lib/market/yahoo";
-import { bymaQuotes } from "@/lib/market/byma";
+import { bymaCandidates, bymaQuotes } from "@/lib/market/byma";
 import { fxHistory, fxLatest } from "@/lib/market/fx";
 import type { MarketRef } from "@/lib/market/types";
 
@@ -167,6 +167,26 @@ describe("BYMA / data912", () => {
     const [quote] = await bymaQuotes([ggal]);
     expect(quote.price).toBeCloseTo(7250.5);
     expect(quote.changePct).toBeCloseTo(0.018);
+  });
+
+  it("encuentra una ON cargada sin la letra de la moneda", async () => {
+    // El caso real: la ON quedo como "VSCY" (fuente incluida) y en data912
+    // esta como VSCYO. Renombrarla en la app no tocaba la fuente.
+    mockFetch((url) =>
+      url.includes("arg_corp") ? { body: [{ symbol: "VSCYO", c: 158000 }] } : { body: [] },
+    );
+    const [quote] = await bymaQuotes([
+      { assetId: "on", symbol: "VSCYO", source: "byma", sourceSymbol: "VSCY", currency: "ARS" },
+    ]);
+    expect(quote.price).toBeCloseTo(158000);
+  });
+
+  it("a una acción no le prueba letras de bono", () => {
+    expect(bymaCandidates({ symbol: "GGAL.BA", sourceSymbol: "GGAL.BA", currency: "ARS" })).toEqual(["GGAL"]);
+    expect(bymaCandidates({ symbol: "VSCYD", sourceSymbol: "VSCYD", currency: "USD" })).toEqual([
+      "VSCYD",
+      "VSCYC",
+    ]);
   });
 
   it("usa el punto medio del libro cuando no hay ultimo operado", async () => {

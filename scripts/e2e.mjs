@@ -480,8 +480,16 @@ const notas = [
 await page.locator('[role="dialog"] textarea').first().fill(notas);
 await page.waitForTimeout(900);
 const bulk = await text();
-check("cuenta las líneas listas", /3 de 4 listas/i.test(bulk), bulk.slice(0, 300));
+check("cuenta las líneas listas", /3 de 4 listos/i.test(bulk), bulk.slice(0, 300));
 check("marca la línea que no entiende", await has("Sin monto"), bulk.slice(0, 400));
+// La revision es en casillas: cambiar el precio rehace el total, con la coma.
+await page.getByLabel("Precio, línea 5").fill("190,5");
+await page.waitForTimeout(300);
+check(
+  "corregir el precio en su casilla rehace el total",
+  (await page.getByLabel("Total, línea 5").inputValue()) === "38,1",
+  await page.getByLabel("Total, línea 5").inputValue(),
+);
 await page.getByRole("button", { name: /^Agregar 3$/ }).click();
 await page.waitForTimeout(3000);
 check("confirma cuántos cargó", await has("Se cargaron 3"), (await text()).slice(0, 200));
@@ -1122,13 +1130,48 @@ console.log("\n17. Movimientos desde capturas");
   check("propone la cuenta de Cocos", (await pagina.locator('[role="dialog"] select').first().inputValue()) === "cocos");
   // Un PNG de un pixel: el servidor de prueba no lo mira, contesta una lectura fija.
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+  // Primero una captura de verdad (generada) para recortar: la que se recorta
+  // reemplaza a la original.
+  const grande = Buffer.from(
+    await pagina.evaluate(() => {
+      const c = document.createElement("canvas");
+      c.width = 300;
+      c.height = 600;
+      const g = c.getContext("2d");
+      g.fillStyle = "#468";
+      g.fillRect(0, 0, 300, 600);
+      return c.toDataURL("image/png").split(",")[1];
+    }),
+    "base64",
+  );
+  await pagina.setInputFiles('[role="dialog"] input[type="file"]', { name: "larga.png", mimeType: "image/png", buffer: grande });
+  await pagina.waitForTimeout(300);
+  await pagina.getByRole("button", { name: "Recortar la captura 1" }).click();
+  await pagina.waitForTimeout(300);
+  const caja = await pagina.getByTestId("recorte").boundingBox();
+  check("ofrece recortar la captura", !!caja, "sin recorte");
+  if (caja) {
+    // Se baja el borde de arriba un tercio.
+    await pagina.mouse.move(caja.x + caja.width / 2, caja.y + 2);
+    await pagina.mouse.down();
+    await pagina.mouse.move(caja.x + caja.width / 2, caja.y + caja.height / 3, { steps: 5 });
+    await pagina.mouse.up();
+    await pagina.getByRole("button", { name: /^Recortar$/ }).click();
+    await pagina.waitForTimeout(800);
+    const alto = await pagina.evaluate(() => {
+      const img = document.querySelector('[role="dialog"] button[aria-label="Recortar la captura 1"] img');
+      return img ? img.naturalHeight : 0;
+    });
+    check("la captura queda recortada", alto > 300 && alto < 500, String(alto));
+  }
+  await pagina.getByRole("button", { name: /^Quitar$/ }).click();
   await pagina.setInputFiles('[role="dialog"] input[type="file"]', { name: "actividad.png", mimeType: "image/png", buffer: png });
   await pagina.waitForTimeout(300);
   await pagina.getByRole("button", { name: /^Leer 1 captura con/ }).click();
   await pagina.waitForTimeout(6000);
   const leido = await textoDe();
   check("avisa que la lectura es de prueba", leido.includes("lectura de prueba"), leido.slice(0, 300));
-  check("lo que no se leyó no se carga", leido.includes("2 de 2 listas"), leido.slice(0, 600));
+  check("lo que no se leyó no se carga", leido.includes("2 de 2 listos"), leido.slice(0, 600));
   await pagina.getByRole("button", { name: /^Agregar 2$/ }).click();
   await pagina.waitForTimeout(1500);
   await pagina.goto(BASE + "/movimientos", { waitUntil: "networkidle" });

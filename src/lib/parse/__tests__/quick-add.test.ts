@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseQuickEntry } from "@/lib/parse/quick-add";
-import { parseLooseNumber } from "@/lib/parse/number";
+import { editableNumber, parseLooseNumber } from "@/lib/parse/number";
 import { extractDate } from "@/lib/parse/dates";
 import type { Account, Asset } from "@/lib/types";
 
@@ -360,5 +360,28 @@ describe("un CEDEAR se nombra sin el sufijo", () => {
       assets: [qqqAccion, qqqCedear],
     })!;
     expect(r.assetId).toBe("a-qqq");
+  });
+});
+
+describe("los números con coma", () => {
+  it("una coma sola es decimal, con dos o tres cifras", () => {
+    expect(parseLooseNumber("108,62")).toBeCloseTo(108.62);
+    // Antes, con tres cifras después de la coma, se leía como miles.
+    expect(parseLooseNumber("108,625")).toBeCloseTo(108.625);
+    expect(parseLooseNumber("1,234")).toBeCloseTo(1.234);
+  });
+
+  it("los puntos siguen siendo miles y varias comas, miles a la inglesa", () => {
+    expect(parseLooseNumber("1.234")).toBe(1234);
+    expect(parseLooseNumber("1.234,5")).toBeCloseTo(1234.5);
+    expect(parseLooseNumber("1,234,567")).toBe(1234567);
+  });
+
+  it("lo que muestra el formulario al editar se vuelve a leer igual", () => {
+    // El caso real: abrir una compra para editarla y guardarla sin tocar
+    // nada cambiaba el monto, porque el campo mostraba "108.625".
+    for (const n of [108.62, 108.625, 1.234, 12.345, 0.135, 612328.81, 1582.2449870801, 0.00012, 1e-7, 8154]) {
+      expect(parseLooseNumber(editableNumber(n))).toBeCloseTo(n, 9);
+    }
   });
 });

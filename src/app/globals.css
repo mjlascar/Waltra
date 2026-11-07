@@ -221,6 +221,18 @@ body {
     padding-right: 32px;
   }
 
+  /* Las casillas de la revision de un pegado: varias por fila en un telefono. */
+  .input.input-sm {
+    height: 36px;
+    padding-inline: 8px;
+    font-size: 13px;
+    min-width: 0;
+  }
+  select.input.input-sm {
+    background-position: calc(100% - 13px) 16px, calc(100% - 8px) 16px;
+    padding-right: 22px;
+  }
+
   /* Casilla de verificacion. La nativa viene azul redondeada, que es el azul
      de la primera serie de datos y el unico borde redondeado de la app. */
   .check {

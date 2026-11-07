@@ -44,26 +44,7 @@ export function parseBulk(
       // En una transferencia, lo que sigue es la cuenta destino.
       lastAccount = entry.counterAccountId ?? entry.accountId;
     }
-    const blockers: string[] = [];
-
-    if (!entry) {
-      blockers.push("No pude leer la línea.");
-    } else {
-      const needsAsset = entry.type === "buy" || entry.type === "sell";
-      if (entry.amount === undefined || entry.amount <= 0) {
-        if (!entry.all) blockers.push("Sin monto.");
-      }
-      if (needsAsset && !entry.symbol) blockers.push("Sin activo.");
-      if (!entry.accountId) blockers.push("Sin cuenta.");
-      if (entry.type === "transfer" && !entry.counterAccountId) {
-        blockers.push("Falta la cuenta destino.");
-      }
-      // Un cambio sin los dos lados guardaria plata que sale sin nada que
-      // entre, y eso si seria inventar una perdida.
-      if (entry.type === "exchange" && (entry.toAmount === undefined || entry.toAmount <= 0)) {
-        blockers.push("Falta el dólar al que lo pagaste.");
-      }
-    }
+    const blockers = entry ? blockersFor(entry) : ["No pude leer la línea."];
 
     rows.push({ index: i + 1, raw, entry, blockers, include: blockers.length === 0 });
   }
@@ -91,4 +72,24 @@ export function summarize(rows: BulkRow[]): BulkSummary {
     primerDia: dias[0] ?? null,
     ultimoDia: dias[dias.length - 1] ?? null,
   };
+}
+
+/** Lo que impide guardar una fila: las mismas reglas al leer y al corregirla a mano. */
+export function blockersFor(entry: ParsedEntry): string[] {
+  const blockers: string[] = [];
+  const needsAsset = entry.type === "buy" || entry.type === "sell";
+  if (entry.amount === undefined || entry.amount <= 0) {
+    if (!entry.all) blockers.push("Sin monto.");
+  }
+  if (needsAsset && !entry.symbol) blockers.push("Sin activo.");
+  if (!entry.accountId) blockers.push("Sin cuenta.");
+  if (entry.type === "transfer" && !entry.counterAccountId) {
+    blockers.push("Falta la cuenta destino.");
+  }
+  // Un cambio sin los dos lados guardaria plata que sale sin nada que
+  // entre, y eso si seria inventar una perdida.
+  if (entry.type === "exchange" && (entry.toAmount === undefined || entry.toAmount <= 0)) {
+    blockers.push("Falta el dólar al que lo pagaste.");
+  }
+  return blockers;
 }

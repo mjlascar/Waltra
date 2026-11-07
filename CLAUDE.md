@@ -515,6 +515,26 @@ sigue siendo el precio de cada una.
 moneda y no una compra a la que le falta el activo. USDT y USDC no entran:
 son cripto.
 
+**Una coma sola es siempre la coma decimal** (`parseLooseNumber`). "108,625"
+se leía como 108.625 unidades de mil, y peor: el formulario de edición se
+llenaba con `String(108.625)`, que vuelto a leer daba 108625. Todo número que
+vuelve a una casilla pasa por `editableNumber` (coma decimal, sin miles), y
+hay un test de ida y vuelta. Al editar, elegir el activo no cambia la moneda
+del movimiento (`monedaDe`): la cambiaba a la del activo y 600.000 pesos de
+una ON pasaban a ser 600.000 dólares.
+
+**La revisión de un pegado o de capturas es en casillas** (`bulk-edit.ts`):
+tipo, fecha, cuenta, activo, cantidad, precio, total y moneda, por fila. El
+texto queda como paso intermedio. Lo corregido se aplica encima de lo leído y
+los problemas se recalculan con `blockersFor`, las mismas reglas que al leer.
+En una operación, cantidad o precio rehacen el total y el total rehace el
+precio. Las capturas se pueden **recortar** antes de mandarlas (`Recorte`):
+lo que queda afuera no viaja.
+
+Una ON que se dio de alta buscando "VSCY" quedó con ese símbolo de proveedor,
+y data912 la lista como VSCYO: `bymaCandidates` prueba las letras de moneda
+(solo para lo que no termina en `.BA`).
+
 ## Al tocar la importación de Binance
 
 Es la exportación "Spot Order History", una fila por orden. La otra

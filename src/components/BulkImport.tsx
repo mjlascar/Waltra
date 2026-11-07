@@ -9,10 +9,18 @@ import { newId, useStore } from "@/lib/store";
 import { parseBulk, summarize, type BulkRow } from "@/lib/parse/bulk";
 import { lastUsedAccountId } from "@/lib/assets";
 import { resolveTradeAsset } from "@/lib/cedear";
-import { money, quantity as fmtQty, shortDate, TX_SHORT } from "@/lib/format";
+import { shortDate, TX_SHORT } from "@/lib/format";
 import { txColor } from "@/lib/tx-style";
+import {
+  aplicarEdicion,
+  cambiar,
+  edicionDe,
+  esOperacion,
+  TIPOS_EDITABLES,
+  type Edicion,
+} from "@/lib/parse/bulk-edit";
 import { today } from "@/lib/date";
-import type { Asset, Transaction } from "@/lib/types";
+import type { Account, Asset, Transaction } from "@/lib/types";
 
 // Desde Cocos, QQQ es el CEDEAR: los montos son los de 10 CEDEARs, no los de
 // la accion de Nueva York.
@@ -43,6 +51,9 @@ export function BulkImport({
   const { accounts, assets, transactions, db, refresh } = useStore();
   const [text, setText] = useState("");
   const [excluded, setExcluded] = useState<Set<number>>(new Set());
+  /** Lo corregido en las casillas, por linea. Se descarta si cambia el texto. */
+  const [ediciones, setEdiciones] = useState<Record<number, Edicion>>({});
+  const [verTexto, setVerTexto] = useState(false);
   const [fallbackDate, setFallbackDate] = useState(today());
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState<number | null>(null);
@@ -58,14 +69,34 @@ export function BulkImport({
   const cocos = accounts.find((a) => a.broker === "cocos" && !a.archived)?.id;
   const defaultAccount = mode === "capturas" ? (cuentaCapturas ?? cocos ?? ultimaCuenta) : ultimaCuenta;
 
+  const leidas = useMemo(
+    () => parseBulk(text, { accounts, assets, defaultAccountId: defaultAccount }),
+    [text, accounts, assets, defaultAccount],
+  );
   const rows = useMemo(
     () =>
-      parseBulk(text, { accounts, assets, defaultAccountId: defaultAccount }).map((row) => ({
-        ...row,
-        include: row.include && !excluded.has(row.index),
-      })),
-    [text, accounts, assets, defaultAccount, excluded],
+      leidas.map((leida) => {
+        const ed = ediciones[leida.index];
+        const row = ed ? aplicarEdicion(leida, ed) : leida;
+        return { ...row, include: row.include && !excluded.has(row.index) };
+      }),
+    [leidas, ediciones, excluded],
   );
+
+  function nuevoTexto(t: string) {
+    setText(t);
+    setExcluded(new Set());
+    setEdiciones({});
+  }
+
+  function editar(index: number, campo: keyof Edicion, valor: string) {
+    const leida = leidas.find((r) => r.index === index);
+    if (!leida) return;
+    setEdiciones((prev) => {
+      const actual = prev[index] ?? edicionDe(leida, fallbackDate, defaultAccount);
+      return { ...prev, [index]: cambiar(actual, campo, valor) };
+    });
+  }
 
   const stats = useMemo(() => summarize(rows), [rows]);
 
@@ -155,8 +186,7 @@ export function BulkImport({
       });
 
       setDone(txs.length);
-      setText("");
-      setExcluded(new Set());
+      nuevoTexto("");
       void refresh({ force: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -164,8 +194,6 @@ export function BulkImport({
       setSaving(false);
     }
   }
-
-  const accountName = (id?: string) => accounts.find((a) => a.id === id)?.name ?? "—";
 
   return (
     <Sheet
@@ -228,8 +256,9 @@ export function BulkImport({
                 accountId={defaultAccount}
                 onAccountChange={setCuentaCapturas}
                 onText={(leido) => {
-                  setText((prev) => (prev.trim() ? `${prev.trim()}\n${leido}` : leido));
-                  setExcluded(new Set());
+                  // Se agrega abajo sin tocar las lineas de antes: lo que ya se
+                  // corrigio en las casillas sigue en su lugar.
+                  setText((prev) => (prev.trim() ? `${prev.replace(/\s+$/, "")}\n${leido}` : leido));
                 }}
               />
             </>
@@ -240,25 +269,29 @@ export function BulkImport({
             </p>
           )}
 
-          <Field label={mode === "capturas" ? "Lo que se leyó" : "Tus notas"}>
-            <textarea
-              className="input num"
-              rows={7}
-              value={text}
-              onChange={(e) => {
-                setText(e.target.value);
-                setExcluded(new Set());
-              }}
-              placeholder={mode === "capturas" ? "Acá aparecen los movimientos de las capturas." : EJEMPLO}
-              style={{ fontSize: 12, lineHeight: 1.5 }}
-            />
-          </Field>
+          {/* En capturas el texto es un paso intermedio: se revisa en las
+              casillas. Queda a mano para pegar la respuesta sin clave. */}
+          {mode === "capturas" && rows.length > 0 && !verTexto ? (
+            <button className="label underline" onClick={() => setVerTexto(true)}>
+              Ver el texto leído
+            </button>
+          ) : (
+            <Field label={mode === "capturas" ? "Lo que se leyó" : "Tus notas"}>
+              <textarea
+                className="input num"
+                rows={mode === "capturas" ? 4 : 7}
+                value={text}
+                onChange={(e) => nuevoTexto(e.target.value)}
+                placeholder={
+                  mode === "capturas" ? "Acá aparecen los movimientos de las capturas." : EJEMPLO
+                }
+                style={{ fontSize: 12, lineHeight: 1.5 }}
+              />
+            </Field>
+          )}
 
           {text.trim() === "" && mode === "notas" && (
-            <button
-              className="btn btn-sm mt-2 w-full"
-              onClick={() => setText(EJEMPLO)}
-            >
+            <button className="btn btn-sm mt-2 w-full" onClick={() => nuevoTexto(EJEMPLO)}>
               Probar con un ejemplo
             </button>
           )}
@@ -267,11 +300,11 @@ export function BulkImport({
             <>
               <div className="mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <span className="num text-[13px]">
-                  {stats.listos} de {stats.total} listas
+                  {stats.listos} de {stats.total} listos
                 </span>
                 {stats.conProblemas > 0 && (
                   <span className="num text-[12px]" style={{ color: "var(--color-warn)" }}>
-                    {stats.conProblemas} con problemas
+                    {stats.conProblemas} para completar
                   </span>
                 )}
                 {stats.primerDia && (
@@ -298,80 +331,28 @@ export function BulkImport({
                 </div>
               )}
 
-              <div className="eyebrow mb-2 mt-4">Lo que entendí</div>
+              <div className="eyebrow mb-2 mt-4">Revisá y corregí</div>
               <ul className="card divide-hairline">
                 {rows.map((row) => {
-                  const entry = row.entry;
-                  const bad = row.blockers.length > 0;
+                  const leida = leidas.find((r) => r.index === row.index)!;
+                  const ed = ediciones[row.index] ?? edicionDe(leida, fallbackDate, defaultAccount);
                   return (
-                    <li key={row.index}>
-                      <button
-                        className="flex w-full items-start gap-2.5 p-2.5 text-left"
-                        onClick={() => toggle(row)}
-                        style={{ opacity: row.include ? 1 : 0.4 }}
-                      >
-                        <span className="num shrink-0 text-[10px] pt-1" style={{ color: "var(--color-ink-3)", width: 18 }}>
-                          {row.index}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          {entry && !bad ? (
-                            <>
-                              <div className="flex items-baseline gap-1.5">
-                                <span
-                                  className="chip shrink-0"
-                                  style={{
-                                    color: txColor(entry.type),
-                                    borderColor: txColor(entry.type),
-                                  }}
-                                >
-                                  {TX_SHORT[entry.type]}
-                                </span>
-                                <span className="truncate text-[13px]">
-                                  {entry.symbol ?? accountName(entry.accountId)}
-                                </span>
-                                <span className="num ml-auto shrink-0 text-[12px]">
-                                  {money(entry.amount ?? 0, entry.currency, { compact: true })}
-                                </span>
-                              </div>
-                              <div className="label mt-0.5 truncate">
-                                {/* Fecha y cuenta primero: son lo que el
-                                    usuario necesita verificar, y el detalle
-                                    de precio ya se deduce del monto. */}
-                                {[
-                                  entry.dateExplicit ? shortDate(entry.day, true) : "sin fecha",
-                                  accountName(entry.accountId),
-                                  entry.quantity
-                                    ? `${fmtQty(entry.quantity, 6)} @ ${money(entry.price ?? 0, entry.currency)}`
-                                    : null,
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")}
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <div className="num truncate text-[12px]" style={{ color: "var(--color-ink-2)" }}>
-                                {row.raw}
-                              </div>
-                              <div
-                                className="mt-0.5 flex items-center gap-1 text-[11px]"
-                                style={{ color: "var(--color-warn)" }}
-                              >
-                                <IconWarning size={12} />
-                                {row.blockers.join(" ")}
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </button>
-                    </li>
+                    <FilaEditable
+                      key={row.index}
+                      row={row}
+                      ed={ed}
+                      sinLeer={!leida.entry && !ediciones[row.index]}
+                      accounts={accounts.filter((a) => !a.archived)}
+                      onChange={(campo, valor) => editar(row.index, campo, valor)}
+                      onToggle={() => toggle(row)}
+                    />
                   );
                 })}
               </ul>
 
               <p className="label mt-2 leading-snug">
-                Tocá una línea para excluirla o volver a incluirla. Las que tienen
-                problemas no se importan: corregilas en el texto y volvé a pegar.
+                Cada casilla se puede corregir. Destildá un movimiento para no cargarlo; los que
+                tienen algo en amarillo se cargan cuando lo completes.
               </p>
 
               {transactions.length > 0 && (
@@ -387,5 +368,158 @@ export function BulkImport({
         </>
       )}
     </Sheet>
+  );
+}
+
+/**
+ * Un movimiento de la revision, con cada dato en su casilla: tipo, fecha,
+ * cuenta, activo, cantidad, precio, total y moneda. Corregir un numero no
+ * pide reescribir una frase.
+ */
+function FilaEditable({
+  row,
+  ed,
+  sinLeer,
+  accounts,
+  onChange,
+  onToggle,
+}: {
+  row: BulkRow;
+  ed: Edicion;
+  /** La linea no se pudo leer y todavia no se toco: se muestra lo que decia. */
+  sinLeer: boolean;
+  accounts: Account[];
+  onChange: (campo: keyof Edicion, valor: string) => void;
+  onToggle: () => void;
+}) {
+  const bad = row.blockers.length > 0;
+  const trade = esOperacion(ed.type);
+  const color = txColor(ed.type);
+  const num = (campo: keyof Edicion, etiqueta: string) => (
+    <label className="min-w-0 flex-1">
+      <span className="label block text-[10px]">{etiqueta}</span>
+      <input
+        className="input input-sm num w-full"
+        inputMode="decimal"
+        value={ed[campo]}
+        onChange={(e) => onChange(campo, e.target.value)}
+        aria-label={`${etiqueta}, línea ${row.index}`}
+      />
+    </label>
+  );
+  const moneda = (campo: "currency" | "toCurrency") => (
+    <label className="shrink-0" style={{ width: 66 }}>
+      <span className="label block text-[10px]">Moneda</span>
+      <select
+        className="input input-sm"
+        value={ed[campo]}
+        onChange={(e) => onChange(campo, e.target.value)}
+        aria-label={`Moneda, línea ${row.index}`}
+      >
+        <option value="ARS">$</option>
+        <option value="USD">US$</option>
+      </select>
+    </label>
+  );
+  const cuenta = (campo: "accountId" | "counterAccountId", etiqueta: string) => (
+    <select
+      className="input input-sm flex-1"
+      value={ed[campo]}
+      onChange={(e) => onChange(campo, e.target.value)}
+      aria-label={`${etiqueta}, línea ${row.index}`}
+    >
+      {campo === "counterAccountId" && <option value="">Hacia…</option>}
+      {accounts.map((a) => (
+        <option key={a.id} value={a.id}>
+          {a.name}
+        </option>
+      ))}
+    </select>
+  );
+
+  return (
+    <li className="space-y-2 p-2.5" style={{ opacity: row.include || bad ? 1 : 0.45 }}>
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          className="h-4 w-4 shrink-0"
+          checked={row.include}
+          disabled={bad}
+          onChange={onToggle}
+          aria-label={`Cargar la línea ${row.index}`}
+        />
+        <select
+          className="input input-sm flex-1"
+          value={ed.type}
+          onChange={(e) => onChange("type", e.target.value)}
+          style={{ color, borderColor: color }}
+          aria-label={`Tipo, línea ${row.index}`}
+        >
+          {TIPOS_EDITABLES.map((t) => (
+            <option key={t} value={t}>
+              {TX_SHORT[t]}
+            </option>
+          ))}
+        </select>
+        <input
+          type="date"
+          className="input input-sm num flex-1"
+          value={ed.day}
+          max={today()}
+          onChange={(e) => onChange("day", e.target.value)}
+          aria-label={`Fecha, línea ${row.index}`}
+        />
+      </div>
+
+      <div className="flex items-center gap-2">
+        {cuenta("accountId", "Cuenta")}
+        {ed.type === "transfer" && cuenta("counterAccountId", "Cuenta destino")}
+        {trade && (
+          <input
+            className="input input-sm flex-1 uppercase"
+            value={ed.symbol}
+            placeholder="Activo"
+            autoCapitalize="characters"
+            onChange={(e) => onChange("symbol", e.target.value)}
+            aria-label={`Activo, línea ${row.index}`}
+          />
+        )}
+      </div>
+
+      <div className="flex items-end gap-2">
+        {trade ? (
+          <>
+            {num("quantity", "Cantidad")}
+            {num("price", "Precio")}
+            {num("amount", "Total")}
+            {moneda("currency")}
+          </>
+        ) : ed.type === "exchange" ? (
+          <>
+            {num("amount", "Sale")}
+            {moneda("currency")}
+            {num("toAmount", "Entra")}
+            {moneda("toCurrency")}
+          </>
+        ) : (
+          <>
+            {num("amount", "Monto")}
+            {moneda("currency")}
+          </>
+        )}
+      </div>
+
+      {sinLeer && (
+        <div className="num truncate text-[11px]" style={{ color: "var(--color-ink-3)" }}>
+          {row.raw}
+        </div>
+      )}
+      {bad && (
+        <div className="flex items-center gap-1 text-[11px]" style={{ color: "var(--color-warn)" }}>
+          <IconWarning size={12} />
+          {row.blockers.join(" ")}
+        </div>
+      )}
+    </li>
   );
 }

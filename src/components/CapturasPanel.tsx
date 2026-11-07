@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Field } from "@/components/ui/Field";
+import { Recorte } from "@/components/Recorte";
 import { useStore } from "@/lib/store";
 import { ON_DEVICE, describeBackendError, readCaptures } from "@/lib/backend";
 import { keyFor, providerInfo, resolveModel, resolveProvider } from "@/lib/insights/providers";
@@ -33,6 +34,8 @@ export function CapturasPanel({
   const [busy, setBusy] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** La captura que se esta recortando. */
+  const [recortando, setRecortando] = useState<number | null>(null);
 
   const provider = resolveProvider(settings.provider);
   const nombre = providerInfo(provider).label;
@@ -110,21 +113,46 @@ export function CapturasPanel({
         }}
       />
 
-      {previews.length > 0 && (
-        <div className="flex gap-1.5 overflow-x-auto">
-          {previews.map((src, i) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              key={src}
-              src={src}
-              alt={`Captura ${i + 1}`}
-              className="h-20 w-auto shrink-0"
-              style={{ border: "1px solid var(--color-line)" }}
-            />
-          ))}
-        </div>
+      {recortando !== null && files[recortando] ? (
+        <Recorte
+          file={files[recortando]}
+          src={previews[recortando]}
+          onCancel={() => setRecortando(null)}
+          onDone={(recortada) => {
+            const i = recortando;
+            setFiles((prev) => prev.map((f, j) => (j === i ? recortada : f)));
+            setRecortando(null);
+          }}
+        />
+      ) : (
+        previews.length > 0 && (
+          <div>
+            <div className="flex gap-1.5 overflow-x-auto">
+              {previews.map((src, i) => (
+                <button
+                  key={src}
+                  type="button"
+                  className="shrink-0"
+                  onClick={() => setRecortando(i)}
+                  disabled={busy}
+                  aria-label={`Recortar la captura ${i + 1}`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={src}
+                    alt={`Captura ${i + 1}`}
+                    className="h-20 w-auto"
+                    style={{ border: "1px solid var(--color-line)" }}
+                  />
+                </button>
+              ))}
+            </div>
+            <p className="label mt-1">Tocá una captura para recortarla.</p>
+          </div>
+        )
       )}
 
+      {recortando === null && (
       <div className="flex gap-2">
         <button className="btn btn-sm flex-1" onClick={() => fileRef.current?.click()} disabled={busy}>
           {files.length ? "Sumar capturas" : "Elegir capturas"}
@@ -135,6 +163,7 @@ export function CapturasPanel({
           </button>
         )}
       </div>
+      )}
 
       {sinClave ? (
         <div>
@@ -150,13 +179,14 @@ export function CapturasPanel({
         <>
           <button
             className="btn btn-primary btn-sm w-full"
-            disabled={files.length === 0 || busy}
+            disabled={files.length === 0 || busy || recortando !== null}
             onClick={() => void leer()}
           >
             {busy ? "Leyendo…" : `Leer ${files.length || ""} ${files.length === 1 ? "captura" : "capturas"} con ${nombre}`.replace("  ", " ")}
           </button>
           <p className="label leading-snug">
-            Las capturas viajan a {nombre} tal como están. Recortá lo que no quieras mandar.
+            Las capturas viajan a {nombre} tal como están: tocá una para recortar lo que no
+            quieras mandar.
           </p>
         </>
       )}

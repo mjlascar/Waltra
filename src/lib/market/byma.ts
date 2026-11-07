@@ -1,3 +1,4 @@
+import { bondBase } from "@/lib/bonds";
 import { getJson, type HistoryRequest, type HistoryResult, type MarketRef, type QuoteResult } from "./types";
 import { yahooHistory, yahooQuote } from "./yahoo";
 
@@ -56,6 +57,34 @@ function bymaSymbol(sourceSymbol: string): string {
   return sourceSymbol.toUpperCase().replace(/\.BA$/, "");
 }
 
+/**
+ * Los nombres con que se busca un activo en el tablero, en orden.
+ *
+ * Primero el simbolo del proveedor y el de la app, tal cual. Despues, para un
+ * bono u ON, la especie con la letra de la moneda en que cotiza (O pesos, D
+ * dolar MEP, C cable): una ON cargada como "VSCY" no aparecia nunca, porque
+ * en data912 esta como VSCYO, y renombrarla en la app no cambiaba el simbolo
+ * del proveedor.
+ */
+export function bymaCandidates(ref: Pick<MarketRef, "symbol" | "sourceSymbol" | "currency">): string[] {
+  const out: string[] = [];
+  const agregar = (s: string) => {
+    const limpio = bymaSymbol(s.trim());
+    if (limpio && !out.includes(limpio)) out.push(limpio);
+  };
+  agregar(ref.sourceSymbol);
+  agregar(ref.symbol);
+  // Las acciones y los CEDEAR llevan el sufijo de Yahoo (GGAL.BA): a esos no
+  // se les prueban letras, que podrian dar con la ON de otra empresa.
+  if (/\.BA$/i.test(ref.sourceSymbol)) return out;
+  const letras = ref.currency === "USD" ? ["D", "C"] : ["O", ""];
+  for (const s of [ref.sourceSymbol, ref.symbol]) {
+    const especie = bondBase(bymaSymbol(s));
+    for (const letra of letras) agregar(especie + letra);
+  }
+  return out;
+}
+
 export async function bymaQuotes(refs: MarketRef[]): Promise<QuoteResult[]> {
   if (refs.length === 0) return [];
   const at = new Date().toISOString();
@@ -69,7 +98,11 @@ export async function bymaQuotes(refs: MarketRef[]): Promise<QuoteResult[]> {
 
   return Promise.all(
     refs.map(async (ref) => {
-      const row = board?.get(bymaSymbol(ref.sourceSymbol));
+      const row = board
+        ? bymaCandidates(ref)
+            .map((s) => board!.get(s))
+            .find((r) => r !== undefined && rowPrice(r) !== null)
+        : undefined;
       const price = row ? rowPrice(row) : null;
       if (price !== null) {
         const change = row?.pct_change ?? row?.variation;

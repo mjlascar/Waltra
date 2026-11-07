@@ -7,7 +7,7 @@ import { IconWarning } from "@/components/icons";
 import { newId, useStore } from "@/lib/store";
 import { describeBackendError, parseEntry, searchSymbols } from "@/lib/backend";
 import { parseQuickEntry } from "@/lib/parse/quick-add";
-import { parseLooseNumber } from "@/lib/parse/number";
+import { editableNumber, parseLooseNumber } from "@/lib/parse/number";
 import { lookupCatalog, searchCatalog, type CatalogEntry } from "@/lib/catalog";
 import { lastUsedAccountId } from "@/lib/assets";
 import { bondCandidate, sameBond } from "@/lib/bonds";
@@ -170,15 +170,15 @@ export function AddTransaction({
         counterAccountId: editing.counterAccountId ?? "",
         symbol: asset?.symbol ?? "",
         assetId: editing.assetId ?? "",
-        quantityText: editing.quantity ? String(editing.quantity) : "",
+        quantityText: editing.quantity ? editableNumber(editing.quantity) : "",
         // Un bono se muestra como lo da el broker, cada 100 nominales; el
         // movimiento guarda el precio por nominal.
-        priceText: editing.price ? String(editing.price * (asset?.priceUnit ?? 1)) : "",
-        amountText: String(editing.amount),
+        priceText: editing.price ? editableNumber(editing.price * (asset?.priceUnit ?? 1)) : "",
+        amountText: editableNumber(editing.amount),
         currency: editing.currency,
-        feeText: editing.fee ? String(editing.fee) : "",
-        toAmountText: editing.toAmount ? String(editing.toAmount) : "",
-        fxText: editing.fxRate ? String(editing.fxRate) : "",
+        feeText: editing.fee ? editableNumber(editing.fee) : "",
+        toAmountText: editing.toAmount ? editableNumber(editing.toAmount) : "",
+        fxText: editing.fxRate ? editableNumber(editing.fxRate) : "",
         note: editing.note ?? "",
         basis: editing.quantity ? "quantity" : "amount",
       });
@@ -234,28 +234,28 @@ export function AddTransaction({
       assetId: parsed.assetId ?? "",
       quantityText:
         allQuantity !== undefined
-          ? fmtQty(allQuantity, 8)
+          ? editableNumber(allQuantity)
           : parsed.quantity !== undefined
-            ? fmtQty(parsed.quantity, 8)
+            ? editableNumber(parsed.quantity)
             : "",
       priceText:
         parsed.price !== undefined
-          ? String(parsed.price)
+          ? editableNumber(parsed.price)
           : allQuantity !== undefined && holding?.price
-            ? String(holding.price)
+            ? editableNumber(holding.price)
             : "",
       // Con total y unidades, el campo de monto muestra el total del
       // comprobante tal como se dijo; el bruto sin comision lo recalcula
       // `computed`, igual que cuando se carga a mano.
       amountText:
         parsed.basis === "total" && parsed.total !== undefined
-          ? String(parsed.total)
+          ? editableNumber(parsed.total)
           : parsed.amount !== undefined
-            ? String(parsed.amount)
+            ? editableNumber(parsed.amount)
             : "",
       currency: parsed.currency,
-      feeText: parsed.fee !== undefined ? String(parsed.fee) : "",
-      toAmountText: parsed.toAmount !== undefined ? String(parsed.toAmount) : "",
+      feeText: parsed.fee !== undefined ? editableNumber(parsed.fee) : "",
+      toAmountText: parsed.toAmount !== undefined ? editableNumber(parsed.toAmount) : "",
       basis: allQuantity !== undefined ? "quantity" : parsed.basis,
     }));
     // Sin `portfolio` en las dependencias a proposito: un refresco de precios
@@ -535,11 +535,11 @@ export function AddTransaction({
         counterAccountId: data.counterAccountId ?? "",
         symbol,
         assetId: match?.id ?? "",
-        quantityText: data.quantity !== null ? fmtQty(data.quantity, 8) : "",
-        priceText: data.price !== null ? String(data.price) : "",
-        amountText: data.amount !== null ? String(data.amount) : "",
+        quantityText: data.quantity !== null ? editableNumber(data.quantity) : "",
+        priceText: data.price !== null ? editableNumber(data.price) : "",
+        amountText: data.amount !== null ? editableNumber(data.amount) : "",
         currency: data.currency ?? prev.currency,
-        feeText: data.fee !== null ? String(data.fee) : "",
+        feeText: data.fee !== null ? editableNumber(data.fee) : "",
         note: data.note ?? prev.note,
         basis: data.quantity !== null && data.amount === null ? "quantity" : prev.basis,
       }));
@@ -637,6 +637,18 @@ export function AddTransaction({
     }
   }
 
+  /**
+   * La moneda que trae un activo, solo si todavia no se escribio ningun
+   * monto. La moneda de una compra es con que se pago, no la del activo: un
+   * CEDEAR se compra en dolares desde Cocos y cotiza en pesos. Antes, tocar
+   * el activo al editar una compra en dolares la pasaba a pesos (o al reves)
+   * con el mismo numero, y 600.000 pesos aparecian como 600.000 dolares.
+   */
+  function monedaDe(currency: Currency): Partial<Draft> {
+    if (editing || draft.amountText.trim() || draft.priceText.trim()) return {};
+    return { currency };
+  }
+
   function elegirHallado(hit: SymbolHit) {
     setCatalogHit(null);
     setHallados(null);
@@ -646,10 +658,10 @@ export function AddTransaction({
     if (mismo) {
       encontrado.current = null;
       setUnidadHallada(null);
-      set({ symbol: mismo.symbol, assetId: mismo.id, currency: hit.currency });
+      set({ symbol: mismo.symbol, assetId: mismo.id, ...monedaDe(hit.currency) });
       return;
     }
-    set({ symbol: hit.symbol, assetId: "", currency: hit.currency });
+    set({ symbol: hit.symbol, assetId: "", ...monedaDe(hit.currency) });
     // El activo se crea al guardar; `resolveAsset` mira el catalogo y, si no
     // esta, arma uno con lo que le pasemos. Guardamos el hallazgo para eso.
     encontrado.current = hit;
@@ -920,7 +932,7 @@ export function AddTransaction({
                       className="chip"
                       onClick={() => {
                         setCatalogHit(s);
-                        set({ symbol: s.symbol, currency: s.currency });
+                        set({ symbol: s.symbol, ...monedaDe(s.currency) });
                       }}
                     >
                       {s.symbol}
