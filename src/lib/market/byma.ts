@@ -1,4 +1,4 @@
-import { bondBase } from "@/lib/bonds";
+import { BOND_PRICE_UNIT, bondBase } from "@/lib/bonds";
 import { getJson, type HistoryRequest, type HistoryResult, type MarketRef, type QuoteResult } from "./types";
 import { yahooHistory, yahooQuote } from "./yahoo";
 
@@ -24,6 +24,10 @@ interface LiveRow {
 // arg_corp son las obligaciones negociables y arg_notes las letras: sin
 // ellos, una ON como VSCYO no tenia de donde sacar precio.
 const FEEDS = ["arg_stocks", "arg_cedears", "arg_bonds", "arg_corp", "arg_notes"] as const;
+/** Los paneles que cotizan cada 100 nominales. */
+const POR_CIEN = new Set<string>(["arg_bonds", "arg_corp", "arg_notes"]);
+
+type BoardRow = LiveRow & { feed: string };
 
 function rowPrice(row: LiveRow): number | null {
   const direct = row.c ?? row.close ?? row.last;
@@ -36,18 +40,18 @@ function rowPrice(row: LiveRow): number | null {
   return null;
 }
 
-async function loadBoard(): Promise<Map<string, LiveRow>> {
-  const board = new Map<string, LiveRow>();
+async function loadBoard(): Promise<Map<string, BoardRow>> {
+  const board = new Map<string, BoardRow>();
   const results = await Promise.allSettled(
     FEEDS.map((feed) => getJson<LiveRow[]>(`${BASE}/live/${feed}`)),
   );
-  for (const result of results) {
-    if (result.status !== "fulfilled" || !Array.isArray(result.value)) continue;
+  results.forEach((result, i) => {
+    if (result.status !== "fulfilled" || !Array.isArray(result.value)) return;
     for (const row of result.value) {
       const symbol = (row.symbol ?? row.ticker ?? "").toUpperCase();
-      if (symbol) board.set(symbol, row);
+      if (symbol) board.set(symbol, { ...row, feed: FEEDS[i] });
     }
-  }
+  });
   if (board.size === 0) throw new Error("data912 no devolvió ningún panel");
   return board;
 }
@@ -88,7 +92,7 @@ export function bymaCandidates(ref: Pick<MarketRef, "symbol" | "sourceSymbol" | 
 export async function bymaQuotes(refs: MarketRef[]): Promise<QuoteResult[]> {
   if (refs.length === 0) return [];
   const at = new Date().toISOString();
-  let board: Map<string, LiveRow> | null = null;
+  let board: Map<string, BoardRow> | null = null;
   let boardError = "";
   try {
     board = await loadBoard();
@@ -113,6 +117,7 @@ export async function bymaQuotes(refs: MarketRef[]): Promise<QuoteResult[]> {
           changePct: typeof change === "number" ? change / 100 : undefined,
           at,
           source: "byma" as const,
+          ...(row && POR_CIEN.has(row.feed) ? { priceUnit: BOND_PRICE_UNIT } : {}),
         };
       }
       // Respaldo: Yahoo tambien lista BYMA con el sufijo .BA.

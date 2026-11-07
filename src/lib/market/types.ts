@@ -22,6 +22,12 @@ export interface QuoteResult {
   at: string;
   source: QuoteSource;
   error?: string;
+  /**
+   * La cotizacion es cada tantos nominales: los paneles de bonos, ON y letras
+   * de data912 dan el precio cada 100 VN. Con esto un bono cargado como si
+   * fuera una accion se corrige solo, en vez de valer cien veces de mas.
+   */
+  priceUnit?: number;
 }
 
 export interface HistoryResult {

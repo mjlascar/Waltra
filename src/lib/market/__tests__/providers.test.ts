@@ -166,6 +166,7 @@ describe("BYMA / data912", () => {
     );
     const [quote] = await bymaQuotes([ggal]);
     expect(quote.price).toBeCloseTo(7250.5);
+    expect(quote.priceUnit).toBeUndefined();
     expect(quote.changePct).toBeCloseTo(0.018);
   });
 
@@ -179,6 +180,18 @@ describe("BYMA / data912", () => {
       { assetId: "on", symbol: "VSCYO", source: "byma", sourceSymbol: "VSCY", currency: "ARS" },
     ]);
     expect(quote.price).toBeCloseTo(158000);
+    expect(quote.priceUnit).toBe(100);
+  });
+
+  it("un VSCYO.BA cargado como acción también avisa que cotiza cada 100 VN", async () => {
+    mockFetch((url) =>
+      url.includes("arg_corp") ? { body: [{ symbol: "VSCYO", c: 158000 }] } : { body: [] },
+    );
+    const [quote] = await bymaQuotes([
+      { assetId: "on", symbol: "VSCYO.BA", source: "byma", sourceSymbol: "VSCYO.BA", currency: "ARS" },
+    ]);
+    expect(quote.price).toBeCloseTo(158000);
+    expect(quote.priceUnit).toBe(100);
   });
 
   it("a una acción no le prueba letras de bono", () => {

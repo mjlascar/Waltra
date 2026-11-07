@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bondBase, bondCandidate, duplicateBonds, looksLikeBymaTicker, sameBond } from "@/lib/bonds";
+import { bondBase, bondCandidate, bondsWithoutUnit, duplicateBonds, looksLikeBymaTicker, sameBond } from "@/lib/bonds";
 import { assetFromSymbol } from "@/lib/assets";
 import { computePortfolio } from "@/lib/engine/portfolio";
 
@@ -90,5 +90,31 @@ describe("la misma especie con otra letra de moneda", () => {
     expect(p.positions).toHaveLength(1);
     expect(p.positions[0].quantity).toBe(2000);
     expect(p.totalPnlUsd).toBeCloseTo(0, 6);
+  });
+
+  it("una ON cargada como acción toma la unidad de la cotización", () => {
+    // El caso real: "compré 387 VSCYO por 612.328 pesos" dejó la ON sin
+    // unidad y valía 158.000 por nominal, cuando se pagó 1.582.
+    const assets = [
+      { id: "on", symbol: "VSCYO.BA" },
+      { id: "ok", symbol: "AL30", priceUnit: 100 },
+      { id: "ggal", symbol: "GGAL.BA" },
+    ];
+    const quotes = [
+      { assetId: "on", priceUnit: 100 },
+      { assetId: "ok", priceUnit: 100 },
+      { assetId: "ggal" },
+    ];
+    expect(bondsWithoutUnit(quotes, assets)).toEqual([{ asset: assets[0], priceUnit: 100 }]);
+  });
+
+  it("VSCYO.BA y VSCYO son la misma especie", () => {
+    expect(bondBase("VSCYO.BA")).toBe("VSCY");
+    expect(
+      duplicateBonds([
+        { symbol: "VSCYO.BA", kind: "bond", currency: "ARS" },
+        { symbol: "VSCYO", kind: "bond", currency: "ARS" },
+      ])[0][0].symbol,
+    ).toBe("VSCYO");
   });
 });

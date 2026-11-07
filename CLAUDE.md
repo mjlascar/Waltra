@@ -207,6 +207,15 @@ las que ya estaban repetidas el inicio ofrece unificarlas (`mergeAssets`),
 quedándose con la de pesos. Una compra en dólares de un bono en pesos se
 pasa al dólar de ese día, igual que un CEDEAR comprado en dólares.
 
+Un bono cargado **como acción** ("compré 387 VSCYO" no dice que es una ON,
+y queda `VSCYO.BA` sin unidad) valía cien veces de más: 158.000 por nominal
+habiendo pagado 1.582. data912 dice en qué panel está cada símbolo, y los de
+bonos, ON y letras cotizan cada 100 VN: la cotización lo trae (`priceUnit`
+en `QuoteResult`) y la sincronización le pone la unidad al activo
+(`bondsWithoutUnit`). Las operaciones no se tocan: ya guardaban el precio
+por nominal. `bondBase` ignora el `.BA`, así que si quedaron dos (VSCYO y
+VSCYO.BA) el inicio ofrece unificarlas, quedándose con la que no lo lleva.
+
 **Comprar dólares es un cambio de moneda, no capital** (`type: "exchange"`).
 Salen `amount` en `currency` y entran `toAmount` en `toCurrency`, en la misma
 cuenta. No mueve el capital aportado ni el rendimiento. Cada lado se valúa al

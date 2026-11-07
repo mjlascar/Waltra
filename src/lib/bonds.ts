@@ -47,7 +47,9 @@ export function bondCandidate(query: string): (SymbolHit & { priceUnit: number }
  * dos bonos distintos; son una sola tenencia comprada de dos maneras.
  */
 export function bondBase(symbol: string): string {
-  const s = symbol.trim().toUpperCase();
+  // VSCYO.BA es VSCYO con el sufijo de Yahoo: un bono que se cargo como si
+  // fuera una accion tiene que juntarse con el que se cargo bien.
+  const s = symbol.trim().toUpperCase().replace(/\.BA$/, "");
   return s.length >= 5 && /[ODC]$/.test(s) ? s.slice(0, -1) : s;
 }
 
@@ -76,5 +78,30 @@ export function duplicateBonds<T extends { symbol: string; kind: string; currenc
   }
   return [...grupos.values()]
     .filter((g) => g.length > 1)
-    .map((g) => [...g].sort((a, b) => (a.currency === "ARS" ? -1 : 0) - (b.currency === "ARS" ? -1 : 0)));
+    .map((g) => {
+      // Primero la de pesos; entre iguales, la que no lleva el sufijo de
+      // Yahoo, que es como se llama la ON en el broker.
+      const orden = (a: T) => (a.currency === "ARS" ? 0 : 2) + (/\.BA$/i.test(a.symbol) ? 1 : 0);
+      return [...g].sort((a, b) => orden(a) - orden(b));
+    });
+}
+
+/**
+ * Los activos que el proveedor cotiza cada tantos nominales y la app tiene
+ * sin unidad: un bono o una ON cargados como accion ("compré 387 VSCYO" no
+ * dice que es una ON), que valian cien veces de mas. Devuelve la unidad que
+ * les corresponde.
+ */
+export function bondsWithoutUnit<A extends { id: string; priceUnit?: number }>(
+  quotes: { assetId: string; priceUnit?: number }[],
+  assets: A[],
+): { asset: A; priceUnit: number }[] {
+  const out: { asset: A; priceUnit: number }[] = [];
+  for (const q of quotes) {
+    if (!q.priceUnit || q.priceUnit <= 1) continue;
+    const asset = assets.find((a) => a.id === q.assetId);
+    if (!asset || (asset.priceUnit && asset.priceUnit > 1)) continue;
+    if (!out.some((o) => o.asset.id === asset.id)) out.push({ asset, priceUnit: q.priceUnit });
+  }
+  return out;
 }

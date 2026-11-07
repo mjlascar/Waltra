@@ -1,5 +1,6 @@
 "use client";
 
+import { bondsWithoutUnit } from "@/lib/bonds";
 import {
   createContext,
   useCallback,
@@ -316,6 +317,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // de cero: se descarta en vez de guardarse.
         // Los bonos y las ON cotizan cada 100 nominales: se guardan por
         // nominal, asi todo lo demas sigue siendo unidades por precio.
+        // Un bono o una ON cargados como accion (una compra escrita a mano,
+        // "compré 387 VSCYO", no sabe que es una ON) quedaban sin unidad y
+        // valian cien veces de mas: 158.000 por nominal en vez de 1.580. El
+        // panel de data912 donde aparece lo dice, asi que se corrige solo.
+        // Las operaciones ya guardan el precio por nominal: no se tocan.
+        const sinUnidad = bondsWithoutUnit(data.quotes, live);
+        if (sinUnidad.length) {
+          await db.transaction("rw", [db.assets, db.priceSeries], async () => {
+            for (const { asset, priceUnit } of sinUnidad) {
+              await db.assets.update(asset.id, { kind: "bond", priceUnit });
+              // La serie guardada estaba cada 100 VN: se vuelve a bajar.
+              await db.priceSeries.delete(asset.id);
+            }
+          });
+          for (const { asset, priceUnit } of sinUnidad) {
+            live[live.indexOf(asset)] = { ...asset, kind: "bond", priceUnit };
+          }
+        }
         const unidad = new Map(live.map((a) => [a.id, a.priceUnit && a.priceUnit > 1 ? a.priceUnit : 1]));
         const goodQuotes: Quote[] = [];
         for (const q of data.quotes) {
