@@ -209,6 +209,42 @@ function findCrypto(assets: Asset[], symbol: string): Asset | undefined {
 let running: Promise<RunResult | null> | null = null;
 
 /**
+ * Por donde va la pasada en curso, para la pantalla. Una pasada puede llevar
+ * un par de minutos (cada par de la cuenta es un pedido, y cada orden nueva
+ * otro), y "Trayendo…" quieto ese tiempo se lee como que no hace nada.
+ */
+export interface BinanceProgress {
+  step: string;
+  done?: number;
+  total?: number;
+}
+let progress: BinanceProgress | null = null;
+const listeners = new Set<(p: BinanceProgress | null) => void>();
+function report(p: BinanceProgress | null) {
+  progress = p;
+  for (const f of listeners) f(p);
+}
+export function watchBinanceProgress(f: (p: BinanceProgress | null) => void): () => void {
+  listeners.add(f);
+  f(progress);
+  return () => {
+    listeners.delete(f);
+  };
+}
+
+/** Por que una pasada no corrio: la pantalla lo dice en vez de quedarse quieta. */
+export function whyNotRun(conn: BinanceConnection | undefined, at = Date.now()): string | null {
+  if (!conn?.apiKey) return "No hay una clave conectada.";
+  if (conn.blockedUntil && conn.blockedUntil > at) {
+    const hora = new Date(conn.blockedUntil).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+    return `Binance pidió esperar: se puede volver a traer a las ${hora}.`;
+  }
+  const desde = conn.lastRun ? at - Date.parse(conn.lastRun.at) : Infinity;
+  if (desde >= 0 && desde < MIN_FORCED) return "Recién terminó de traer: probá de nuevo en unos segundos.";
+  return null;
+}
+
+/**
  * Una pasada. Si ya hay una en curso, devuelve esa: abrir Ajustes mientras
  * la app sincroniza no tiene que duplicar pedidos.
  */
@@ -218,8 +254,10 @@ export function runBinance(
   options: { now?: () => number; force?: boolean } = {},
 ): Promise<RunResult | null> {
   if (!running) {
+    report({ step: "Conectando con Binance" });
     running = pass(db, client, options).finally(() => {
       running = null;
+      report(null);
     });
   }
   return running;
@@ -335,6 +373,7 @@ async function pass(
     floorHere = floor,
   ): Promise<boolean> {
     let end = 0;
+    report({ step: `Leyendo ${name}` });
     /** Recorre hacia atras desde `desde`. Devuelve si llego al final (lo que ya estaba o el punto de partida). */
     const range = async (desde: number): Promise<boolean> => {
       for (end = desde; end >= floorHere; ) {
@@ -451,6 +490,7 @@ async function pass(
 
   /** Earn: cada mes, una vez, cuando ya termino. Nunca se rearma un movimiento que ya esta. */
   async function earn(): Promise<boolean> {
+    report({ step: "Leyendo Earn" });
     let from = Math.max(floor, earnFrom ?? floor);
     for (;;) {
       const [ms, me] = monthBounds(from);
@@ -538,6 +578,7 @@ async function pass(
       }
     }
     if (mirar.size > 0) {
+      report({ step: "Buscando los pares de lo que tenés" });
       const existentes = await symbolsOf(client, t0);
       const par = (b: string, q: string) => (b !== q && existentes.has(`${b}${q}`) ? [`${b}/${q}`] : []);
       const pares = [
@@ -575,7 +616,9 @@ async function pass(
       if (pagos && ganancias) slowAt = t0;
     }
 
+    const pares = queue.length;
     while (queue.length > 0) {
+      report({ step: `Órdenes de ${queue[0]}`, done: pares - queue.length, total: pares });
       if ((await scanPair(queue[0])) === "cut") {
         partial = true;
         break;
@@ -602,6 +645,7 @@ async function pass(
     authError: fatal?.kind === "auth" ? describeError(fatal) : undefined,
     blockedUntil: fatal?.kind === "rate" ? t0 + (fatal.retryAfter ?? 60) * 1000 : undefined,
   };
+  report({ step: "Guardando" });
   return write(db, [...found.values()], book, patch, (w) => ({
     at: lastRunAt,
     added: w.added,

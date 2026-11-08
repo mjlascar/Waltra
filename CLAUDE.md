@@ -633,6 +633,13 @@ lo de Binance junto; una clave de otra cuenta de Binance empieza de cero. Si
 al conectar hay una importación del archivo en el período, la pantalla avisa:
 su ingreso estimado y los ingresos reales se contarían dos veces.
 
+**Una pasada se ve mientras corre.** Puede tardar un par de minutos (un
+pedido por par de la cuenta, otro por cada orden nueva), y "Trayendo…" quieto
+se leía como que no hacía nada. `watchBinanceProgress` dice el paso y, en las
+órdenes, cuántos pares van; la pantalla lo muestra también para la pasada que
+arrancó sola al abrir. Si "Traer ahora" no corre (recién terminó, o Binance
+pidió esperar), `whyNotRun` lo dice en vez de no hacer nada.
+
 Cómo se traduce cada cosa (`map.ts`, con tests contra el ledger):
 
 - Los dólares estables (USDT, FDUSD, USDC…) son el efectivo en dólares de

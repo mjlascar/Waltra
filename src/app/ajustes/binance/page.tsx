@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AjustesShell } from "@/components/ajustes/Shell";
 import { Field } from "@/components/ui/Field";
 import { SectionTitle } from "@/components/ui/Stat";
 import { useStore } from "@/lib/store";
 import { useBinanceConnection } from "@/lib/binance/use-connection";
 import { money, relativeTime, shortDate } from "@/lib/format";
-import { connectWarnings, defaultSince } from "@/lib/binance/sync";
+import { connectWarnings, defaultSince, watchBinanceProgress, whyNotRun, type BinanceProgress } from "@/lib/binance/sync";
 import type { Transaction } from "@/lib/types";
 import { today } from "@/lib/date";
 
@@ -25,6 +25,10 @@ export default function BinanceAjustes() {
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  // La pasada en curso, sea la de este boton o la que arranco sola al abrir.
+  const [progreso, setProgreso] = useState<BinanceProgress | null>(null);
+  useEffect(() => watchBinanceProgress(setProgreso), []);
+  const trayendo = busy || progreso !== null;
 
   const cuentas = useMemo(() => accounts.filter((a) => !a.archived), [accounts]);
   const propuesta = cuentas.find((a) => a.broker === "binance") ?? cuentas[0];
@@ -35,6 +39,8 @@ export default function BinanceAjustes() {
     try {
       const r = await syncBinance({ force: true });
       if (r?.error) setMessage(r.error);
+      // No corrio: se dice por que, en vez de volver a quedar igual.
+      else if (r === null && db) setMessage(whyNotRun(await db.connections.get("binance")));
     } finally {
       setBusy(false);
     }
@@ -100,8 +106,12 @@ export default function BinanceAjustes() {
             <p className="text-[12px] leading-snug" style={{ color: "var(--color-warn)" }}>
               {conn.authError}
             </p>
-          ) : busy ? (
-            <p className="label">Trayendo…</p>
+          ) : trayendo ? (
+            <p className="label leading-snug" aria-live="polite">
+              {progreso ? `${progreso.step}…` : "Trayendo…"}
+              {progreso?.total ? ` (${(progreso.done ?? 0) + 1} de ${progreso.total})` : ""}
+              <span className="block">Puede tardar un par de minutos; podés salir de esta pantalla.</span>
+            </p>
           ) : run ? (
             <p className="label leading-snug">
               {relativeTime(run.at)}:{" "}
@@ -109,7 +119,7 @@ export default function BinanceAjustes() {
                 ? run.error
                 : nuevos > 0
                   ? `${nuevos} ${nuevos === 1 ? "movimiento nuevo" : "movimientos nuevos"}`
-                  : "sin novedades"}
+                  : `sin novedades desde el ${shortDate(conn.since, true)}`}
               {run.dupes > 0 && `, ${run.dupes} ya ${run.dupes === 1 ? "estaba cargado" : "estaban cargados"} a mano`}
               {run.partial && ". Falta historial: sigue solo en un minuto"}
               .
@@ -124,7 +134,7 @@ export default function BinanceAjustes() {
                 Cargar otra clave
               </button>
             ) : (
-              <button className="btn btn-sm flex-1" disabled={busy} onClick={() => void traer()}>
+              <button className="btn btn-sm flex-1" disabled={trayendo} onClick={() => void traer()}>
                 Traer ahora
               </button>
             )}

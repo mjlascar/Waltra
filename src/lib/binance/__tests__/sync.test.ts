@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WaltraDB, ensureSeeded } from "@/lib/db";
 import { BinanceClient, type BinanceTransport } from "../client";
 import { demoFake, emptyFake, fakeTransport, type FakeBinance, type FakeFill, type FakeLog } from "../fake";
-import { connectBinance, connectWarnings, defaultSince, disconnectBinance, forgetBinanceTx, MIN_INTERVAL, runBinance } from "../sync";
+import { connectBinance, connectWarnings, defaultSince, disconnectBinance, forgetBinanceTx, MIN_INTERVAL, runBinance, watchBinanceProgress, whyNotRun, type BinanceProgress } from "../sync";
 import { buildLedger } from "@/lib/engine/ledger";
 import { FxTable } from "@/lib/engine/fx";
 import type { Asset, Transaction } from "@/lib/types";
@@ -518,5 +518,31 @@ describe("cuando algo falla", () => {
     const dia = (await db.assets.toArray()).filter((a) => a.symbol === "DIA");
     expect(dia).toHaveLength(1);
     expect(dia[0]).toMatchObject({ kind: "crypto", source: "binance", sourceSymbol: "DIAUSDT" });
+  });
+});
+
+describe("lo que ve la pantalla mientras trae", () => {
+  it("cuenta por dónde va y termina en nada", async () => {
+    await connect("2026-10-01");
+    later();
+    const pasos: (BinanceProgress | null)[] = [];
+    const dejar = watchBinanceProgress((p) => pasos.push(p));
+    await run(true);
+    dejar();
+    expect(pasos[0]).toBeNull();
+    expect(pasos.some((p) => p?.step === "Leyendo los ingresos")).toBe(true);
+    expect(pasos.at(-1)).toBeNull();
+  });
+
+  it("si no corre, dice por qué", async () => {
+    await connect("2026-10-01");
+    later();
+    await run(true);
+    // "Traer ahora" de nuevo enseguida: no corre, y la pantalla lo explica.
+    clock += 2000;
+    expect(await run(true)).toBeNull();
+    expect(whyNotRun(await db.connections.get("binance"), clock)).toMatch(/Recién terminó/);
+    await db.connections.update("binance", { blockedUntil: clock + 60_000 });
+    expect(whyNotRun(await db.connections.get("binance"), clock)).toMatch(/Binance pidió esperar/);
   });
 });

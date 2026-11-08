@@ -44,6 +44,8 @@ function viaServer(ctx: { accessKey?: string }): BinanceTransport {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(ctx.accessKey ? { "x-waltra-key": ctx.accessKey } : {}) },
       body: JSON.stringify({ url, apiKey }),
+      // Un pedido que no vuelve no puede dejar la pasada colgada para siempre.
+      signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
