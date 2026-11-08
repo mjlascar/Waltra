@@ -549,7 +549,7 @@ check("reusa el activo que ya existía", btcRows === 1, `filas BTC: ${btcRows}`)
 console.log("\n5. Navegación entre vistas");
 for (const [path, marker] of [
   ["/", "Valor total"],
-  ["/cartera", "Invertido"],
+  ["/cartera", "Valor"],
   ["/movimientos", "movimientos"],
   ["/insights", "Insights"],
   ["/ajustes", "Cuentas y activos"],

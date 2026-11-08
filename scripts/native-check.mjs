@@ -110,7 +110,7 @@ if (await ejemploNav.count()) {
   await page.waitForTimeout(2500);
 }
 for (const [ruta, marca] of [
-  ["/cartera", "Invertido"],
+  ["/cartera", "Valor"],
   ["/movimientos", "Todas las cuentas"],
   ["/insights", "Insights"],
   ["/ajustes", "Cuentas y activos"],

@@ -19,7 +19,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import type { PositionView } from "@/lib/engine/portfolio";
 
 export default function Cartera() {
-  const { portfolio: full, portfolioFor, accounts, assets, ready, saveAsset, refresh } = useStore();
+  const { portfolio: full, portfolioFor, assets, ready, saveAsset, refresh } = useStore();
   const display = full.base;
   /**
    * Los filtros: cuentas y tipos, de a varios. Vacio es todo. No cambian la
@@ -105,12 +105,16 @@ export default function Cartera() {
       closedPositions,
       sales,
       investedUsd,
+      totalValueUsd: investedUsd,
       unrealizedUsd: positions.reduce((acc, pos) => acc + pos.unrealizedUsd, 0),
       realizedUsd: sales.reduce((acc, v) => acc + v.pnl, 0),
       cashUsd: 0,
     };
   }, [porCuenta, tiposElegidos, assets]);
   const filtrando = cuentasElegidas.length > 0 || tiposElegidos.length > 0;
+
+  const siguiente =
+    cuantosActivos >= p.positions.length ? 5 : cuantosActivos === 5 && p.positions.length > 15 ? 15 : p.positions.length;
 
   const alternar = (lista: string[], valor: string) =>
     lista.includes(valor) ? lista.filter((v) => v !== valor) : [...lista, valor];
@@ -160,9 +164,10 @@ export default function Cartera() {
       )}
 
       <section className="mb-4">
-        <div className="eyebrow mb-2">Invertido</div>
+        {/* La lista de abajo más la liquidez: tiene que poder sumarse a mano. */}
+        <div className="eyebrow mb-2">Valor</div>
         <div className="hero-num">
-          <TweenMoney value={p.investedUsd} currency={display} />
+          <TweenMoney value={p.totalValueUsd} currency={display} />
         </div>
         <div className="mt-2 flex items-baseline gap-2">
           <span className={`num text-[14px] ${p.unrealizedUsd >= 0 ? "pos" : "neg"}`}>
@@ -178,8 +183,10 @@ export default function Cartera() {
             <span className="label">realizado al vender</span>
           </div>
         )}
-        {p.cashUsd > 0.01 && (
-          <p className="label mt-2">{money(p.cashUsd, display)} de liquidez</p>
+        {Math.abs(p.cashUsd) > 0.01 && (
+          <p className="label mt-2">
+            {money(p.investedUsd, display)} invertido · {money(p.cashUsd, display)} de liquidez
+          </p>
         )}
       </section>
 
@@ -256,23 +263,8 @@ export default function Cartera() {
       </section>
       {p.positions.length > 5 && (
         <div className="-mt-3 mb-5">
-          <button
-            className="chip"
-            onClick={() =>
-              setCuantosActivos(
-                cuantosActivos >= p.positions.length
-                  ? 5
-                  : cuantosActivos === 5 && p.positions.length > 15
-                    ? 15
-                    : p.positions.length,
-              )
-            }
-          >
-            {cuantosActivos >= p.positions.length
-              ? "Mostrar menos"
-              : cuantosActivos === 5 && p.positions.length > 15
-                ? "Mostrar 10 más"
-                : "Mostrar todos"}
+          <button className="chip" onClick={() => setCuantosActivos(siguiente)}>
+            {siguiente === 5 ? "Mostrar menos" : siguiente === 15 ? "Mostrar 10 más" : "Mostrar todos"}
           </button>
         </div>
       )}
@@ -287,8 +279,6 @@ export default function Cartera() {
       )}
 
       <SalesList portfolio={p} />
-
-      {accounts.length === 0 && <p className="label">No hay cuentas configuradas.</p>}
 
       <PositionSheet position={selected} onClose={() => setSelected(null)} />
 
