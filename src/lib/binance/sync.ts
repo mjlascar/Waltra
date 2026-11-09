@@ -490,41 +490,41 @@ async function pass(
 
   /** Earn: cada mes, una vez, cuando ya termino. Nunca se rearma un movimiento que ya esta. */
   async function earn(): Promise<boolean> {
-    report({ step: "Leyendo Earn" });
     let from = Math.max(floor, earnFrom ?? floor);
     for (;;) {
       const [ms, me] = monthBounds(from);
       if (me + EARN_GRACE >= t0) return true;
+      const [y, m] = monthKey(ms).split("-").map(Number);
+      report({ step: `Leyendo Earn de ${map.MESES[m - 1]} de ${y}` });
       const records: api.Reward[] = [];
       for (const [s, e] of api.windows(Math.max(ms, floor), me, api.WINDOW.rewards)) {
-        if (!roomFor({ sapiIp: 450 })) {
-          partial = true;
-          return false;
-        }
         try {
-          records.push(...(await api.rewards(client, s, e)));
+          records.push(
+            ...(await api.rewards(client, s, e, () => {
+              if (!roomFor({ sapiIp: 150 })) throw new OutOfBudget();
+            })),
+          );
         } catch (err) {
+          if (err instanceof OutOfBudget) {
+            partial = true;
+            return false;
+          }
           if (corta(err)) throw err;
           skipped.push(`No pude leer Earn: ${messageOf(err)}`);
           return false;
         }
       }
-      // Earn paga todos los dias: un precio por activo y por dia alcanza.
+      // Un precio por activo y por mes, el del ultimo pago: uno por dia eran
+      // cientos de pedidos seguidos por algo que se carga una sola vez.
       const totals = new Map<string, { units: number; value: number; last: number }>();
-      const porDia = new Map<string, { asset: string; units: number; at: number }>();
       for (const r of records) {
         const t = totals.get(r.asset) ?? { units: 0, value: 0, last: 0 };
         t.units += r.amount;
         t.last = Math.max(t.last, r.time);
         totals.set(r.asset, t);
-        const k = `${r.asset}|${localDay(r.time)}`;
-        const d = porDia.get(k) ?? { asset: r.asset, units: 0, at: r.time };
-        d.units += r.amount;
-        porDia.set(k, d);
       }
-      for (const d of porDia.values()) {
-        if (map.sideOf(d.asset).kind !== "crypto") continue;
-        totals.get(d.asset)!.value += d.units * ((await usd(d.asset, d.at)) ?? 0);
+      for (const [asset, t] of totals) {
+        if (map.sideOf(asset).kind === "crypto") t.value = t.units * ((await usd(asset, t.last)) ?? 0);
       }
       const mes: map.Group[] = [];
       for (const [asset, total] of totals) {

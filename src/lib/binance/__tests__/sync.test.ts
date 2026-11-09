@@ -247,6 +247,20 @@ describe("solo lo ultimo, y lo que ya esta no se toca", () => {
     expect((await db.transactions.get("binance-earn-USDT-2026-10"))?.amount).toBeCloseTo(0.7, 10);
   });
 
+  it("Earn en cripto pide un precio por activo y por mes, no uno por dia", async () => {
+    fake.prices = { BTCUSDT: 100_000 };
+    fake.rewards = Array.from({ length: 30 }, (_, i) => ({
+      asset: "BTC", rewards: 0.000001, time: Date.parse("2026-10-01T12:00:00Z") + i * DAY, type: "REALTIME" as const,
+    }));
+    await connect("2026-10-01");
+    clock = Date.parse("2026-11-05T12:00:00Z");
+    await run();
+    expect(calls("/api/v3/klines")).toBe(1);
+    const earn = await db.transactions.get("binance-earn-BTC-2026-10");
+    expect(earn?.quantity).toBeCloseTo(0.00003, 12);
+    expect(earn?.amount).toBeCloseTo(3, 6);
+  });
+
   it("lo borrado cuenta como cargado: no vuelve, y lo de antes tampoco se toca", async () => {
     fake.deposits = [
       { id: "d1", coin: "USDT", amount: 100, status: 1, insertTime: clock - 3 * DAY },

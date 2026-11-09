@@ -456,10 +456,17 @@ export interface Reward {
  * separado el rendimiento comun y el bonus: "todos los tipos" incluye el
  * historico, que en algunas cuentas repite lo mismo con otro nombre.
  */
-export async function rewards(c: BinanceClient, start: number, end: number): Promise<Reward[]> {
+/** `beforePage` corre antes de cada pagina: es donde la pasada corta si se queda sin cupo. */
+export async function rewards(
+  c: BinanceClient,
+  start: number,
+  end: number,
+  beforePage: () => void = () => {},
+): Promise<Reward[]> {
   const out: Reward[] = [];
   for (const type of ["REALTIME", "BONUS"] as const) {
     for (let current = 1; ; current++) {
+      beforePage();
       const r = await c.signed<{ rows?: unknown }>("/sapi/v1/simple-earn/flexible/history/rewardsRecord", {
         type,
         startTime: start,
@@ -473,6 +480,7 @@ export async function rewards(c: BinanceClient, start: number, end: number): Pro
     }
   }
   for (let current = 1; ; current++) {
+    beforePage();
     const r = await c.signed<{ rows?: unknown }>("/sapi/v1/simple-earn/locked/history/rewardsRecord", {
       startTime: start,
       endTime: end,

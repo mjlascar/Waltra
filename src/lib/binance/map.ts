@@ -414,7 +414,7 @@ export async function paymentGroup(p: FiatPayment, usd: UsdPrice): Promise<Mappe
 // ---------------------------------------------------------------------------
 // Earn
 
-const MESES = [
+export const MESES = [
   "enero", "febrero", "marzo", "abril", "mayo", "junio",
   "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
 ];
